@@ -31,6 +31,9 @@ primary="$(
 "$ROOT/bin/dvm" gpg create app "$primary" --expire 1d >"$TMP/create.out" 2>"$TMP/create.err"
 grep -Fq 'created signing subkey:' "$TMP/create.err"
 
+PUBLIC_FILE=""
+SECRET_FILE=""
+SUBKEY_FPR=""
 # shellcheck source=/dev/null
 source "$DVM_STATE/gpg/app.env"
 [ -s "$PUBLIC_FILE" ]
