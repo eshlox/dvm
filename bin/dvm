@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+dvm_resolve_script_dir() {
+	local source dir
+	source="${BASH_SOURCE[0]}"
+	while [ -L "$source" ]; do
+		dir="$(cd -P "$(dirname "$source")" && pwd)"
+		source="$(readlink "$source")"
+		case "$source" in
+		/*) ;;
+		*) source="$dir/$source" ;;
+		esac
+	done
+	cd -P "$(dirname "$source")" && pwd
+}
+
+DVM_CORE="${DVM_CORE:-$(cd "$(dvm_resolve_script_dir)/.." && pwd)}"
+DVM_CONFIG="${DVM_CONFIG:-$HOME/.config/dvm}"
+DVM_STATE="${DVM_STATE:-$HOME/.local/share/dvm}"
+
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/util.sh"
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/config.sh"
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/vm.sh"
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/gpg.sh"
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/doctor.sh"
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/completion.sh"
+
+dvm_help() {
+	cat <<'HELP'
+usage:
+  dvm init
+  dvm new <name>
+  dvm setup <name>
+  dvm setup-all
+  dvm enter <name>
+  dvm ssh <name> [command...]
+  dvm key <name>
+  dvm list
+  dvm rm <name> [--force]
+  dvm gpg create|install|revoke ...
+  dvm doctor
+  dvm completion zsh
+
+Shortcut:
+  dvm <name> enters that VM.
+HELP
+}
+
+dvm_main() {
+	local cmd
+	cmd="${1:-help}"
+	[ "$#" -eq 0 ] || shift
+	case "$cmd" in
+	init) dvm_init "$@" ;;
+	new | create) dvm_create "$@" ;;
+	setup | update) dvm_setup "$@" ;;
+	setup-all | update-all) dvm_setup_all "$@" ;;
+	enter) dvm_enter "$@" ;;
+	ssh) dvm_ssh "$@" ;;
+	key) dvm_key "$@" ;;
+	list | ls) dvm_list_names "$@" ;;
+	rm | delete) dvm_rm "$@" ;;
+	gpg) dvm_gpg_cmd "$@" ;;
+	doctor) dvm_doctor "$@" ;;
+	completion) dvm_completion "$@" ;;
+	help | -h | --help) dvm_help ;;
+	*)
+		dvm_load_config
+		if dvm_list_names | grep -Fxq "$cmd"; then
+			dvm_enter "$cmd"
+		else
+			dvm_help
+			dvm_die "unknown command or VM: $cmd"
+		fi
+		;;
+	esac
+}
+
+dvm_main "$@"
