@@ -413,6 +413,7 @@ grep -Fq 'dnf5 install -y bubblewrap acl shadow-utils' "$LOG"
 grep -Fq 'useradd -m -d' "$LOG"
 grep -Fq 'setfacl -m u:dvm-agent:rwx' "$LOG"
 grep -Fq 'agent user: dvm-agent' "$TMP/agent-setup.out"
+# shellcheck disable=SC2016
 "$TMP/local-bin/dvm-test" agent ai -- bash -lc 'printf "%s\n" "$HOME" >"$DVM_CODE_DIR/agent-home"; printf "%s\n" "$DVM_AGENT" >"$DVM_CODE_DIR/agent-flag"'
 grep -Fxq "$VM_HOME_ROOT/testvm-ai-agent" "$VM_HOME_ROOT/testvm-ai/code/agent-home"
 grep -Fxq "1" "$VM_HOME_ROOT/testvm-ai/code/agent-flag"
