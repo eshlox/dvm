@@ -147,6 +147,12 @@ set -euo pipefail
 printf 'npm %s\n' "$*" >>"$DVM_TEST_LOG"
 MOCK
 
+cat >"$MOCK_BIN/uv" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'uv %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
 cat >"$MOCK_BIN/ssh-keygen" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -244,6 +250,7 @@ chmod +x \
 	"$MOCK_BIN/setfacl" \
 	"$MOCK_BIN/bwrap" \
 	"$MOCK_BIN/npm" \
+	"$MOCK_BIN/uv" \
 	"$MOCK_BIN/ssh-keygen" \
 	"$MOCK_BIN/limactl"
 
@@ -421,8 +428,14 @@ grep -Fq 'bwrap ' "$LOG"
 "$TMP/local-bin/dvm-test" agent install ai codex >/dev/null
 grep -Fq 'dnf5 install -y nodejs npm' "$LOG"
 grep -Fq 'npm install -g @openai/codex' "$LOG"
+"$TMP/local-bin/dvm-test" agent install ai opencode >/dev/null
+grep -Fq 'npm install -g opencode-ai' "$LOG"
+"$TMP/local-bin/dvm-test" agent install ai mistral >/dev/null
+grep -Fq 'dnf5 install -y uv python3' "$LOG"
+grep -Fq 'uv tool install mistral-vibe' "$LOG"
 
 "$TMP/local-bin/dvm-test" completion zsh >"$TMP/completion.zsh"
 grep -Fq 'compdef _dvm dvm-test' "$TMP/completion.zsh"
 grep -Fq 'ai:manage a llama.cpp VM' "$TMP/completion.zsh"
 grep -Fq 'agent:run AI tools as the restricted agent user' "$TMP/completion.zsh"
+grep -Fq "_values 'agent tool' claude codex opencode mistral all" "$TMP/completion.zsh"

@@ -4,8 +4,8 @@
 hood, named `ai` by default, but adds package install, model download, model switching,
 and a managed `llama-server` systemd service.
 
-Hosted AI coding tools such as Claude Code and Codex CLI are separate. Run those
-through [`dvm agent`](ai-tools.md).
+Hosted AI coding tools such as Claude Code, Codex CLI, OpenCode, and Mistral Vibe are
+separate. Run those through [`dvm agent`](ai-tools.md).
 
 ## Config
 
