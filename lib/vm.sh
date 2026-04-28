@@ -81,10 +81,10 @@ if [ -n "$packages" ]; then
 	done
 	if command -v dnf5 >/dev/null 2>&1; then
 		# shellcheck disable=SC2086
-		sudo dnf5 install -y -- $packages
+		sudo dnf5 install -y $packages
 	else
 		# shellcheck disable=SC2086
-		sudo dnf install -y -- $packages
+		sudo dnf install -y $packages
 	fi
 fi
 
