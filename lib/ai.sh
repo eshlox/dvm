@@ -39,14 +39,94 @@ dvm_ai_validate_url() {
 	local url
 	url="$1"
 	case "$url" in
-	http://* | https://*) ;;
-	*) dvm_die "AI model URL must start with http:// or https://: $url" ;;
+	https://*) ;;
+	*) dvm_die "AI model URL must start with https://: $url" ;;
 	esac
 	case "$url" in
 	*$'\n'* | *$'\r'* | *' '*)
 		dvm_die "invalid AI model URL: $url"
 		;;
 	esac
+}
+
+dvm_ai_validate_checksum() {
+	local checksum
+	checksum="$1"
+	[ -n "$checksum" ] || return 0
+	if [ "${#checksum}" -ne 64 ]; then
+		dvm_die "AI model checksum must be a 64-character SHA-256 hex value"
+	fi
+	case "$checksum" in
+	*[!A-Fa-f0-9]*)
+		dvm_die "AI model checksum must be a SHA-256 hex value: $checksum"
+		;;
+	esac
+}
+
+dvm_ai_model_spec_alias() {
+	local spec
+	spec="$1"
+	case "$spec" in
+	*=*) printf '%s\n' "${spec%%=*}" ;;
+	*) dvm_die "invalid DVM_AI_MODELS entry: $spec" ;;
+	esac
+}
+
+dvm_ai_model_spec_payload() {
+	local spec
+	spec="$1"
+	case "$spec" in
+	*=*) printf '%s\n' "${spec#*=}" ;;
+	*) dvm_die "invalid DVM_AI_MODELS entry: $spec" ;;
+	esac
+}
+
+dvm_ai_model_payload_url() {
+	local payload
+	payload="$1"
+	case "$payload" in
+	*'#sha256:'*) printf '%s\n' "${payload%#sha256:*}" ;;
+	*'#sha256='*) printf '%s\n' "${payload%#sha256=*}" ;;
+	*) printf '%s\n' "$payload" ;;
+	esac
+}
+
+dvm_ai_model_payload_checksum() {
+	local payload
+	payload="$1"
+	case "$payload" in
+	*'#sha256:'*) printf '%s\n' "${payload##*#sha256:}" ;;
+	*'#sha256='*) printf '%s\n' "${payload##*#sha256=}" ;;
+	*) printf '\n' ;;
+	esac
+}
+
+dvm_ai_validate_models_config() {
+	local spec alias payload url checksum found_default
+	found_default="0"
+
+	if [ -n "$DVM_AI_DEFAULT_MODEL" ]; then
+		dvm_ai_validate_model_alias "$DVM_AI_DEFAULT_MODEL"
+	fi
+
+	for spec in $DVM_AI_MODELS; do
+		alias="$(dvm_ai_model_spec_alias "$spec")"
+		payload="$(dvm_ai_model_spec_payload "$spec")"
+		url="$(dvm_ai_model_payload_url "$payload")"
+		checksum="$(dvm_ai_model_payload_checksum "$payload")"
+		dvm_ai_validate_model_alias "$alias"
+		dvm_ai_validate_url "$url"
+		dvm_ai_validate_checksum "$checksum"
+		if [ -n "$DVM_AI_DEFAULT_MODEL" ] && [ "$alias" = "$DVM_AI_DEFAULT_MODEL" ]; then
+			found_default="1"
+		fi
+	done
+
+	if [ -n "$DVM_AI_MODELS" ] &&
+		[ -n "$DVM_AI_DEFAULT_MODEL" ] &&
+		[ "$found_default" != "1" ]; then
+		dvm_die "DVM_AI_DEFAULT_MODEL is not listed in DVM_AI_MODELS: $DVM_AI_DEFAULT_MODEL"
+	fi
 }
 
 dvm_ai_validate_config() {
@@ -85,6 +165,8 @@ dvm_ai_validate_config() {
 		dvm_die "invalid DVM_AI_EXTRA_ARGS"
 		;;
 	esac
+
+	dvm_ai_validate_models_config
 }
 
 dvm_ai_model_filename() {
@@ -97,16 +179,27 @@ dvm_ai_model_filename() {
 }
 
 dvm_ai_model_url() {
-	local alias spec spec_alias
+	local alias spec spec_alias payload
 	alias="$1"
 	for spec in $DVM_AI_MODELS; do
-		case "$spec" in
-		*=*) ;;
-		*) dvm_die "invalid DVM_AI_MODELS entry: $spec" ;;
-		esac
-		spec_alias="${spec%%=*}"
+		spec_alias="$(dvm_ai_model_spec_alias "$spec")"
 		if [ "$spec_alias" = "$alias" ]; then
-			printf '%s\n' "${spec#*=}"
+			payload="$(dvm_ai_model_spec_payload "$spec")"
+			dvm_ai_model_payload_url "$payload"
+			return 0
+		fi
+	done
+	return 1
+}
+
+dvm_ai_model_checksum() {
+	local alias spec spec_alias payload
+	alias="$1"
+	for spec in $DVM_AI_MODELS; do
+		spec_alias="$(dvm_ai_model_spec_alias "$spec")"
+		if [ "$spec_alias" = "$alias" ]; then
+			payload="$(dvm_ai_model_spec_payload "$spec")"
+			dvm_ai_model_payload_checksum "$payload"
 			return 0
 		fi
 	done
@@ -116,13 +209,8 @@ dvm_ai_model_url() {
 dvm_ai_first_model_alias() {
 	local spec
 	for spec in $DVM_AI_MODELS; do
-		case "$spec" in
-		*=*)
-			printf '%s\n' "${spec%%=*}"
-			return 0
-			;;
-		*) dvm_die "invalid DVM_AI_MODELS entry: $spec" ;;
-		esac
+		dvm_ai_model_spec_alias "$spec"
+		return 0
 	done
 	return 1
 }
@@ -130,10 +218,7 @@ dvm_ai_first_model_alias() {
 dvm_ai_model_aliases() {
 	local spec
 	for spec in $DVM_AI_MODELS; do
-		case "$spec" in
-		*=*) printf '%s\n' "${spec%%=*}" ;;
-		*) dvm_die "invalid DVM_AI_MODELS entry: $spec" ;;
-		esac
+		dvm_ai_model_spec_alias "$spec"
 	done
 }
 
@@ -213,6 +298,7 @@ models_dir="$1"
 alias="$2"
 url="$3"
 filename="$4"
+checksum="$5"
 dest="$models_dir/$filename"
 tmp="$dest.part"
 
@@ -224,6 +310,13 @@ command -v curl >/dev/null 2>&1 || {
 
 echo "downloading $alias"
 curl -fL --retry 3 --connect-timeout 20 -o "$tmp" "$url"
+if [ -n "$checksum" ]; then
+	command -v sha256sum >/dev/null 2>&1 || {
+		echo "sha256sum is required to verify $alias" >&2
+		exit 1
+	}
+	printf '%s  %s\n' "$checksum" "$tmp" | sha256sum -c -
+fi
 mv "$tmp" "$dest"
 printf '%s\n' "$dest"
 REMOTE
@@ -253,8 +346,7 @@ if [ ! -f "$candidate" ]; then
 	exit 1
 fi
 
-rm -f "$current_model"
-ln -s "$candidate" "$current_model"
+ln -sfn "$candidate" "$current_model"
 sudo systemctl enable "$service_name"
 sudo systemctl restart "$service_name"
 printf 'active model: %s\n' "$(basename "$candidate")"
@@ -311,11 +403,14 @@ dvm_ai_host_remote() {
 	cat <<'REMOTE'
 set -euo pipefail
 port="$1"
+listen_host="$2"
 guest_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 
-printf 'host: http://127.0.0.1:%s\n' "$port"
-if [ -n "$guest_ip" ]; then
+printf 'vm: http://127.0.0.1:%s\n' "$port"
+if [ "$listen_host" = "0.0.0.0" ] && [ -n "$guest_ip" ]; then
 	printf 'guest: http://%s:%s\n' "$guest_ip" "$port"
+else
+	printf 'host: not exposed (DVM_AI_HOST=%s)\n' "$listen_host"
 fi
 REMOTE
 }
@@ -361,23 +456,27 @@ dvm_ai_setup() {
 }
 
 dvm_ai_pull_one() {
-	local vm request alias url filename remote
+	local vm request alias payload url checksum filename remote
 	vm="$1"
 	request="$2"
 
 	case "$request" in
 	*=*)
-		alias="${request%%=*}"
-		url="${request#*=}"
+		alias="$(dvm_ai_model_spec_alias "$request")"
+		payload="$(dvm_ai_model_spec_payload "$request")"
+		url="$(dvm_ai_model_payload_url "$payload")"
+		checksum="$(dvm_ai_model_payload_checksum "$payload")"
 		;;
 	*)
 		alias="$request"
 		url="$(dvm_ai_model_url "$alias")" || dvm_die "unknown AI model alias: $alias"
+		checksum="$(dvm_ai_model_checksum "$alias")" || true
 		;;
 	esac
 
 	dvm_ai_validate_model_alias "$alias"
 	dvm_ai_validate_url "$url"
+	dvm_ai_validate_checksum "$checksum"
 	filename="$(dvm_ai_model_filename "$alias")"
 	remote="$(dvm_ai_pull_remote)"
 
@@ -386,7 +485,8 @@ dvm_ai_pull_one() {
 		"$DVM_AI_MODELS_DIR" \
 		"$alias" \
 		"$url" \
-		"$filename"
+		"$filename" \
+		"$checksum"
 }
 
 dvm_ai_pull() {
@@ -474,7 +574,7 @@ dvm_ai_host() {
 	vm="$(dvm_ai_start_vm "$name")"
 	remote="$(dvm_ai_host_remote)"
 	printf 'vm: %s\n' "$name"
-	limactl shell "$vm" bash -c "$remote" dvm-ai-host "$DVM_AI_PORT"
+	limactl shell "$vm" bash -c "$remote" dvm-ai-host "$DVM_AI_PORT" "$DVM_AI_HOST"
 }
 
 dvm_ai_create() {

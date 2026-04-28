@@ -67,6 +67,15 @@ mkdir -p "$(dirname "$out")"
 printf 'model from %s\n' "$url" >"$out"
 MOCK
 
+cat >"$MOCK_BIN/sha256sum" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'sha256sum %s\n' "$*" >>"$DVM_TEST_LOG"
+if [ "${1:-}" = "-c" ]; then
+	cat >/dev/null
+fi
+MOCK
+
 cat >"$MOCK_BIN/systemctl" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -242,6 +251,7 @@ chmod +x \
 	"$MOCK_BIN/sudo" \
 	"$MOCK_BIN/dnf5" \
 	"$MOCK_BIN/curl" \
+	"$MOCK_BIN/sha256sum" \
 	"$MOCK_BIN/systemctl" \
 	"$MOCK_BIN/llama-server" \
 	"$MOCK_BIN/useradd" \
@@ -274,7 +284,7 @@ printf 'gpg material\n' >"$HOST_DOTFILES/.gnupg/private-keys-v1.d"
 printf 'token=1\n' >"$HOST_DOTFILES/.env"
 printf 'do not copy\n' >"$HOST_DOTFILES/secrets"
 
-"$ROOT/install.sh" --prefix "$TMP/local-bin" --name dvm-test --init >/dev/null
+"$ROOT/install.sh" --prefix "$TMP/local-bin" --name dvm-test --init >/dev/null 2>&1
 [ -L "$TMP/local-bin/dvm-test" ]
 [ -f "$DVM_CONFIG/config.sh" ]
 [ -f "$DVM_CONFIG/setup.d/fedora.sh" ]
@@ -297,8 +307,9 @@ printf '%s\n' "$DVM_NAME" >>"$HOME/setup-ran"
 [ -f "$DVM_DOTFILES_TARGET/install.sh" ]
 SCRIPT
 
-"$TMP/local-bin/dvm-test" new app >"$TMP/new.out"
-grep -Fq 'public key for app' "$TMP/new.out"
+"$TMP/local-bin/dvm-test" new app >"$TMP/new.out" 2>"$TMP/new.err"
+grep -Fxq 'ssh-ed25519 public-key' "$TMP/new.out"
+grep -Fq 'public key for app' "$TMP/new.err"
 grep -Fq 'create testvm-app' "$LOG"
 grep -Fq 'helix' "$LOG"
 grep -Fq 'app' "$VM_HOME_ROOT/testvm-app/setup-ran"
@@ -314,14 +325,64 @@ grep -Fq 'app' "$VM_HOME_ROOT/testvm-app/setup-ran"
 grep -Fxq app "$TMP/list.out"
 rm -f "$HOST_DOTFILES/bashrc"
 printf 'export EDITOR=hx\n' >"$HOST_DOTFILES/zshrc"
-"$TMP/local-bin/dvm-test" setup-all >/dev/null
+"$TMP/local-bin/dvm-test" setup-all >/dev/null 2>"$TMP/setup-all.err"
 [ "$(grep -Fc 'app' "$VM_HOME_ROOT/testvm-app/setup-ran")" -ge 2 ]
 [ ! -e "$VM_HOME_ROOT/testvm-app/.dotfiles/bashrc" ]
 [ -f "$VM_HOME_ROOT/testvm-app/.dotfiles/zshrc" ]
-"$TMP/local-bin/dvm-test" key app >"$TMP/key.out"
+grep -Fq 'setup-all complete: 1 succeeded' "$TMP/setup-all.err"
+cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
+cp "$DVM_CONFIG/setup.d/fedora.sh" "$DVM_CONFIG/setup.d/fedora.safe.sh"
+printf 'testvm-bad\n' >>"$LIST_FILE"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-app"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-app/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS="$DVM_CONFIG/setup.d/fedora.sh"
+DVM_SETUP_ALL_JOBS="2"
+DVM_GPG_DIR="$DVM_STATE/gpg"
+CONFIG
+cat >"$DVM_CONFIG/setup.d/fedora.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$DVM_NAME" >>"$HOME/setup-all-ran"
+if [ "$DVM_NAME" = "bad" ]; then
+	echo "bad setup failed" >&2
+	exit 42
+fi
+SCRIPT
+if "$TMP/local-bin/dvm-test" setup-all >/dev/null 2>"$TMP/setup-all-fail.err"; then
+	echo "setup-all unexpectedly succeeded with a failing VM" >&2
+	exit 1
+fi
+grep -Fq '[app]' "$TMP/setup-all-fail.err"
+grep -Fq '[bad] bad setup failed' "$TMP/setup-all-fail.err"
+grep -Fq 'setup-all failed for 1 of 2: bad' "$TMP/setup-all-fail.err"
+mv "$DVM_CONFIG/config.safe.sh" "$DVM_CONFIG/config.sh"
+mv "$DVM_CONFIG/setup.d/fedora.safe.sh" "$DVM_CONFIG/setup.d/fedora.sh"
+"$TMP/local-bin/dvm-test" key app >"$TMP/key.out" 2>"$TMP/key.err"
 grep -Fq 'ssh-ed25519' "$TMP/key.out"
+if grep -Fq 'public key for app' "$TMP/key.out"; then
+	echo "dvm key wrote prose to stdout" >&2
+	exit 1
+fi
 "$TMP/local-bin/dvm-test" doctor >"$TMP/doctor.out"
 grep -Fq "prefix: testvm" "$TMP/doctor.out"
+"$TMP/local-bin/dvm-test" app pwd >"$TMP/shortcut-ssh.out"
+grep -Fxq "$VM_HOME_ROOT/testvm-app" "$TMP/shortcut-ssh.out"
+
+cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="-bad"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-app"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-app/code"
+CONFIG
+if "$TMP/local-bin/dvm-test" list >"$TMP/bad-prefix.out" 2>"$TMP/bad-prefix.err"; then
+	echo "list unexpectedly succeeded with invalid prefix" >&2
+	exit 1
+fi
+grep -Fq 'invalid DVM_PREFIX' "$TMP/bad-prefix.err"
+mv "$DVM_CONFIG/config.safe.sh" "$DVM_CONFIG/config.sh"
 
 cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
 cat >"$DVM_CONFIG/config.sh" <<CONFIG
@@ -341,9 +402,41 @@ fi
 grep -Fq 'refusing dangerous DVM_DOTFILES_DIR' "$TMP/dangerous.err"
 mv "$DVM_CONFIG/config.safe.sh" "$DVM_CONFIG/config.sh"
 
-mkdir -p "$VM_HOME_ROOT/testvm-app/code/repo"
-git -C "$VM_HOME_ROOT/testvm-app/code/repo" init -q
-printf 'dirty\n' >"$VM_HOME_ROOT/testvm-app/code/repo/file.txt"
+cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-app"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-app/code"
+DVM_PACKAGES="git openssh-clients gpg helix"
+DVM_SETUP_SCRIPTS="$DVM_CONFIG/setup.d/fedora.sh"
+DVM_DOTFILES_DIR="$HOST_DOTFILES"
+DVM_DOTFILES_TARGET="$VM_HOME_ROOT/testvm-app/"
+DVM_GPG_DIR="$DVM_STATE/gpg"
+CONFIG
+if "$TMP/local-bin/dvm-test" setup app >"$TMP/home-target.out" 2>"$TMP/home-target.err"; then
+	echo "setup unexpectedly succeeded with guest-home dotfiles target" >&2
+	exit 1
+fi
+grep -Fq 'refusing unsafe DVM_DOTFILES_TARGET' "$TMP/home-target.err"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-app"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-app/code"
+DVM_PACKAGES="git openssh-clients gpg helix"
+DVM_SETUP_SCRIPTS="$DVM_CONFIG/setup.d/fedora.sh"
+DVM_DOTFILES_DIR="$HOST_DOTFILES"
+DVM_DOTFILES_TARGET="$VM_HOME_ROOT/testvm-app/../../escape"
+DVM_GPG_DIR="$DVM_STATE/gpg"
+CONFIG
+if "$TMP/local-bin/dvm-test" setup app >"$TMP/traversal-target.out" 2>"$TMP/traversal-target.err"; then
+	echo "setup unexpectedly succeeded with path-traversal dotfiles target" >&2
+	exit 1
+fi
+grep -Fq 'DVM_DOTFILES_TARGET must not contain . or .. path segments' "$TMP/traversal-target.err"
+mv "$DVM_CONFIG/config.safe.sh" "$DVM_CONFIG/config.sh"
+
+git -C "$VM_HOME_ROOT/testvm-app/code" init -q
+printf 'dirty\n' >"$VM_HOME_ROOT/testvm-app/code/file.txt"
 if "$TMP/local-bin/dvm-test" rm app 2>"$TMP/rm.err"; then
 	echo "delete unexpectedly succeeded with dirty repo" >&2
 	exit 1
@@ -376,19 +469,21 @@ DVM_AI_CURRENT_MODEL="$VM_HOME_ROOT/testvm-ai/models/current.gguf"
 DVM_AI_SYSTEMD_DIR="$TMP/systemd"
 DVM_AI_PORT="18080"
 DVM_AI_DEFAULT_MODEL="tiny"
-DVM_AI_MODELS="tiny=https://example.test/tiny.gguf other=https://example.test/other.gguf"
+DVM_AI_MODELS="tiny=https://example.test/tiny.gguf#sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa other=https://example.test/other.gguf"
 CONFIG
 
-"$TMP/local-bin/dvm-test" ai create >"$TMP/ai-create.out"
+"$TMP/local-bin/dvm-test" ai create >"$TMP/ai-create.out" 2>"$TMP/ai-create.err"
 grep -Fq 'create testvm-ai' "$LOG"
 grep -Fq 'dnf5 install -y llama-cpp curl' "$LOG"
 grep -Fq 'systemctl enable dvm-llama.service' "$LOG"
 grep -Fq 'systemctl restart dvm-llama.service' "$LOG"
+grep -Fq 'sha256sum -c -' "$LOG"
 [ -f "$VM_HOME_ROOT/testvm-ai/models/tiny.gguf" ]
 [ -f "$VM_HOME_ROOT/testvm-ai/models/other.gguf" ]
 [ "$(readlink "$VM_HOME_ROOT/testvm-ai/models/current.gguf")" = "$VM_HOME_ROOT/testvm-ai/models/tiny.gguf" ]
 [ -f "$TMP/systemd/dvm-llama.service" ]
 grep -Fq 'ExecStart=' "$TMP/systemd/dvm-llama.service"
+grep -Fq -- '--host 127.0.0.1' "$TMP/systemd/dvm-llama.service"
 grep -Fq -- '--port 18080' "$TMP/systemd/dvm-llama.service"
 
 "$TMP/local-bin/dvm-test" ai models >"$TMP/ai-models.out"
@@ -403,7 +498,51 @@ grep -Fq 'service: active' "$TMP/ai-status.out"
 grep -Fq 'enabled: enabled' "$TMP/ai-status.out"
 grep -Fq 'model: other.gguf' "$TMP/ai-status.out"
 "$TMP/local-bin/dvm-test" ai host >"$TMP/ai-host.out"
-grep -Fq 'host: http://127.0.0.1:18080' "$TMP/ai-host.out"
+grep -Fq 'vm: http://127.0.0.1:18080' "$TMP/ai-host.out"
+grep -Fq 'host: not exposed (DVM_AI_HOST=127.0.0.1)' "$TMP/ai-host.out"
+
+cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-ai"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-ai/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS=" "
+DVM_GPG_DIR="$DVM_STATE/gpg"
+DVM_AI_NAME="ai"
+DVM_AI_MODELS_DIR="$VM_HOME_ROOT/testvm-ai/models"
+DVM_AI_CURRENT_MODEL="$VM_HOME_ROOT/testvm-ai/models/current.gguf"
+DVM_AI_SYSTEMD_DIR="$TMP/systemd"
+DVM_AI_PORT="18080"
+DVM_AI_DEFAULT_MODEL="missing"
+DVM_AI_MODELS="tiny=https://example.test/tiny.gguf"
+CONFIG
+if "$TMP/local-bin/dvm-test" ai models >"$TMP/ai-bad-default.out" 2>"$TMP/ai-bad-default.err"; then
+	echo "ai models unexpectedly succeeded with missing default model" >&2
+	exit 1
+fi
+grep -Fq 'DVM_AI_DEFAULT_MODEL is not listed in DVM_AI_MODELS' "$TMP/ai-bad-default.err"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-ai"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-ai/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS=" "
+DVM_GPG_DIR="$DVM_STATE/gpg"
+DVM_AI_NAME="ai"
+DVM_AI_MODELS_DIR="$VM_HOME_ROOT/testvm-ai/models"
+DVM_AI_CURRENT_MODEL="$VM_HOME_ROOT/testvm-ai/models/current.gguf"
+DVM_AI_SYSTEMD_DIR="$TMP/systemd"
+DVM_AI_PORT="18080"
+DVM_AI_DEFAULT_MODEL="tiny"
+DVM_AI_MODELS="tiny=http://example.test/tiny.gguf"
+CONFIG
+if "$TMP/local-bin/dvm-test" ai models >"$TMP/ai-http.out" 2>"$TMP/ai-http.err"; then
+	echo "ai models unexpectedly succeeded with an HTTP model URL" >&2
+	exit 1
+fi
+grep -Fq 'AI model URL must start with https://' "$TMP/ai-http.err"
+mv "$DVM_CONFIG/config.safe.sh" "$DVM_CONFIG/config.sh"
 
 cat >"$DVM_CONFIG/config.sh" <<CONFIG
 DVM_PREFIX="testvm"
@@ -415,7 +554,7 @@ DVM_GPG_DIR="$DVM_STATE/gpg"
 DVM_AGENT_HOME="$VM_HOME_ROOT/testvm-ai-agent"
 CONFIG
 
-"$TMP/local-bin/dvm-test" agent setup ai >"$TMP/agent-setup.out"
+"$TMP/local-bin/dvm-test" agent setup ai >"$TMP/agent-setup.out" 2>"$TMP/agent-setup.err"
 grep -Fq 'dnf5 install -y bubblewrap acl shadow-utils' "$LOG"
 grep -Fq 'useradd -m -d' "$LOG"
 grep -Fq 'setfacl -m u:dvm-agent:rwx' "$LOG"
@@ -425,12 +564,13 @@ grep -Fq 'agent user: dvm-agent' "$TMP/agent-setup.out"
 grep -Fxq "$VM_HOME_ROOT/testvm-ai-agent" "$VM_HOME_ROOT/testvm-ai/code/agent-home"
 grep -Fxq "1" "$VM_HOME_ROOT/testvm-ai/code/agent-flag"
 grep -Fq 'bwrap ' "$LOG"
-"$TMP/local-bin/dvm-test" agent install ai codex >/dev/null
+grep -Fq -- '--unshare-pid' "$LOG"
+"$TMP/local-bin/dvm-test" agent install ai codex >/dev/null 2>"$TMP/agent-codex.err"
 grep -Fq 'dnf5 install -y nodejs npm' "$LOG"
 grep -Fq 'npm install -g @openai/codex' "$LOG"
-"$TMP/local-bin/dvm-test" agent install ai opencode >/dev/null
+"$TMP/local-bin/dvm-test" agent install ai opencode >/dev/null 2>"$TMP/agent-opencode.err"
 grep -Fq 'npm install -g opencode-ai' "$LOG"
-"$TMP/local-bin/dvm-test" agent install ai mistral >/dev/null
+"$TMP/local-bin/dvm-test" agent install ai mistral >/dev/null 2>"$TMP/agent-mistral.err"
 grep -Fq 'dnf5 install -y uv python3' "$LOG"
 grep -Fq 'uv tool install mistral-vibe' "$LOG"
 

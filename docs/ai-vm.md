@@ -24,13 +24,16 @@ Other useful knobs:
 DVM_AI_PACKAGES="llama-cpp curl"
 DVM_AI_SERVER_CMD="llama-server"
 DVM_AI_SERVICE_NAME="dvm-llama.service"
-DVM_AI_HOST="0.0.0.0"
+DVM_AI_HOST="127.0.0.1"
 DVM_AI_MODELS_DIR="$DVM_GUEST_HOME/models"
 DVM_AI_EXTRA_ARGS=""
 ```
 
-Model entries are space-separated `alias=url` pairs. Aliases become filenames in the
-VM, so `qwen=https://...` is saved as `qwen.gguf`.
+Model entries are space-separated `alias=url` pairs. URLs must use HTTPS. Aliases
+become filenames in the VM, so `qwen=https://...` is saved as `qwen.gguf`.
+If `DVM_AI_DEFAULT_MODEL` is set, it must match one of the configured aliases.
+Add `#sha256:<64-hex>` to a model entry to verify the downloaded file before it is
+installed.
 
 ## Create
 
@@ -77,6 +80,10 @@ Print host URLs:
 ```bash
 dvm ai host
 ```
+
+By default llama-server listens on `127.0.0.1` inside the VM. Set
+`DVM_AI_HOST="0.0.0.0"` only if you intentionally want the service reachable on the
+guest VM network address.
 
 Reapply service configuration:
 

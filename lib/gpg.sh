@@ -53,7 +53,7 @@ dvm_gpg_subkey_index() {
 }
 
 dvm_gpg_create() {
-	local name primary expire output_dir force before after primary_fpr subkey_fpr public_file secret_file meta_file
+	local name primary expire output_dir force primary_fpr status_output subkey_fpr public_file secret_file meta_file
 	local -a add_key_args
 	[ "$#" -ge 2 ] || dvm_die "usage: dvm gpg create <vm-name> <primary-key> [--expire 1y] [--output dir] [--force]"
 	name="$1"
@@ -96,17 +96,17 @@ dvm_gpg_create() {
 	fi
 
 	primary_fpr="$(dvm_gpg_primary_fpr "$primary")"
-	before="$(mktemp)"
-	after="$(mktemp)"
-	dvm_gpg_secret_subkeys "$primary_fpr" | sort >"$before"
 	add_key_args=()
 	if [ "${DVM_GPG_BATCH:-0}" = "1" ]; then
 		add_key_args+=(--batch --pinentry-mode loopback --passphrase '')
 	fi
-	gpg "${add_key_args[@]}" --quick-add-key "$primary_fpr" default sign "$expire"
-	dvm_gpg_secret_subkeys "$primary_fpr" | sort >"$after"
-	subkey_fpr="$(comm -13 "$before" "$after" | tail -n 1)"
-	rm -f "$before" "$after"
+	status_output="$(
+		gpg "${add_key_args[@]}" --status-fd 1 --quick-add-key "$primary_fpr" default sign "$expire" 2>&1
+	)" || dvm_die "failed to create GPG signing subkey: $status_output"
+	subkey_fpr="$(
+		printf '%s\n' "$status_output" |
+			awk '$1 == "[GNUPG:]" && $2 == "KEY_CREATED" && $3 == "S" { print $4; exit }'
+	)"
 	[ -n "$subkey_fpr" ] || dvm_die "could not detect newly created signing subkey"
 
 	gpg --armor --export "$primary_fpr" >"$public_file"
@@ -125,6 +125,36 @@ dvm_gpg_create() {
 	dvm_log "public key export: $public_file"
 	dvm_log "secret subkey bundle: $secret_file"
 	dvm_log "install with: dvm gpg install $name"
+}
+
+dvm_gpg_remove_secret_record() {
+	local meta_file tmp
+	meta_file="$1"
+	[ -f "$meta_file" ] || return 0
+	tmp="$(mktemp)"
+	grep -v '^SECRET_FILE=' "$meta_file" >"$tmp" || true
+	mv "$tmp" "$meta_file"
+	chmod 0600 "$meta_file"
+}
+
+dvm_gpg_forget_secret_file() {
+	local meta_file secret_file
+	meta_file="$1"
+	secret_file="$2"
+	[ -n "$secret_file" ] || {
+		dvm_warn "no recorded secret subkey bundle"
+		return 0
+	}
+	case "$secret_file" in
+	"$DVM_GPG_DIR"/*) ;;
+	*)
+		dvm_warn "not deleting secret bundle outside DVM_GPG_DIR: $secret_file"
+		return 0
+		;;
+	esac
+	rm -f "$secret_file"
+	dvm_gpg_remove_secret_record "$meta_file"
+	dvm_log "forgot secret subkey bundle: $secret_file"
 }
 
 dvm_gpg_bundle_fpr() (
@@ -179,24 +209,32 @@ REMOTE
 }
 
 dvm_gpg_install() {
-	local name secret_file signing_key meta_file remote vm
-	[ "$#" -ge 1 ] || dvm_die "usage: dvm gpg install <vm-name> [secret-subkey.asc] [--signing-key fpr]"
+	local keep_secret meta_file name recorded_secret_file remote secret_file signing_key vm
+	[ "$#" -ge 1 ] || dvm_die "usage: dvm gpg install <vm-name> [secret-subkey.asc] [--signing-key fpr] [--keep-secret]"
 	name="$1"
 	shift
 	dvm_validate_name "$name"
 	dvm_load_config
+	keep_secret="0"
 	secret_file=""
 	signing_key=""
+	recorded_secret_file=""
 	meta_file="$DVM_GPG_DIR/$name.env"
 	if [ -f "$meta_file" ]; then
 		# shellcheck source=/dev/null
 		source "$meta_file"
-		secret_file="${SECRET_FILE:-}"
+		recorded_secret_file="${SECRET_FILE:-}"
+		secret_file="$recorded_secret_file"
 		signing_key="${SUBKEY_FPR:-}"
 	fi
-	if [ "$#" -gt 0 ] && [ "${1:-}" != "--signing-key" ]; then
-		secret_file="$1"
-		shift
+	if [ "$#" -gt 0 ]; then
+		case "${1:-}" in
+		--*) ;;
+		*)
+			secret_file="$1"
+			shift
+			;;
+		esac
 	fi
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
@@ -205,6 +243,7 @@ dvm_gpg_install() {
 			signing_key="${2%!}"
 			shift
 			;;
+		--keep-secret) keep_secret="1" ;;
 		*) dvm_die "unknown gpg install option: $1" ;;
 		esac
 		shift
@@ -220,6 +259,26 @@ dvm_gpg_install() {
 	remote="$(dvm_gpg_install_remote)"
 	limactl start "$vm"
 	limactl shell "$vm" bash -c "$remote" dvm-gpg-install "$signing_key" <"$secret_file"
+	if [ "$keep_secret" != "1" ] &&
+		[ -n "$recorded_secret_file" ] &&
+		[ "$secret_file" = "$recorded_secret_file" ]; then
+		dvm_gpg_forget_secret_file "$meta_file" "$secret_file"
+	fi
+}
+
+dvm_gpg_forget() {
+	local meta_file name secret_file
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm gpg forget <vm-name>"
+	name="$1"
+	dvm_validate_name "$name"
+	dvm_load_config
+	meta_file="$DVM_GPG_DIR/$name.env"
+	[ -f "$meta_file" ] || dvm_die "missing GPG metadata: $meta_file"
+	secret_file=""
+	# shellcheck source=/dev/null
+	source "$meta_file"
+	secret_file="${SECRET_FILE:-}"
+	dvm_gpg_forget_secret_file "$meta_file" "$secret_file"
 }
 
 dvm_gpg_revoke() {
@@ -262,12 +321,14 @@ dvm_gpg_cmd() {
 	case "$subcmd" in
 	create) dvm_gpg_create "$@" ;;
 	install) dvm_gpg_install "$@" ;;
+	forget) dvm_gpg_forget "$@" ;;
 	revoke) dvm_gpg_revoke "$@" ;;
 	*)
 		cat <<'HELP'
 usage:
   dvm gpg create <vm-name> <primary-key> [--expire 1y]
-  dvm gpg install <vm-name> [secret-subkey.asc] [--signing-key fpr]
+  dvm gpg install <vm-name> [secret-subkey.asc] [--signing-key fpr] [--keep-secret]
+  dvm gpg forget <vm-name>
   dvm gpg revoke <vm-name>
 HELP
 		;;

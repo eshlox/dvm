@@ -130,9 +130,20 @@ dvm_validate_dotfiles_source() {
 	esac
 }
 
-dvm_validate_dotfiles_target() {
-	local target
+dvm_strip_trailing_slashes() {
+	local path
+	path="$1"
+	while [ "$path" != "/" ] && [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	printf '%s\n' "$path"
+}
+
+dvm_normalize_dotfiles_target() {
+	local target guest_home
 	target="$1"
+	target="$(dvm_strip_trailing_slashes "$target")"
+	guest_home="$(dvm_strip_trailing_slashes "$DVM_GUEST_HOME")"
 
 	case "$target" in
 	/*) ;;
@@ -140,16 +151,24 @@ dvm_validate_dotfiles_target() {
 	esac
 
 	case "$target" in
-	"$DVM_GUEST_HOME")
+	*/../* | */.. | */./* | */.)
+		dvm_die "DVM_DOTFILES_TARGET must not contain . or .. path segments: $target"
+		;;
+	esac
+
+	case "$target" in
+	"$guest_home")
 		dvm_die "refusing unsafe DVM_DOTFILES_TARGET: $target"
 		;;
-	"$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.ssh/"* | \
-		"$DVM_GUEST_HOME/.gnupg" | "$DVM_GUEST_HOME/.gnupg/"*)
+	"$guest_home/.ssh" | "$guest_home/.ssh/"* | \
+		"$guest_home/.gnupg" | "$guest_home/.gnupg/"*)
 		dvm_die "refusing unsafe DVM_DOTFILES_TARGET: $target"
 		;;
-	"$DVM_GUEST_HOME"/*) ;;
+	"$guest_home"/*) ;;
 	*) dvm_die "DVM_DOTFILES_TARGET must stay under DVM_GUEST_HOME: $target" ;;
 	esac
+
+	printf '%s\n' "$target"
 }
 
 dvm_sync_dotfiles_remote() {
@@ -176,8 +195,7 @@ dvm_sync_dotfiles() {
 	source_real="$(dvm_resolve_host_dir "$DVM_DOTFILES_DIR")"
 	dvm_validate_dotfiles_source "$source_real"
 
-	target="$DVM_DOTFILES_TARGET"
-	dvm_validate_dotfiles_target "$target"
+	target="$(dvm_normalize_dotfiles_target "$DVM_DOTFILES_TARGET")"
 
 	remote="$(dvm_sync_dotfiles_remote)"
 
@@ -221,11 +239,78 @@ dvm_setup() {
 	done
 }
 
+dvm_setup_all_finish() {
+	local name pid status_dir rc
+	name="$1"
+	pid="$2"
+	status_dir="$3"
+	if wait "$pid"; then
+		rc="0"
+	else
+		rc="$?"
+	fi
+	if [ -s "$status_dir/$name.out" ]; then
+		sed "s/^/[$name] /" "$status_dir/$name.out"
+	fi
+	if [ -s "$status_dir/$name.err" ]; then
+		sed "s/^/[$name] /" "$status_dir/$name.err" >&2
+	fi
+	return "$rc"
+}
+
 dvm_setup_all() {
-	local name
+	local active failed failed_names jobs name status_dir total
+	local -a names pids
+	[ "$#" -eq 0 ] || dvm_die "usage: dvm setup-all"
+	dvm_load_config
+	jobs="$DVM_SETUP_ALL_JOBS"
+	status_dir="$(mktemp -d)"
+	active="0"
+	failed="0"
+	failed_names=""
+	total="0"
+	names=()
+	pids=()
+
 	for name in $(dvm_list_names); do
-		dvm_setup "$name"
+		total=$((total + 1))
+		(
+			dvm_setup "$name"
+		) >"$status_dir/$name.out" 2>"$status_dir/$name.err" &
+		names+=("$name")
+		pids+=("$!")
+		active=$((active + 1))
+
+		if [ "$active" -ge "$jobs" ]; then
+			if ! dvm_setup_all_finish "${names[0]}" "${pids[0]}" "$status_dir"; then
+				failed=$((failed + 1))
+				failed_names="$failed_names ${names[0]}"
+			fi
+			names=("${names[@]:1}")
+			pids=("${pids[@]:1}")
+			active=$((active - 1))
+		fi
 	done
+
+	while [ "$active" -gt 0 ]; do
+		if ! dvm_setup_all_finish "${names[0]}" "${pids[0]}" "$status_dir"; then
+			failed=$((failed + 1))
+			failed_names="$failed_names ${names[0]}"
+		fi
+		names=("${names[@]:1}")
+		pids=("${pids[@]:1}")
+		active=$((active - 1))
+	done
+
+	rm -rf "$status_dir"
+	if [ "$total" -eq 0 ]; then
+		dvm_log "setup-all complete: no VMs found"
+	elif [ "$failed" -eq 0 ]; then
+		dvm_log "setup-all complete: $total succeeded"
+	else
+		dvm_warn "setup-all failed for $failed of $total:$failed_names"
+		return 1
+	fi
 }
 
 dvm_enter() {
@@ -287,7 +372,11 @@ while IFS= read -r gitdir; do
 		echo "dirty repository: $repo" >&2
 		dirty=1
 	fi
-done < <(find "$code_dir" -mindepth 2 -maxdepth 5 -type d -name .git -prune)
+done < <(
+	find "$code_dir" \
+		\( -type d -name .git -prune -print \) -o \
+		\( -type f -name .git -print \)
+)
 
 exit "$dirty"
 REMOTE

@@ -45,6 +45,20 @@ dvm gpg install myapp ~/.local/share/dvm/gpg/myapp-secret-subkey.asc
 dvm gpg install myapp --signing-key <fingerprint>
 ```
 
+When installing the generated bundle recorded in DVM metadata, `dvm gpg install`
+removes that host-side secret bundle after a successful import. Pass `--keep-secret`
+if you need to retain the bundle temporarily:
+
+```bash
+dvm gpg install myapp --keep-secret
+```
+
+Forget a recorded generated bundle without installing it:
+
+```bash
+dvm gpg forget myapp
+```
+
 ## Revoke
 
 ```bash
@@ -56,7 +70,6 @@ not:
 
 - update GitHub, GitLab, or other remote services
 - remove old public keys from places where they were trusted
-- delete secret bundles from disk
 - change anything inside an already-deleted VM
 
 Upload the updated public key wherever the old public key was trusted.

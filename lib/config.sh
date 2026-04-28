@@ -21,6 +21,7 @@ dvm_load_config() {
 	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code}"
 	DVM_PACKAGES="${DVM_PACKAGES:-git openssh-clients gpg}"
 	DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-$DVM_CONFIG/setup.d/fedora.sh}"
+	DVM_SETUP_ALL_JOBS="${DVM_SETUP_ALL_JOBS:-1}"
 	DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
 	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
 	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets}"
@@ -30,7 +31,7 @@ dvm_load_config() {
 	DVM_AI_SERVER_CMD="${DVM_AI_SERVER_CMD:-llama-server}"
 	DVM_AI_SERVICE_NAME="${DVM_AI_SERVICE_NAME:-dvm-llama.service}"
 	DVM_AI_SYSTEMD_DIR="${DVM_AI_SYSTEMD_DIR:-/etc/systemd/system}"
-	DVM_AI_HOST="${DVM_AI_HOST:-0.0.0.0}"
+	DVM_AI_HOST="${DVM_AI_HOST:-127.0.0.1}"
 	DVM_AI_PORT="${DVM_AI_PORT:-8080}"
 	DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
 	DVM_AI_CURRENT_MODEL="${DVM_AI_CURRENT_MODEL:-$DVM_AI_MODELS_DIR/current.gguf}"
@@ -41,6 +42,31 @@ dvm_load_config() {
 	DVM_AGENT_HOME="${DVM_AGENT_HOME:-/home/$DVM_AGENT_USER}"
 	DVM_AGENT_PACKAGES="${DVM_AGENT_PACKAGES:-bubblewrap acl shadow-utils}"
 	DVM_AGENT_CLAUDE_CHANNEL="${DVM_AGENT_CLAUDE_CHANNEL:-stable}"
+
+	dvm_validate_config
+}
+
+dvm_validate_config() {
+	case "$DVM_PREFIX" in
+	[a-z]*)
+		case "$DVM_PREFIX" in
+		*[!a-z0-9-]* | *-) dvm_die "invalid DVM_PREFIX: $DVM_PREFIX" ;;
+		esac
+		;;
+	*) dvm_die "invalid DVM_PREFIX: $DVM_PREFIX" ;;
+	esac
+
+	case "$DVM_GUEST_HOME" in
+	/*) ;;
+	*) dvm_die "DVM_GUEST_HOME must be an absolute path: $DVM_GUEST_HOME" ;;
+	esac
+	case "$DVM_CODE_DIR" in
+	/*) ;;
+	*) dvm_die "DVM_CODE_DIR must be an absolute path: $DVM_CODE_DIR" ;;
+	esac
+	case "$DVM_SETUP_ALL_JOBS" in
+	'' | *[!0-9]* | 0) dvm_die "invalid DVM_SETUP_ALL_JOBS: $DVM_SETUP_ALL_JOBS" ;;
+	esac
 }
 
 dvm_init() {
