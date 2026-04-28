@@ -21,4 +21,12 @@ DVM_PACKAGES="${DVM_PACKAGES:-git openssh-clients gpg}"
 # guest user with DVM_NAME, DVM_VM_NAME, and DVM_CODE_DIR set.
 DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-$DVM_CONFIG/setup.d/fedora.sh}"
 
+# Optional host dotfiles snapshot copied into the VM during `dvm setup`.
+# Keep this opt-in. DVM copies a snapshot before user setup scripts run; it does
+# not mount a live host directory into the VM.
+# DVM_DOTFILES_DIR="${HOME}/.dotfiles"
+DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
+DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
+DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets}"
+
 DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"

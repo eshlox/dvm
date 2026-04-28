@@ -12,7 +12,6 @@ mkdir -p "$DVM_CODE_DIR"
 #   sudo dnf5 install -y helix ripgrep fd-find jq
 # fi
 #
-# if [ ! -d "$HOME/.dotfiles" ]; then
-#   git clone https://github.com/example/dotfiles.git "$HOME/.dotfiles"
+# if [ -x "$DVM_DOTFILES_TARGET/install.sh" ]; then
+#   "$DVM_DOTFILES_TARGET/install.sh"
 # fi
-# "$HOME/.dotfiles/install.sh"
