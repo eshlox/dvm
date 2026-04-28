@@ -23,10 +23,10 @@ Useful report details:
 ## Security Model
 
 DVM is a small wrapper around Lima. It helps isolate project work into separate Fedora
-VMs and keeps user-controlled setup outside the core repository. The core targets the
-current Fedora Cloud template and assumes `dnf5` in the guest. It is not a sandbox
-that can provide stronger guarantees than Lima, QEMU, macOS virtualization, SSH, GPG,
-or the packages and scripts that users choose to run.
+VMs and keeps user-controlled setup outside the core repository. The core targets Lima
+`template:fedora` and assumes `dnf5` in the guest. It is not a sandbox that can
+provide stronger guarantees than Lima, QEMU, macOS virtualization, SSH, GPG, or the
+packages and scripts that users choose to run.
 
 Security-sensitive behavior in scope:
 

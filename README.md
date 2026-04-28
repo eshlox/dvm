@@ -24,7 +24,7 @@ Requirements:
 
 Guest support target:
 
-- current Fedora Cloud template from Lima
+- Lima `template:fedora`
 - `dnf5` available in the guest
 
 For stable installations, use a signed release tag:
@@ -73,8 +73,7 @@ Development checkouts may track `main` and update with `git pull --ff-only`.
 ```
 
 User configuration is shell code by design and is the extension point.
-The core targets the current Fedora Cloud template and assumes `dnf5` inside the
-guest.
+The core targets Lima `template:fedora` and assumes `dnf5` inside the guest.
 
 Common config:
 
