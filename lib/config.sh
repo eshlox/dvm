@@ -34,8 +34,8 @@ dvm_load_config() {
 	DVM_AI_PORT="${DVM_AI_PORT:-8080}"
 	DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
 	DVM_AI_CURRENT_MODEL="${DVM_AI_CURRENT_MODEL:-$DVM_AI_MODELS_DIR/current.gguf}"
-	DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-}"
-	DVM_AI_MODELS="${DVM_AI_MODELS:-}"
+	DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-qwen25-coder-7b-q4}"
+	DVM_AI_MODELS="${DVM_AI_MODELS:-qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true}"
 	DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
 }
 

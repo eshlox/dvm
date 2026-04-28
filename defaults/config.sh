@@ -37,10 +37,9 @@ DVM_AI_SERVICE_NAME="${DVM_AI_SERVICE_NAME:-dvm-llama.service}"
 DVM_AI_HOST="${DVM_AI_HOST:-0.0.0.0}"
 DVM_AI_PORT="${DVM_AI_PORT:-8080}"
 DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
-DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-}"
+DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-qwen25-coder-7b-q4}"
 # Space-separated alias=url entries. Aliases become model filenames in the VM.
-# DVM_AI_MODELS="qwen=https://example.com/qwen.gguf"
-DVM_AI_MODELS="${DVM_AI_MODELS:-}"
+DVM_AI_MODELS="${DVM_AI_MODELS:-qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true}"
 DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
 
 DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"

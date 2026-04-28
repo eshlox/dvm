@@ -269,13 +269,18 @@ not be moved or replaced; publish a new fixed release instead.
 hood, named `ai` by default, but adds package install, model download, model switching,
 and a managed `llama-server` systemd service.
 
+For hosted AI coding tools such as Claude Code and Codex CLI, see
+[docs/ai-tools.md](docs/ai-tools.md). Those tools are best installed from user setup
+scripts because they have separate package repositories, npm packages, authentication,
+and sandbox settings.
+
 Example config:
 
 ```bash
 DVM_AI_NAME="ai"
 DVM_AI_PORT="8080"
-DVM_AI_DEFAULT_MODEL="qwen"
-DVM_AI_MODELS="qwen=https://example.com/qwen.gguf phi=https://example.com/phi.gguf"
+DVM_AI_DEFAULT_MODEL="qwen25-coder-7b-q4"
+DVM_AI_MODELS="qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true"
 ```
 
 Create and configure the VM:
@@ -292,17 +297,17 @@ Common operations:
 
 ```bash
 dvm ai models
-dvm ai use phi
+dvm ai use qwen25-coder-7b-q4
 dvm ai status
 dvm ai host
-dvm ai pull qwen
+dvm ai pull qwen25-coder-7b-q4
 ```
 
 For a non-default AI VM name, use:
 
 ```bash
 dvm ai create lab
-dvm ai use --vm lab qwen
+dvm ai use --vm lab qwen25-coder-7b-q4
 ```
 
 Models are stored in `DVM_AI_MODELS_DIR`, which defaults to `~/models` in the guest.
