@@ -5,7 +5,7 @@ dvm_agent_usage() {
 	cat <<'HELP'
 usage:
   dvm agent setup <name>
-  dvm agent install <name> claude|codex|all
+  dvm agent install <name> claude|codex|opencode|mistral|all
   dvm agent <name> -- <command...>
   dvm agent <name>
 HELP
@@ -161,11 +161,16 @@ channel="$3"
 tool="$4"
 
 install_packages() {
+	local packages pkg
 	packages="$1"
-	for package in $packages; do
-		case "$package" in
+	command -v dnf5 >/dev/null 2>&1 || {
+		echo "dnf5 is required in the guest image" >&2
+		exit 1
+	}
+	for pkg in $packages; do
+		case "$pkg" in
 		-* | *[!A-Za-z0-9._+:@-]*)
-			echo "invalid package token: $package" >&2
+			echo "invalid package token: $pkg" >&2
 			exit 1
 			;;
 		esac
@@ -175,10 +180,7 @@ install_packages() {
 }
 
 install_claude() {
-	command -v dnf5 >/dev/null 2>&1 || {
-		echo "dnf5 is required in the guest image" >&2
-		exit 1
-	}
+	local repo_tmp
 	repo_tmp="$(mktemp)"
 	trap 'rm -f "$repo_tmp"' EXIT
 	cat >"$repo_tmp" <<REPO
@@ -195,26 +197,47 @@ REPO
 	install_packages "claude-code"
 }
 
-install_codex() {
-	command -v dnf5 >/dev/null 2>&1 || {
-		echo "dnf5 is required in the guest image" >&2
-		exit 1
-	}
+install_node_tool() {
+	local npm_package
+	npm_package="$1"
 	install_packages "nodejs npm"
 	sudo -H -u "$agent_user" env \
 		HOME="$agent_home" \
 		USER="$agent_user" \
 		LOGNAME="$agent_user" \
 		PATH="$agent_home/.local/bin:$PATH" \
-		bash -lc 'npm config set prefix "$HOME/.local" && mkdir -p "$HOME/.local/bin" && npm install -g @openai/codex'
+		bash -lc 'npm config set prefix "$HOME/.local" && mkdir -p "$HOME/.local/bin" && npm install -g "$1"' \
+		dvm-agent-npm "$npm_package"
+}
+
+install_codex() {
+	install_node_tool "@openai/codex"
+}
+
+install_opencode() {
+	install_node_tool "opencode-ai"
+}
+
+install_mistral() {
+	install_packages "uv python3"
+	sudo -H -u "$agent_user" env \
+		HOME="$agent_home" \
+		USER="$agent_user" \
+		LOGNAME="$agent_user" \
+		PATH="$agent_home/.local/bin:$PATH" \
+		bash -lc 'mkdir -p "$HOME/.local/bin" && uv tool install mistral-vibe'
 }
 
 case "$tool" in
 claude) install_claude ;;
 codex) install_codex ;;
+opencode) install_opencode ;;
+mistral) install_mistral ;;
 all)
 	install_claude
 	install_codex
+	install_opencode
+	install_mistral
 	;;
 *) echo "unknown agent tool: $tool" >&2; exit 1 ;;
 esac
@@ -251,7 +274,7 @@ dvm_agent_setup() {
 
 dvm_agent_install() {
 	local name vm tool remote
-	[ "$#" -eq 2 ] || dvm_die "usage: dvm agent install <name> claude|codex|all"
+	[ "$#" -eq 2 ] || dvm_die "usage: dvm agent install <name> claude|codex|opencode|mistral|all"
 	name="$1"
 	tool="$2"
 	dvm_load_config

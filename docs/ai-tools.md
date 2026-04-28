@@ -11,6 +11,9 @@ Official docs:
 - Claude Code sandboxing: https://code.claude.com/docs/en/sandboxing
 - Codex CLI setup: https://developers.openai.com/codex/cli
 - Codex sandboxing: https://developers.openai.com/codex/concepts/sandboxing
+- OpenCode setup: https://opencode.ai/docs/
+- Mistral Vibe install: https://docs.mistral.ai/mistral-vibe/terminal/install
+- Mistral Vibe quickstart: https://docs.mistral.ai/mistral-vibe/terminal/quickstart
 
 ## Workflow
 
@@ -31,6 +34,8 @@ Install hosted AI tools for agent use:
 ```bash
 dvm agent install myapp claude
 dvm agent install myapp codex
+dvm agent install myapp opencode
+dvm agent install myapp mistral
 ```
 
 Run tools only through `dvm agent`:
@@ -38,9 +43,12 @@ Run tools only through `dvm agent`:
 ```bash
 dvm agent myapp -- claude
 dvm agent myapp -- codex
+dvm agent myapp -- opencode
+dvm agent myapp -- vibe
 ```
 
-`dvm agent install myapp all` installs both Claude Code and Codex CLI.
+`dvm agent install myapp all` installs Claude Code, Codex CLI, OpenCode, and Mistral
+Vibe.
 
 ## What Agent Setup Does
 
@@ -92,14 +100,29 @@ Codex CLI is installed with npm into the agent user's `~/.local` prefix:
 dvm agent install myapp codex
 ```
 
+OpenCode is installed with npm into the agent user's `~/.local` prefix:
+
+```bash
+dvm agent install myapp opencode
+```
+
+Mistral Vibe is installed with `uv tool install mistral-vibe` into the agent user's
+home. The runtime command is `vibe`:
+
+```bash
+dvm agent install myapp mistral
+```
+
 Authentication happens inside the agent context:
 
 ```bash
 dvm agent myapp -- claude
 dvm agent myapp -- codex
+dvm agent myapp -- opencode
+dvm agent myapp -- vibe
 ```
 
-That stores Claude/Codex auth in `/home/dvm-agent`, scoped to that VM filesystem.
+That stores AI-tool auth in `/home/dvm-agent`, scoped to that VM filesystem.
 
 ## Secret Boundaries
 

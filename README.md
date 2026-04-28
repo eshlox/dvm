@@ -70,7 +70,7 @@ Run hosted AI tools through the restricted agent user:
 
 ```bash
 dvm agent setup myapp
-dvm agent install myapp codex
+dvm agent install myapp codex # or claude, opencode, mistral, all
 dvm agent myapp -- codex
 ```
 

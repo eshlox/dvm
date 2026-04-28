@@ -52,6 +52,8 @@ _dvm() {
       if (( CURRENT == 3 )); then
         _values 'agent command' setup install
         _describe -t vms 'VM' vms
+      elif [[ "$words[3]" == install ]] && (( CURRENT == 5 )); then
+        _values 'agent tool' claude codex opencode mistral all
       elif [[ "$words[3]" == (setup|install) ]]; then
         _describe -t vms 'VM' vms
       fi
