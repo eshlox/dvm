@@ -3,7 +3,7 @@
 Keep your friends close, your supply chain in a VM.
 
 DVM, short for dev VM, is a small open source command-line wrapper around Lima for
-Fedora project VMs.
+current Fedora project VMs.
 
 The repository contains the reusable core. User-specific VM behavior lives outside the
 repo in `~/.config/dvm`, so local configuration can be kept in a separate dotfiles or
@@ -21,6 +21,11 @@ Requirements:
 - Bash
 - Lima
 - GPG for `dvm gpg ...`
+
+Guest support target:
+
+- current Fedora Cloud template from Lima
+- `dnf5` available in the guest
 
 For stable installations, use a signed release tag:
 
@@ -68,6 +73,8 @@ Development checkouts may track `main` and update with `git pull --ff-only`.
 ```
 
 User configuration is shell code by design and is the extension point.
+The core targets the current Fedora Cloud template and assumes `dnf5` inside the
+guest.
 
 Common config:
 
