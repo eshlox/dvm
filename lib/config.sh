@@ -21,6 +21,9 @@ dvm_load_config() {
 	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code}"
 	DVM_PACKAGES="${DVM_PACKAGES:-git openssh-clients gpg}"
 	DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-$DVM_CONFIG/setup.d/fedora.sh}"
+	DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
+	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
+	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets}"
 	DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"
 }
 

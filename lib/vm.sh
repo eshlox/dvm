@@ -110,6 +110,90 @@ fi
 REMOTE
 }
 
+dvm_resolve_host_dir() {
+	local dir
+	dir="$1"
+	(
+		cd "$dir" 2>/dev/null &&
+			pwd -P
+	) || dvm_die "directory not found: $dir"
+}
+
+dvm_validate_dotfiles_source() {
+	local source_real home_real
+	source_real="$1"
+	home_real="$(dvm_resolve_host_dir "$HOME")"
+
+	case "$source_real" in
+	/ | "$home_real" | "$home_real/.ssh" | "$home_real/.ssh/"* | "$home_real/.gnupg" | "$home_real/.gnupg/"*)
+		dvm_die "refusing dangerous DVM_DOTFILES_DIR: $source_real"
+		;;
+	esac
+}
+
+dvm_validate_dotfiles_target() {
+	local target
+	target="$1"
+
+	case "$target" in
+	/*) ;;
+	*) dvm_die "DVM_DOTFILES_TARGET must be an absolute path: $target" ;;
+	esac
+
+	case "$target" in
+	"$DVM_GUEST_HOME")
+		dvm_die "refusing unsafe DVM_DOTFILES_TARGET: $target"
+		;;
+	"$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.ssh/"* | \
+		"$DVM_GUEST_HOME/.gnupg" | "$DVM_GUEST_HOME/.gnupg/"*)
+		dvm_die "refusing unsafe DVM_DOTFILES_TARGET: $target"
+		;;
+	"$DVM_GUEST_HOME"/*) ;;
+	*) dvm_die "DVM_DOTFILES_TARGET must stay under DVM_GUEST_HOME: $target" ;;
+	esac
+}
+
+dvm_sync_dotfiles_remote() {
+	cat <<'REMOTE'
+set -euo pipefail
+target="$1"
+parent="$(dirname "$target")"
+
+mkdir -p "$parent"
+rm -rf "$target"
+mkdir -p "$target"
+tar -C "$target" -xf -
+REMOTE
+}
+
+dvm_sync_dotfiles() {
+	local vm source_real target remote exclude
+	vm="$1"
+	[ -n "$DVM_DOTFILES_DIR" ] || return 0
+
+	[ -d "$DVM_DOTFILES_DIR" ] || dvm_die "dotfiles directory not found: $DVM_DOTFILES_DIR"
+	dvm_require tar
+
+	source_real="$(dvm_resolve_host_dir "$DVM_DOTFILES_DIR")"
+	dvm_validate_dotfiles_source "$source_real"
+
+	target="$DVM_DOTFILES_TARGET"
+	dvm_validate_dotfiles_target "$target"
+
+	remote="$(dvm_sync_dotfiles_remote)"
+
+	dvm_log "syncing dotfiles into $vm: $source_real -> $target"
+	(
+		cd "$source_real" || exit 1
+		set -- tar -cf -
+		for exclude in $DVM_DOTFILES_EXCLUDES; do
+			set -- "$@" --exclude "$exclude"
+		done
+		set -- "$@" .
+		"$@"
+	) | limactl shell "$vm" bash -c "$remote" dvm-dotfiles "$target"
+}
+
 dvm_setup() {
 	local name vm remote script
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm setup <name>"
@@ -123,6 +207,7 @@ dvm_setup() {
 	limactl start "$vm"
 	dvm_log "running core setup in $vm"
 	limactl shell "$vm" bash -c "$remote" dvm-setup "$name" "$DVM_CODE_DIR" "$DVM_PACKAGES"
+	dvm_sync_dotfiles "$vm"
 
 	for script in $DVM_SETUP_SCRIPTS; do
 		[ -n "$script" ] || continue
@@ -132,6 +217,7 @@ dvm_setup() {
 			"DVM_NAME=$name" \
 			"DVM_VM_NAME=$vm" \
 			"DVM_CODE_DIR=$DVM_CODE_DIR" \
+			"DVM_DOTFILES_TARGET=$DVM_DOTFILES_TARGET" \
 			bash -s <"$script"
 	done
 }

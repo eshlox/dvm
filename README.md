@@ -79,16 +79,24 @@ DVM_DISK="80GiB"
 
 DVM_PACKAGES="git openssh-clients gpg helix ripgrep fd-find jq"
 DVM_SETUP_SCRIPTS="$DVM_CONFIG/setup.d/fedora.sh"
+DVM_DOTFILES_DIR="$HOME/.dotfiles"
 ```
 
-Put package-independent setup, public dotfiles, shell config, and tool config in
-`setup.d/fedora.sh`. User setup scripts run inside the VM as the guest user with:
+Put package-independent setup, shell config, and tool config in `setup.d/fedora.sh`.
+If `DVM_DOTFILES_DIR` is set, DVM copies a snapshot of that host directory into the VM
+before user setup scripts run. It does not mount the host directory live. User setup
+scripts run inside the VM as the guest user with:
 
 ```text
 DVM_NAME
 DVM_VM_NAME
 DVM_CODE_DIR
+DVM_DOTFILES_TARGET
 ```
+
+Dotfiles sync is opt-in. By default DVM excludes `.git`, `.ssh`, `.gnupg`, `.env`, and
+`secrets`, refuses dangerous source paths such as `/`, `$HOME`, `~/.ssh`, and
+`~/.gnupg`, and keeps the target under the guest home directory.
 
 The default workflow keeps source code inside the VM under `~/code`. No host project
 directory is mounted.
@@ -137,8 +145,9 @@ dvm setup myapp
 dvm setup-all
 ```
 
-This is the intended way to add packages everywhere or refresh dotfiles. The script
-does not try to remove packages automatically; removals should be explicit and manual.
+This is the intended way to add packages everywhere or refresh dotfiles snapshots. The
+script does not try to remove packages automatically; removals should be explicit and
+manual.
 
 ## Delete Safety
 

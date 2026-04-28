@@ -39,6 +39,10 @@ User setup scripts, dotfiles, packages installed inside a VM, downloaded models,
 services configured by users are user-controlled and out of scope unless DVM itself
 handles them insecurely.
 
+DVM does not mount host dotfiles into VMs by default. If dotfiles sync is enabled, DVM
+copies a filtered snapshot during setup so project code in the VM does not retain a
+persistent read path back to the host.
+
 ## Safe Installation
 
 Install from a signed release tag, not from an arbitrary branch. Before running
