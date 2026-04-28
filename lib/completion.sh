@@ -20,6 +20,7 @@ _dvm() {
     'list:list VMs'
     'rm:delete a VM'
     'ai:manage a llama.cpp VM'
+    'agent:run AI tools as the restricted agent user'
     'gpg:manage VM GPG signing subkeys'
     'doctor:check local requirements'
     'completion:print shell completion'
@@ -45,6 +46,14 @@ _dvm() {
       else
         _describe -t vms 'VM' vms
         _values 'ai option' --vm
+      fi
+      ;;
+    agent)
+      if (( CURRENT == 3 )); then
+        _values 'agent command' setup install
+        _describe -t vms 'VM' vms
+      elif [[ "$words[3]" == (setup|install) ]]; then
+        _describe -t vms 'VM' vms
       fi
       ;;
     gpg)

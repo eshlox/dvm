@@ -1,12 +1,9 @@
 # AI Tool Setup
 
-This page shows examples for installing AI coding tools inside DVM guests. DVM does
-not install hosted AI tools by default because each tool has its own update, auth, and
-security model.
-
-Put tool setup in `~/.config/dvm/setup.d/fedora.sh`. Keep `DVM_PACKAGES` for normal
-Fedora packages; use setup scripts for third-party repositories, npm packages, and
-tool-specific configuration.
+Hosted AI coding tools should run through `dvm agent`, not from the normal VM user.
+The normal VM user owns project SSH keys, GPG subkeys, dotfiles, and secret-manager
+state. The agent user is separate and gets access to project code, system tools, and
+its own home directory.
 
 Official docs:
 
@@ -15,145 +12,123 @@ Official docs:
 - Codex CLI setup: https://developers.openai.com/codex/cli
 - Codex sandboxing: https://developers.openai.com/codex/concepts/sandboxing
 
-## Claude Code
+## Workflow
 
-Anthropic documents a signed Fedora/RHEL package repository. This keeps updates in the
-normal package manager flow.
-
-```bash
-# ~/.config/dvm/setup.d/fedora.sh
-if [ "$DVM_NAME" = "myapp" ] || [ "$DVM_NAME" = "ai" ]; then
-  sudo tee /etc/yum.repos.d/claude-code.repo >/dev/null <<'EOF'
-[claude-code]
-name=Claude Code
-baseurl=https://downloads.claude.ai/claude-code/rpm/stable
-enabled=1
-gpgcheck=1
-gpgkey=https://downloads.claude.ai/keys/claude-code.asc
-EOF
-
-  sudo dnf5 install -y claude-code
-fi
-```
-
-Use `stable` for the delayed stable channel. Replace both `stable` occurrences in the
-repo URL with `latest` if you want the rolling channel. Anthropic documents the release
-signing key fingerprint as `31DD DE24 DDFA B679 F42D 7BD2 BAA9 29FF 1A7E CACE`;
-verify the key before trusting it.
-
-After setup:
+Create a normal project VM:
 
 ```bash
-dvm myapp
-claude
+dvm new myapp
 ```
 
-## Codex CLI
-
-OpenAI documents npm as the Codex CLI install path. Install Node.js from Fedora, then
-install Codex into the guest user's `~/.local` prefix.
+Set up the restricted agent user:
 
 ```bash
-# ~/.config/dvm/setup.d/fedora.sh
-if [ "$DVM_NAME" = "myapp" ] || [ "$DVM_NAME" = "ai" ]; then
-  sudo dnf5 install -y nodejs npm
-
-  npm config set prefix "$HOME/.local"
-  mkdir -p "$HOME/.local/bin"
-
-  if ! grep -Fq 'DVM npm global bin' "$HOME/.bashrc" 2>/dev/null; then
-    {
-      printf '\n# DVM npm global bin\n'
-      printf 'export PATH="$HOME/.local/bin:$PATH"\n'
-    } >>"$HOME/.bashrc"
-  fi
-
-  export PATH="$HOME/.local/bin:$PATH"
-  npm install -g @openai/codex
-fi
+dvm agent setup myapp
 ```
 
-After setup:
+Install hosted AI tools for agent use:
 
 ```bash
-dvm myapp
-codex
+dvm agent install myapp claude
+dvm agent install myapp codex
 ```
 
-The first run prompts for authentication. Authenticate separately in each VM if you want
-each VM to have separate auth state.
+Run tools only through `dvm agent`:
+
+```bash
+dvm agent myapp -- claude
+dvm agent myapp -- codex
+```
+
+`dvm agent install myapp all` installs both Claude Code and Codex CLI.
+
+## What Agent Setup Does
+
+`dvm agent setup <name>` runs inside the VM and:
+
+- installs `bubblewrap`, `acl`, and `shadow-utils`
+- creates `DVM_AGENT_USER`, defaulting to `dvm-agent`
+- creates `DVM_AGENT_HOME`, defaulting to `/home/dvm-agent`
+- grants the agent user access to `DVM_CODE_DIR`
+- grants only traversal access to the normal VM user's home
+- configures Git safe directory access for repositories under `DVM_CODE_DIR`
+
+When you run `dvm agent <name> -- <command>`, DVM starts the VM and runs the command as
+`dvm-agent` through bubblewrap. The sandbox:
+
+- exposes system tools from the VM read-only
+- exposes `DVM_AGENT_HOME` read/write
+- exposes `DVM_CODE_DIR` read/write
+- provides private writable `/tmp` and `/var/tmp`
+- hides the normal VM user's home and binds `DVM_CODE_DIR` back into place
+- does not unshare networking, so hosted AI tools and package managers still work
+
+This means the agent can run project commands such as:
+
+```bash
+dvm agent myapp -- pnpm test
+dvm agent myapp -- npm run lint
+dvm agent myapp -- python -m pytest
+dvm agent myapp -- bash -lc 'cd web && pnpm dev'
+```
+
+The agent can use packages installed in the VM, such as `node`, `pnpm`, `python`,
+`gcc`, `ripgrep`, and project-local tools under `node_modules/.bin` or `.venv`. Caches
+and tool auth live under `DVM_AGENT_HOME`, not the normal VM user's home.
+
+## Installing Tools
+
+Claude Code is installed from Anthropic's signed Fedora/RHEL package repository. The
+default channel is `stable`; set `DVM_AGENT_CLAUDE_CHANNEL="latest"` in `config.sh` if
+you want the rolling channel.
+
+```bash
+dvm agent install myapp claude
+```
+
+Codex CLI is installed with npm into the agent user's `~/.local` prefix:
+
+```bash
+dvm agent install myapp codex
+```
+
+Authentication happens inside the agent context:
+
+```bash
+dvm agent myapp -- claude
+dvm agent myapp -- codex
+```
+
+That stores Claude/Codex auth in `/home/dvm-agent`, scoped to that VM filesystem.
 
 ## Secret Boundaries
 
-DVM isolates projects from the host, but an AI tool running as the normal guest user can
-read anything that user can read inside the VM. That includes per-VM SSH keys, GPG
-subkeys, CLI auth files, shell history, and secret-manager config if those files are in
-the same home directory.
+DVM protects the host by putting project work in a VM. `dvm agent` adds another boundary
+inside that VM so hosted AI tools do not run as the user that owns SSH keys, GPG keys,
+dotfiles, and secret-manager config.
 
-For day-to-day AI coding, the practical target is:
-
-- AI can read and write the project under `DVM_CODE_DIR`.
-- AI can run installed project tools, tests, package managers, and debuggers.
-- AI cannot read `~/.ssh`, `~/.gnupg`, provider auth directories, or secret-manager
-  config.
-- Human shells entered with `dvm enter <name>` keep the normal per-VM SSH and GPG
-  workflow.
-
-Install sandbox prerequisites for AI tools:
+Use the normal shell for human operations that need VM credentials:
 
 ```bash
-sudo dnf5 install -y bubblewrap socat
+dvm myapp
+git pull
+git commit -S
 ```
 
-Claude Code has native sandbox settings. A restrictive project-level starting point is:
+Use the agent shell for AI operations:
 
-```json
-{
-  "sandbox": {
-    "enabled": true,
-    "allowUnsandboxedCommands": false,
-    "filesystem": {
-      "denyRead": ["~/"],
-      "allowRead": ["."],
-      "allowWrite": [".", "/tmp"]
-    }
-  }
-}
+```bash
+dvm agent myapp -- codex
 ```
 
-Place that in the project at `.claude/settings.json`, then run `claude` from the project
-directory. Expand `allowWrite` only for paths that specific tools need, such as a build
-cache under `/tmp`.
+If a test suite needs production secrets, the agent should not receive those secrets by
+default. Prefer local test credentials, mocks, or a future explicit broker that can
+prompt and enforce policy for each secret operation.
 
-Codex CLI also supports sandbox and approval modes. On Linux, install `bubblewrap` and
-start with the default workspace-write permissions instead of full access. Use
-`/permissions` inside Codex to inspect or change the active mode. Avoid
-`danger-full-access` for routine project work.
+## Limits
 
-## Authentication Choices
-
-Per-VM login means running `claude` or `codex` inside each VM and letting that tool store
-its own auth state in that VM. This is isolated at the filesystem level, but all sessions
-may still belong to the same upstream account.
-
-Per-VM API keys give better revocation and budget control when the provider supports it.
-Create one key per VM or per project, give it a clear name, set a budget if available,
-and revoke only that key if the VM is compromised.
-
-Avoid sharing one mounted auth directory across all VMs. It is convenient, but any VM
-that can read it can reuse the shared session.
-
-## SSH And GPG
-
-DVM's default is still separate SSH keys and separate GPG signing subkeys per VM. This is
-more work than forwarding host agents, but it keeps revocation scoped to one VM.
-
-Forwarding host `ssh-agent` or `gpg-agent` into a VM is possible in principle, but it is
-less isolated. A compromised VM usually cannot extract the private key from an agent,
-but it can ask the agent to authenticate or sign while the socket is available.
-
-Short-lived secret injection has the same limitation. If an AI process can access an
-environment variable, socket, or temporary file, it can use that capability while it
-exists. Destroying it on exit limits duration, not access. The safer pattern is a
-capability broker that prompts or enforces policy for each operation, which is
-substantially more complex than the current DVM flow.
+`dvm agent` is a practical isolation layer, not a perfect sandbox. The agent can still
+read and modify project code, run networked commands, consume API credits, and execute
+any system tool available in the VM. It should not be given access to host mounts,
+shared auth directories, SSH agent sockets, GPG agent sockets, or secret-manager config
+unless you are intentionally weakening the boundary.

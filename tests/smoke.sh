@@ -9,11 +9,32 @@ MOCK_BIN="$TMP/bin"
 VM_HOME_ROOT="$TMP/vm-home"
 LIST_FILE="$TMP/limactl-list"
 LOG="$TMP/log"
+AGENT_USER_FILE="$TMP/agent-user"
 mkdir -p "$MOCK_BIN" "$VM_HOME_ROOT"
 
 cat >"$MOCK_BIN/sudo" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	-H)
+		shift
+		;;
+	-u)
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	-*)
+		shift
+		;;
+	*)
+		break
+		;;
+	esac
+done
 "$@"
 MOCK
 
@@ -64,6 +85,66 @@ cat >"$MOCK_BIN/llama-server" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'llama-server %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/useradd" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'useradd %s\n' "$*" >>"$DVM_TEST_LOG"
+user="${*: -1}"
+printf '%s\n' "$user" >"$DVM_TEST_AGENT_USER"
+MOCK
+
+cat >"$MOCK_BIN/id" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "-u" ] && [ "$#" -eq 2 ] &&
+	[ -f "$DVM_TEST_AGENT_USER" ] &&
+	[ "$2" = "$(cat "$DVM_TEST_AGENT_USER")" ]; then
+	printf '1001\n'
+	exit 0
+fi
+exec /usr/bin/id "$@"
+MOCK
+
+cat >"$MOCK_BIN/chown" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'chown %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/setfacl" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'setfacl %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/bwrap" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'bwrap %s\n' "$*" >>"$DVM_TEST_LOG"
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--setenv)
+		export "$2=$3"
+		shift 3
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		shift
+		;;
+	esac
+done
+"$@"
+MOCK
+
+cat >"$MOCK_BIN/npm" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'npm %s\n' "$*" >>"$DVM_TEST_LOG"
 MOCK
 
 cat >"$MOCK_BIN/ssh-keygen" <<'MOCK'
@@ -157,12 +238,19 @@ chmod +x \
 	"$MOCK_BIN/curl" \
 	"$MOCK_BIN/systemctl" \
 	"$MOCK_BIN/llama-server" \
+	"$MOCK_BIN/useradd" \
+	"$MOCK_BIN/id" \
+	"$MOCK_BIN/chown" \
+	"$MOCK_BIN/setfacl" \
+	"$MOCK_BIN/bwrap" \
+	"$MOCK_BIN/npm" \
 	"$MOCK_BIN/ssh-keygen" \
 	"$MOCK_BIN/limactl"
 
 export DVM_TEST_LOG="$LOG"
 export DVM_TEST_LIST="$LIST_FILE"
 export DVM_TEST_VM_HOME="$VM_HOME_ROOT"
+export DVM_TEST_AGENT_USER="$AGENT_USER_FILE"
 export DVM_TEST_PATH="$MOCK_BIN:$PATH"
 export PATH="$MOCK_BIN:$PATH"
 export HOME="$TMP/home"
@@ -310,6 +398,30 @@ grep -Fq 'model: other.gguf' "$TMP/ai-status.out"
 "$TMP/local-bin/dvm-test" ai host >"$TMP/ai-host.out"
 grep -Fq 'host: http://127.0.0.1:18080' "$TMP/ai-host.out"
 
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-ai"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-ai/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS=" "
+DVM_GPG_DIR="$DVM_STATE/gpg"
+DVM_AGENT_HOME="$VM_HOME_ROOT/testvm-ai-agent"
+CONFIG
+
+"$TMP/local-bin/dvm-test" agent setup ai >"$TMP/agent-setup.out"
+grep -Fq 'dnf5 install -y bubblewrap acl shadow-utils' "$LOG"
+grep -Fq 'useradd -m -d' "$LOG"
+grep -Fq 'setfacl -m u:dvm-agent:rwx' "$LOG"
+grep -Fq 'agent user: dvm-agent' "$TMP/agent-setup.out"
+"$TMP/local-bin/dvm-test" agent ai -- bash -lc 'printf "%s\n" "$HOME" >"$DVM_CODE_DIR/agent-home"; printf "%s\n" "$DVM_AGENT" >"$DVM_CODE_DIR/agent-flag"'
+grep -Fxq "$VM_HOME_ROOT/testvm-ai-agent" "$VM_HOME_ROOT/testvm-ai/code/agent-home"
+grep -Fxq "1" "$VM_HOME_ROOT/testvm-ai/code/agent-flag"
+grep -Fq 'bwrap ' "$LOG"
+"$TMP/local-bin/dvm-test" agent install ai codex >/dev/null
+grep -Fq 'dnf5 install -y nodejs npm' "$LOG"
+grep -Fq 'npm install -g @openai/codex' "$LOG"
+
 "$TMP/local-bin/dvm-test" completion zsh >"$TMP/completion.zsh"
 grep -Fq 'compdef _dvm dvm-test' "$TMP/completion.zsh"
 grep -Fq 'ai:manage a llama.cpp VM' "$TMP/completion.zsh"
+grep -Fq 'agent:run AI tools as the restricted agent user' "$TMP/completion.zsh"

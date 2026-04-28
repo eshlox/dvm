@@ -28,6 +28,8 @@ source "$DVM_CORE/lib/vm.sh"
 # shellcheck disable=SC1091
 source "$DVM_CORE/lib/ai.sh"
 # shellcheck disable=SC1091
+source "$DVM_CORE/lib/agent.sh"
+# shellcheck disable=SC1091
 source "$DVM_CORE/lib/gpg.sh"
 # shellcheck disable=SC1091
 source "$DVM_CORE/lib/doctor.sh"
@@ -47,6 +49,7 @@ usage:
   dvm list
   dvm rm <name> [--force]
   dvm ai create|setup|pull|models|use|status|host ...
+  dvm agent setup|install|<name> ...
   dvm gpg create|install|revoke ...
   dvm doctor
   dvm completion zsh
@@ -71,6 +74,7 @@ dvm_main() {
 	list | ls) dvm_list_names "$@" ;;
 	rm | delete) dvm_rm "$@" ;;
 	ai) dvm_ai_cmd "$@" ;;
+	agent) dvm_agent_cmd "$@" ;;
 	gpg) dvm_gpg_cmd "$@" ;;
 	doctor) dvm_doctor "$@" ;;
 	completion) dvm_completion "$@" ;;

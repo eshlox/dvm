@@ -44,6 +44,11 @@ DVM does not mount host dotfiles into VMs by default. If dotfiles sync is enable
 copies a filtered snapshot during setup so project code in the VM does not retain a
 persistent read path back to the host.
 
+Hosted AI tools should run through `dvm agent`, which uses a separate VM user and
+bubblewrap to hide the normal VM user's home while exposing project code. This limits
+access to per-VM SSH keys, GPG subkeys, dotfiles, and secret-manager config, but it
+does not make AI-executed project code safe.
+
 ## Safe Installation
 
 Install from a signed release tag, not from an arbitrary branch. Before running

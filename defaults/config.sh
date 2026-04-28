@@ -42,4 +42,10 @@ DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-qwen25-coder-7b-q4}"
 DVM_AI_MODELS="${DVM_AI_MODELS:-qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true}"
 DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
 
+# Hosted AI tools should run through `dvm agent`, not the normal VM user.
+DVM_AGENT_USER="${DVM_AGENT_USER:-dvm-agent}"
+DVM_AGENT_HOME="${DVM_AGENT_HOME:-/home/$DVM_AGENT_USER}"
+DVM_AGENT_PACKAGES="${DVM_AGENT_PACKAGES:-bubblewrap acl shadow-utils}"
+DVM_AGENT_CLAUDE_CHANNEL="${DVM_AGENT_CLAUDE_CHANNEL:-stable}"
+
 DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"
