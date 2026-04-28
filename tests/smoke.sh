@@ -9,11 +9,32 @@ MOCK_BIN="$TMP/bin"
 VM_HOME_ROOT="$TMP/vm-home"
 LIST_FILE="$TMP/limactl-list"
 LOG="$TMP/log"
+AGENT_USER_FILE="$TMP/agent-user"
 mkdir -p "$MOCK_BIN" "$VM_HOME_ROOT"
 
 cat >"$MOCK_BIN/sudo" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	-H)
+		shift
+		;;
+	-u)
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	-*)
+		shift
+		;;
+	*)
+		break
+		;;
+	esac
+done
 "$@"
 MOCK
 
@@ -21,6 +42,109 @@ cat >"$MOCK_BIN/dnf5" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'dnf5 %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/curl" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+url=""
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	-o)
+		out="$2"
+		shift
+		;;
+	http://* | https://*)
+		url="$1"
+		;;
+	esac
+	shift
+done
+[ -n "$out" ]
+[ -n "$url" ]
+mkdir -p "$(dirname "$out")"
+printf 'model from %s\n' "$url" >"$out"
+MOCK
+
+cat >"$MOCK_BIN/systemctl" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'systemctl %s\n' "$*" >>"$DVM_TEST_LOG"
+case "${1:-}" in
+is-active)
+	printf 'active\n'
+	;;
+is-enabled)
+	printf 'enabled\n'
+	;;
+esac
+MOCK
+
+cat >"$MOCK_BIN/llama-server" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'llama-server %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/useradd" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'useradd %s\n' "$*" >>"$DVM_TEST_LOG"
+user="${*: -1}"
+printf '%s\n' "$user" >"$DVM_TEST_AGENT_USER"
+MOCK
+
+cat >"$MOCK_BIN/id" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "-u" ] && [ "$#" -eq 2 ] &&
+	[ -f "$DVM_TEST_AGENT_USER" ] &&
+	[ "$2" = "$(cat "$DVM_TEST_AGENT_USER")" ]; then
+	printf '1001\n'
+	exit 0
+fi
+exec /usr/bin/id "$@"
+MOCK
+
+cat >"$MOCK_BIN/chown" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'chown %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/setfacl" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'setfacl %s\n' "$*" >>"$DVM_TEST_LOG"
+MOCK
+
+cat >"$MOCK_BIN/bwrap" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'bwrap %s\n' "$*" >>"$DVM_TEST_LOG"
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	--setenv)
+		export "$2=$3"
+		shift 3
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		shift
+		;;
+	esac
+done
+"$@"
+MOCK
+
+cat >"$MOCK_BIN/npm" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'npm %s\n' "$*" >>"$DVM_TEST_LOG"
 MOCK
 
 cat >"$MOCK_BIN/ssh-keygen" <<'MOCK'
@@ -108,11 +232,25 @@ delete)
 esac
 MOCK
 
-chmod +x "$MOCK_BIN/sudo" "$MOCK_BIN/dnf5" "$MOCK_BIN/ssh-keygen" "$MOCK_BIN/limactl"
+chmod +x \
+	"$MOCK_BIN/sudo" \
+	"$MOCK_BIN/dnf5" \
+	"$MOCK_BIN/curl" \
+	"$MOCK_BIN/systemctl" \
+	"$MOCK_BIN/llama-server" \
+	"$MOCK_BIN/useradd" \
+	"$MOCK_BIN/id" \
+	"$MOCK_BIN/chown" \
+	"$MOCK_BIN/setfacl" \
+	"$MOCK_BIN/bwrap" \
+	"$MOCK_BIN/npm" \
+	"$MOCK_BIN/ssh-keygen" \
+	"$MOCK_BIN/limactl"
 
 export DVM_TEST_LOG="$LOG"
 export DVM_TEST_LIST="$LIST_FILE"
 export DVM_TEST_VM_HOME="$VM_HOME_ROOT"
+export DVM_TEST_AGENT_USER="$AGENT_USER_FILE"
 export DVM_TEST_PATH="$MOCK_BIN:$PATH"
 export PATH="$MOCK_BIN:$PATH"
 export HOME="$TMP/home"
@@ -218,5 +356,73 @@ if grep -Fxq app "$TMP/list-after-rm.out"; then
 	exit 1
 fi
 
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-ai"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-ai/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS=" "
+DVM_GPG_DIR="$DVM_STATE/gpg"
+DVM_AI_NAME="ai"
+DVM_AI_MODELS_DIR="$VM_HOME_ROOT/testvm-ai/models"
+DVM_AI_CURRENT_MODEL="$VM_HOME_ROOT/testvm-ai/models/current.gguf"
+DVM_AI_SYSTEMD_DIR="$TMP/systemd"
+DVM_AI_PORT="18080"
+DVM_AI_DEFAULT_MODEL="tiny"
+DVM_AI_MODELS="tiny=https://example.test/tiny.gguf other=https://example.test/other.gguf"
+CONFIG
+
+"$TMP/local-bin/dvm-test" ai create >"$TMP/ai-create.out"
+grep -Fq 'create testvm-ai' "$LOG"
+grep -Fq 'dnf5 install -y llama-cpp curl' "$LOG"
+grep -Fq 'systemctl enable dvm-llama.service' "$LOG"
+grep -Fq 'systemctl restart dvm-llama.service' "$LOG"
+[ -f "$VM_HOME_ROOT/testvm-ai/models/tiny.gguf" ]
+[ -f "$VM_HOME_ROOT/testvm-ai/models/other.gguf" ]
+[ "$(readlink "$VM_HOME_ROOT/testvm-ai/models/current.gguf")" = "$VM_HOME_ROOT/testvm-ai/models/tiny.gguf" ]
+[ -f "$TMP/systemd/dvm-llama.service" ]
+grep -Fq 'ExecStart=' "$TMP/systemd/dvm-llama.service"
+grep -Fq -- '--port 18080' "$TMP/systemd/dvm-llama.service"
+
+"$TMP/local-bin/dvm-test" ai models >"$TMP/ai-models.out"
+grep -Fq '* tiny.gguf' "$TMP/ai-models.out"
+grep -Fq 'other.gguf' "$TMP/ai-models.out"
+"$TMP/local-bin/dvm-test" ai use other >"$TMP/ai-use.out"
+grep -Fq 'active model: other.gguf' "$TMP/ai-use.out"
+[ "$(readlink "$VM_HOME_ROOT/testvm-ai/models/current.gguf")" = "$VM_HOME_ROOT/testvm-ai/models/other.gguf" ]
+"$TMP/local-bin/dvm-test" ai status >"$TMP/ai-status.out"
+grep -Fq 'vm: ai' "$TMP/ai-status.out"
+grep -Fq 'service: active' "$TMP/ai-status.out"
+grep -Fq 'enabled: enabled' "$TMP/ai-status.out"
+grep -Fq 'model: other.gguf' "$TMP/ai-status.out"
+"$TMP/local-bin/dvm-test" ai host >"$TMP/ai-host.out"
+grep -Fq 'host: http://127.0.0.1:18080' "$TMP/ai-host.out"
+
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-ai"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-ai/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS=" "
+DVM_GPG_DIR="$DVM_STATE/gpg"
+DVM_AGENT_HOME="$VM_HOME_ROOT/testvm-ai-agent"
+CONFIG
+
+"$TMP/local-bin/dvm-test" agent setup ai >"$TMP/agent-setup.out"
+grep -Fq 'dnf5 install -y bubblewrap acl shadow-utils' "$LOG"
+grep -Fq 'useradd -m -d' "$LOG"
+grep -Fq 'setfacl -m u:dvm-agent:rwx' "$LOG"
+grep -Fq 'agent user: dvm-agent' "$TMP/agent-setup.out"
+# shellcheck disable=SC2016
+"$TMP/local-bin/dvm-test" agent ai -- bash -lc 'printf "%s\n" "$HOME" >"$DVM_CODE_DIR/agent-home"; printf "%s\n" "$DVM_AGENT" >"$DVM_CODE_DIR/agent-flag"'
+grep -Fxq "$VM_HOME_ROOT/testvm-ai-agent" "$VM_HOME_ROOT/testvm-ai/code/agent-home"
+grep -Fxq "1" "$VM_HOME_ROOT/testvm-ai/code/agent-flag"
+grep -Fq 'bwrap ' "$LOG"
+"$TMP/local-bin/dvm-test" agent install ai codex >/dev/null
+grep -Fq 'dnf5 install -y nodejs npm' "$LOG"
+grep -Fq 'npm install -g @openai/codex' "$LOG"
+
 "$TMP/local-bin/dvm-test" completion zsh >"$TMP/completion.zsh"
 grep -Fq 'compdef _dvm dvm-test' "$TMP/completion.zsh"
+grep -Fq 'ai:manage a llama.cpp VM' "$TMP/completion.zsh"
+grep -Fq 'agent:run AI tools as the restricted agent user' "$TMP/completion.zsh"

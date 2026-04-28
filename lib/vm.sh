@@ -79,13 +79,12 @@ if [ -n "$packages" ]; then
 			;;
 		esac
 	done
-	if command -v dnf5 >/dev/null 2>&1; then
-		# shellcheck disable=SC2086
-		sudo dnf5 install -y -- $packages
-	else
-		# shellcheck disable=SC2086
-		sudo dnf install -y -- $packages
-	fi
+	command -v dnf5 >/dev/null 2>&1 || {
+		echo "dnf5 is required in the guest image" >&2
+		exit 1
+	}
+	# shellcheck disable=SC2086
+	sudo dnf5 install -y $packages
 fi
 
 key="$HOME/.ssh/id_ed25519_$name"

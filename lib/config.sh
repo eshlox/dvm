@@ -25,6 +25,22 @@ dvm_load_config() {
 	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
 	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets}"
 	DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"
+	DVM_AI_NAME="${DVM_AI_NAME:-ai}"
+	DVM_AI_PACKAGES="${DVM_AI_PACKAGES:-llama-cpp curl}"
+	DVM_AI_SERVER_CMD="${DVM_AI_SERVER_CMD:-llama-server}"
+	DVM_AI_SERVICE_NAME="${DVM_AI_SERVICE_NAME:-dvm-llama.service}"
+	DVM_AI_SYSTEMD_DIR="${DVM_AI_SYSTEMD_DIR:-/etc/systemd/system}"
+	DVM_AI_HOST="${DVM_AI_HOST:-0.0.0.0}"
+	DVM_AI_PORT="${DVM_AI_PORT:-8080}"
+	DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
+	DVM_AI_CURRENT_MODEL="${DVM_AI_CURRENT_MODEL:-$DVM_AI_MODELS_DIR/current.gguf}"
+	DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-qwen25-coder-7b-q4}"
+	DVM_AI_MODELS="${DVM_AI_MODELS:-qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true}"
+	DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
+	DVM_AGENT_USER="${DVM_AGENT_USER:-dvm-agent}"
+	DVM_AGENT_HOME="${DVM_AGENT_HOME:-/home/$DVM_AGENT_USER}"
+	DVM_AGENT_PACKAGES="${DVM_AGENT_PACKAGES:-bubblewrap acl shadow-utils}"
+	DVM_AGENT_CLAUDE_CHANNEL="${DVM_AGENT_CLAUDE_CHANNEL:-stable}"
 }
 
 dvm_init() {

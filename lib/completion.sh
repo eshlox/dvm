@@ -19,6 +19,8 @@ _dvm() {
     'key:print VM SSH public key'
     'list:list VMs'
     'rm:delete a VM'
+    'ai:manage a llama.cpp VM'
+    'agent:run AI tools as the restricted agent user'
     'gpg:manage VM GPG signing subkeys'
     'doctor:check local requirements'
     'completion:print shell completion'
@@ -35,6 +37,24 @@ _dvm() {
   case "$words[2]" in
     enter|setup|ssh|key|rm)
       _describe -t vms 'VM' vms
+      ;;
+    ai)
+      if (( CURRENT == 3 )); then
+        _values 'ai command' create setup pull models use status host
+      elif [[ "$words[3]" == (create|setup|models|status|host) ]]; then
+        _describe -t vms 'VM' vms
+      else
+        _describe -t vms 'VM' vms
+        _values 'ai option' --vm
+      fi
+      ;;
+    agent)
+      if (( CURRENT == 3 )); then
+        _values 'agent command' setup install
+        _describe -t vms 'VM' vms
+      elif [[ "$words[3]" == (setup|install) ]]; then
+        _describe -t vms 'VM' vms
+      fi
       ;;
     gpg)
       if (( CURRENT == 3 )); then

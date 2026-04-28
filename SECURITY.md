@@ -23,9 +23,10 @@ Useful report details:
 ## Security Model
 
 DVM is a small wrapper around Lima. It helps isolate project work into separate Fedora
-VMs and keeps user-controlled setup outside the core repository. It is not a sandbox
-that can provide stronger guarantees than Lima, QEMU, macOS virtualization, SSH, GPG,
-or the packages and scripts that users choose to run.
+VMs and keeps user-controlled setup outside the core repository. The core targets Lima
+`template:fedora` and assumes `dnf5` in the guest. It is not a sandbox that can
+provide stronger guarantees than Lima, QEMU, macOS virtualization, SSH, GPG, or the
+packages and scripts that users choose to run.
 
 Security-sensitive behavior in scope:
 
@@ -42,6 +43,11 @@ handles them insecurely.
 DVM does not mount host dotfiles into VMs by default. If dotfiles sync is enabled, DVM
 copies a filtered snapshot during setup so project code in the VM does not retain a
 persistent read path back to the host.
+
+Hosted AI tools should run through `dvm agent`, which uses a separate VM user and
+bubblewrap to hide the normal VM user's home while exposing project code. This limits
+access to per-VM SSH keys, GPG subkeys, dotfiles, and secret-manager config, but it
+does not make AI-executed project code safe.
 
 ## Safe Installation
 
