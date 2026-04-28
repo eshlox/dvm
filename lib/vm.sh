@@ -184,7 +184,7 @@ dvm_sync_dotfiles() {
 
 	dvm_log "syncing dotfiles into $vm: $source_real -> $target"
 	(
-		cd "$source_real"
+		cd "$source_real" || exit 1
 		set -- tar -cf -
 		for exclude in $DVM_DOTFILES_EXCLUDES; do
 			set -- "$@" --exclude "$exclude"
