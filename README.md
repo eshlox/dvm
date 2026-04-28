@@ -119,6 +119,7 @@ dvm ssh <name> [command...]
 dvm key <name>
 dvm list
 dvm rm <name> [--force]
+dvm ai create|setup|pull|models|use|status|host ...
 dvm gpg create <name> <primary-key> [--expire 1y]
 dvm gpg install <name> [secret-subkey.asc] [--signing-key fpr]
 dvm gpg revoke <name>
@@ -262,22 +263,48 @@ git push origin vX.Y.Z
 Create the GitHub release from the signed `v*` tag. Published releases and tags should
 not be moved or replaced; publish a new fixed release instead.
 
-## LLaMA VM
+## AI VM
 
-llama.cpp can be configured as a normal named VM:
+`dvm ai` manages an opinionated llama.cpp VM. It still uses a normal DVM VM under the
+hood, named `ai` by default, but adds package install, model download, model switching,
+and a managed `llama-server` systemd service.
 
-```bash
-dvm new ai
-```
-
-Place llama-specific package and service setup in `setup.d/fedora.sh` behind a name
-check:
+Example config:
 
 ```bash
-if [ "$DVM_NAME" = "ai" ]; then
-  sudo dnf5 install -y llama-cpp
-  # configure a systemd service here
-fi
+DVM_AI_NAME="ai"
+DVM_AI_PORT="8080"
+DVM_AI_DEFAULT_MODEL="qwen"
+DVM_AI_MODELS="qwen=https://example.com/qwen.gguf phi=https://example.com/phi.gguf"
 ```
 
-This keeps the core small while still making the AI VM reproducible.
+Create and configure the VM:
+
+```bash
+dvm ai create
+```
+
+This creates `dvm-ai`, installs Fedora's `llama-cpp` package, writes a systemd service
+for `llama-server`, downloads configured models, points `current.gguf` at
+`DVM_AI_DEFAULT_MODEL`, and restarts the service.
+
+Common operations:
+
+```bash
+dvm ai models
+dvm ai use phi
+dvm ai status
+dvm ai host
+dvm ai pull qwen
+```
+
+For a non-default AI VM name, use:
+
+```bash
+dvm ai create lab
+dvm ai use --vm lab qwen
+```
+
+Models are stored in `DVM_AI_MODELS_DIR`, which defaults to `~/models` in the guest.
+Configured model aliases become filenames, so `qwen=https://...` is saved as
+`qwen.gguf`. The active model is the `current.gguf` symlink.

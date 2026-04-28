@@ -29,4 +29,18 @@ DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
 DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
 DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets}"
 
+# Optional llama.cpp VM helper config. `dvm ai create` uses these values.
+DVM_AI_NAME="${DVM_AI_NAME:-ai}"
+DVM_AI_PACKAGES="${DVM_AI_PACKAGES:-llama-cpp curl}"
+DVM_AI_SERVER_CMD="${DVM_AI_SERVER_CMD:-llama-server}"
+DVM_AI_SERVICE_NAME="${DVM_AI_SERVICE_NAME:-dvm-llama.service}"
+DVM_AI_HOST="${DVM_AI_HOST:-0.0.0.0}"
+DVM_AI_PORT="${DVM_AI_PORT:-8080}"
+DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
+DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-}"
+# Space-separated alias=url entries. Aliases become model filenames in the VM.
+# DVM_AI_MODELS="qwen=https://example.com/qwen.gguf"
+DVM_AI_MODELS="${DVM_AI_MODELS:-}"
+DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
+
 DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"
