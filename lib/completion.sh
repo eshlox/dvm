@@ -60,7 +60,7 @@ _dvm() {
       ;;
     gpg)
       if (( CURRENT == 3 )); then
-        _values 'gpg command' create install revoke
+        _values 'gpg command' create install forget revoke
       else
         _describe -t vms 'VM' vms
         _values 'gpg option' --expire --signing-key

@@ -69,6 +69,7 @@ When you run `dvm agent <name> -- <command>`, DVM starts the VM and runs the com
 - exposes `DVM_CODE_DIR` read/write
 - provides private writable `/tmp` and `/var/tmp`
 - hides the normal VM user's home and binds `DVM_CODE_DIR` back into place
+- unshares PID, IPC, UTS, and cgroup namespaces
 - does not unshare networking, so hosted AI tools and package managers still work
 
 This means the agent can run project commands such as:

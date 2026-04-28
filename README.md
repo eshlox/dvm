@@ -88,12 +88,13 @@ dvm list
 dvm rm <name> [--force]
 dvm ai create|setup|pull|models|use|status|host ...
 dvm agent setup|install|<name> ...
-dvm gpg create|install|revoke ...
+dvm gpg create|install|forget|revoke ...
 dvm doctor
 dvm completion zsh
 ```
 
-`dvm <name>` is a shortcut for `dvm enter <name>`.
+`dvm <name>` is a shortcut for `dvm enter <name>`. `dvm <name> <command...>` runs a
+single command in that VM, like `dvm ssh <name> <command...>`.
 
 ## Docs
 

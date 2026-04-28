@@ -68,9 +68,18 @@ sudo setfacl -m "u:$agent_user:rwx" "$code_dir"
 sudo setfacl -R -m "u:$agent_user:rwX" "$code_dir"
 sudo find "$code_dir" -type d -exec setfacl -d -m "u:$agent_user:rwx" {} +
 
+add_safe_directory() {
+	safe_dir="$1"
+	if ! sudo -H -u "$agent_user" env HOME="$agent_home" \
+		git config --global --get-all safe.directory 2>/dev/null | grep -Fxq "$safe_dir"; then
+		sudo -H -u "$agent_user" env HOME="$agent_home" \
+			git config --global --add safe.directory "$safe_dir" || true
+	fi
+}
+
 if command -v git >/dev/null 2>&1; then
-	sudo -H -u "$agent_user" env HOME="$agent_home" \
-		git config --global --add safe.directory "$code_dir/*" || true
+	add_safe_directory "$code_dir"
+	add_safe_directory "$code_dir/*"
 fi
 
 printf 'agent user: %s\n' "$agent_user"
@@ -112,6 +121,10 @@ id -u "$agent_user" >/dev/null 2>&1 || {
 
 bwrap_args=(
 	--die-with-parent
+	--unshare-pid
+	--unshare-ipc
+	--unshare-uts
+	--unshare-cgroup
 	--proc /proc
 	--dev /dev
 	--ro-bind / /

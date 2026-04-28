@@ -20,6 +20,7 @@ DVM_PACKAGES="${DVM_PACKAGES:-git openssh-clients gpg}"
 # Space-separated host scripts. Each script is piped into the VM and runs as the
 # guest user with DVM_NAME, DVM_VM_NAME, and DVM_CODE_DIR set.
 DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-$DVM_CONFIG/setup.d/fedora.sh}"
+DVM_SETUP_ALL_JOBS="${DVM_SETUP_ALL_JOBS:-1}"
 
 # Optional host dotfiles snapshot copied into the VM during `dvm setup`.
 # Keep this opt-in. DVM copies a snapshot before user setup scripts run; it does
@@ -34,11 +35,12 @@ DVM_AI_NAME="${DVM_AI_NAME:-ai}"
 DVM_AI_PACKAGES="${DVM_AI_PACKAGES:-llama-cpp curl}"
 DVM_AI_SERVER_CMD="${DVM_AI_SERVER_CMD:-llama-server}"
 DVM_AI_SERVICE_NAME="${DVM_AI_SERVICE_NAME:-dvm-llama.service}"
-DVM_AI_HOST="${DVM_AI_HOST:-0.0.0.0}"
+DVM_AI_HOST="${DVM_AI_HOST:-127.0.0.1}"
 DVM_AI_PORT="${DVM_AI_PORT:-8080}"
 DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
 DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-qwen25-coder-7b-q4}"
-# Space-separated alias=url entries. Aliases become model filenames in the VM.
+# Space-separated alias=url entries. URLs must use HTTPS. Aliases become model
+# filenames in the VM. Add an optional trailing #sha256:<hex> to verify downloads.
 DVM_AI_MODELS="${DVM_AI_MODELS:-qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true}"
 DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
 

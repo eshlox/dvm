@@ -41,6 +41,7 @@ The shell starts in `DVM_CODE_DIR`, which defaults to `~/code` in the guest.
 Run a single command in the VM:
 
 ```bash
+dvm myapp uname -a
 dvm ssh myapp uname -a
 ```
 
@@ -66,6 +67,10 @@ dvm setup-all
 
 This is the intended way to refresh packages, config, and dotfiles snapshots. DVM does
 not remove packages automatically; removals should be explicit and manual.
+
+`setup-all` continues after individual VM failures and prints a summary at the end.
+It runs sequentially by default. Set `DVM_SETUP_ALL_JOBS` higher than `1` to run setup
+for multiple VMs in parallel.
 
 ## List
 

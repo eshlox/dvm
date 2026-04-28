@@ -27,15 +27,24 @@ primary="$(
 )"
 [ -n "$primary" ]
 
-"$ROOT/bin/dvm" init >/dev/null
-"$ROOT/bin/dvm" gpg create app "$primary" --expire 1d >"$TMP/create.out"
-grep -Fq 'created signing subkey:' "$TMP/create.out"
+"$ROOT/bin/dvm" init >/dev/null 2>&1
+"$ROOT/bin/dvm" gpg create app "$primary" --expire 1d >"$TMP/create.out" 2>"$TMP/create.err"
+grep -Fq 'created signing subkey:' "$TMP/create.err"
 
 # shellcheck source=/dev/null
 source "$DVM_STATE/gpg/app.env"
 [ -s "$PUBLIC_FILE" ]
 [ -s "$SECRET_FILE" ]
 [ -n "$SUBKEY_FPR" ]
+secret_file="$SECRET_FILE"
+
+"$ROOT/bin/dvm" gpg forget app >"$TMP/forget.out" 2>"$TMP/forget.err"
+[ ! -e "$secret_file" ]
+grep -Fq "forgot secret subkey bundle: $secret_file" "$TMP/forget.err"
+if grep -Fq 'SECRET_FILE=' "$DVM_STATE/gpg/app.env"; then
+	echo "GPG metadata still records deleted secret file" >&2
+	exit 1
+fi
 
 "$ROOT/bin/dvm" gpg revoke app >"$TMP/revoke.out" 2>"$TMP/revoke.err"
-grep -Fq "revoked subkey: $SUBKEY_FPR" "$TMP/revoke.out"
+grep -Fq "revoked subkey: $SUBKEY_FPR" "$TMP/revoke.err"

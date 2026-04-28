@@ -50,12 +50,13 @@ usage:
   dvm rm <name> [--force]
   dvm ai create|setup|pull|models|use|status|host ...
   dvm agent setup|install|<name> ...
-  dvm gpg create|install|revoke ...
+  dvm gpg create|install|forget|revoke ...
   dvm doctor
   dvm completion zsh
 
 Shortcut:
   dvm <name> enters that VM.
+  dvm <name> <command...> runs a command in that VM.
 HELP
 }
 
@@ -82,7 +83,11 @@ dvm_main() {
 	*)
 		dvm_load_config
 		if dvm_list_names | grep -Fxq "$cmd"; then
-			dvm_enter "$cmd"
+			if [ "$#" -eq 0 ]; then
+				dvm_enter "$cmd"
+			else
+				dvm_ssh "$cmd" "$@"
+			fi
 		else
 			dvm_help
 			dvm_die "unknown command or VM: $cmd"

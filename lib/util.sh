@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 
 dvm_log() {
-	printf '%s\n' "$*"
+	printf '%s\n' "$*" >&2
 }
 
 dvm_warn() {

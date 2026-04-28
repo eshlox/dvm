@@ -21,6 +21,7 @@ DVM_DISK="80GiB"
 
 DVM_PACKAGES="git openssh-clients gpg helix ripgrep fd-find jq"
 DVM_SETUP_SCRIPTS="$DVM_CONFIG/setup.d/fedora.sh"
+DVM_SETUP_ALL_JOBS="1"
 DVM_DOTFILES_DIR="$HOME/.dotfiles"
 ```
 
@@ -60,6 +61,8 @@ Safety rules:
 - dotfiles sync is opt-in
 - source paths such as `/`, `$HOME`, `~/.ssh`, and `~/.gnupg` are refused
 - target paths must stay under `DVM_GUEST_HOME`
+- target paths must not be `DVM_GUEST_HOME` itself and must not contain `.` or `..`
+  path segments
 - `.git`, `.ssh`, `.gnupg`, `.env`, and `secrets` are excluded by default
 
 Example setup script:
