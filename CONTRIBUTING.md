@@ -8,9 +8,8 @@ turning the project into a general VM platform or package manager.
 Good fits:
 
 - VM lifecycle helpers around Lima
-- safe setup reruns across VMs
-- SSH and GPG workflows for project VMs
-- documentation that improves installation, release verification, or safe usage
+- small, auditable recipe examples
+- documentation that improves safe usage
 - focused tests for shell behavior
 
 Avoid:
@@ -19,7 +18,11 @@ Avoid:
 - remote install scripts or `curl | sh` patterns
 - host directory mounts that weaken project isolation by default
 - large framework dependencies
-- features that are better handled by user setup scripts
+- features that are better handled by per-VM config or recipes
+
+Before adding a feature, read [Extending DVM](docs/extending.md). Most additions should
+be docs or recipes. Core commands need a stronger reason because they increase the
+maintenance and security surface for every user.
 
 ## Development
 
@@ -36,6 +39,5 @@ available. Keep behavior explicit and prefer small functions over broad abstract
 
 Do not report vulnerabilities in public issues. Follow [SECURITY.md](SECURITY.md).
 
-Changes that affect installation, updating, release verification, SSH, GPG, deletion
-safety, or setup script execution should include tests or a clear explanation of the
-remaining risk.
+Changes that affect installation, VM creation/deletion, key helpers, dotfiles sync, or
+setup execution should include tests or a clear explanation of the remaining risk.

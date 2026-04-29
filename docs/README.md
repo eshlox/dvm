@@ -1,15 +1,17 @@
-# DVM Docs
+# Docs
 
-- [VM lifecycle](vms.md)
-- [Config and dotfiles](config.md)
-- [GPG signing subkeys](gpg.md)
-- [Local llama.cpp AI VM](ai-vm.md)
-- [Hosted AI tools through `dvm agent`](ai-tools.md)
-- [Maintainer release process](release.md)
-- [GitHub security settings](github-security.md)
-
-Root-level docs:
-
-- [Project README](../README.md)
-- [Security policy](../SECURITY.md)
-- [Contributing](../CONTRIBUTING.md)
+- [Dependencies](dependencies.md)
+- [Config](config.md)
+- [Create VMs](create.md)
+- [Recipes](recipes.md)
+- [Extending DVM](extending.md)
+- [Llama](llama.md)
+- [Cloudflared](cloudflared.md)
+- [Networking](networking.md)
+- [HTTPS](https.md)
+- [AI tools](ai-tools.md)
+- [Node](node.md)
+- [Python](python.md)
+- [SSH and GPG](keys.md)
+- [Updates](updates.md)
+- [Uninstall](uninstall.md)

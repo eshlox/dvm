@@ -2,9 +2,7 @@
 # shellcheck shell=bash
 
 dvm_vm_name() {
-	local name
-	name="$1"
-	printf '%s-%s\n' "$DVM_PREFIX" "$name"
+	printf '%s-%s\n' "$DVM_PREFIX" "$1"
 }
 
 dvm_vm_short_name() {
@@ -16,180 +14,160 @@ dvm_vm_short_name() {
 	esac
 }
 
+dvm_lima_names() {
+	limactl list --format '{{.Name}}' 2>/dev/null | sort
+}
+
 dvm_list_names() {
 	local vm
-	dvm_load_config
 	dvm_require limactl
 	while IFS= read -r vm; do
 		dvm_vm_short_name "$vm" || true
-	done < <(limactl list --format '{{.Name}}' 2>/dev/null | sort)
+	done < <(dvm_lima_names)
 }
 
-dvm_lima_list_rows() {
+dvm_lima_rows() {
 	local format
 	format="$(printf '{{.Name}}\t{{.Status}}\t{{.Dir}}')"
-	if limactl list --format "$format" 2>/dev/null; then
-		return 0
-	fi
-	format="$(printf '{{.Name}}\t{{.Status}}')"
-	if limactl list --format "$format" 2>/dev/null; then
-		return 0
-	fi
-	limactl list --format '{{.Name}}' 2>/dev/null
+	limactl list --format "$format" 2>/dev/null || dvm_lima_names
 }
 
-dvm_vm_dir_size() {
-	local dir size
-	dir="$1"
-	size="-"
-	if [ -d "$dir" ]; then
-		size="$(du -sh "$dir" 2>/dev/null | awk '{print $1}')" || size="-"
-	fi
-	printf '%s\n' "${size:-"-"}"
-}
-
-dvm_vm_ram_usage() {
+dvm_vm_exists() {
 	local vm
 	vm="$1"
-	limactl shell "$vm" bash -lc '
-		if command -v free >/dev/null 2>&1; then
-			free -h | awk '"'"'$1 == "Mem:" { print $3 "/" $2; exit }'"'"'
-		else
-			printf "-\n"
-		fi
-	' 2>/dev/null || printf -- '-\n'
+	dvm_lima_names | grep -Fxq "$vm"
 }
 
-dvm_vm_listening_ports() {
-	local vm
+dvm_vm_dir() {
+	local dir row_vm status vm
 	vm="$1"
-	limactl shell "$vm" bash -lc '
-		if ! command -v ss >/dev/null 2>&1; then
-			printf "-\n"
-			exit 0
-		fi
-		ports="$(
-			ss -H -tln 2>/dev/null |
-				awk '"'"'{
-					addr = $4
-					if (addr ~ /\]:[0-9]+$/) {
-						sub(/^.*\]:/, "", addr)
-					} else {
-						sub(/^.*:/, "", addr)
-					}
-					if (addr ~ /^[0-9]+$/) {
-						print addr
-					}
-				}'"'"' |
-				sort -n -u |
-				paste -sd, -
-		)"
-		printf "%s\n" "${ports:-"-"}"
-	' 2>/dev/null || printf -- '-\n'
+	while IFS=$'\t' read -r row_vm status dir _; do
+		[ "$row_vm" = "$vm" ] || continue
+		printf '%s\n' "${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
+		return 0
+	done < <(dvm_lima_rows)
+	printf '%s\n' "${LIMA_HOME:-$HOME/.lima}/$vm"
 }
 
-dvm_vm_has_port_forward_dir() {
-	local dir file guest_port host_port
-	dir="$1"
-	host_port="$2"
-	guest_port="$3"
-	file="$dir/lima.yaml"
-	[ -f "$file" ] || return 1
-	grep -Eq "hostPort:[[:space:]]*\"?$host_port\"?([[:space:]]*(#.*)?)?$" "$file" &&
-		grep -Eq "guestPort:[[:space:]]*\"?$guest_port\"?([[:space:]]*(#.*)?)?$" "$file"
-}
-
-dvm_vm_ai_url() {
-	local dir short status vm
-	vm="$1"
-	short="$2"
-	status="$3"
-	dir="$4"
-	if [ "$short" != "$DVM_AI_NAME" ]; then
+dvm_vm_ports_from_yaml() {
+	local file guest host ports
+	file="$1/lima.yaml"
+	[ -f "$file" ] || {
 		printf -- '-\n'
 		return 0
-	fi
-	case "$status" in
-	Running | running) ;;
-	*)
-		printf -- '-\n'
-		return 0
-		;;
-	esac
-	if dvm_vm_has_port_forward_dir "$dir" "$DVM_AI_PORT" "$DVM_AI_PORT"; then
-		printf 'http://127.0.0.1:%s\n' "$DVM_AI_PORT"
-	else
-		printf 'run dvm ai expose\n'
-	fi
+	}
+	ports="$(
+		awk '
+			/hostPort:/ { host=$NF; gsub(/"/, "", host) }
+			/guestPort:/ { guest=$NF; gsub(/"/, "", guest) }
+			host && guest { print host ":" guest; host=""; guest="" }
+		' "$file" | paste -sd, -
+	)"
+	printf '%s\n' "${ports:-"-"}"
 }
 
-dvm_list_long() {
-	local ai_url dir ports ram short size status vm
-	printf '%-18s %-12s %-8s %-13s %-18s %-24s %s\n' \
-		"NAME" "STATUS" "SIZE" "RAM" "PORTS" "AI_URL" "DIR"
-	while IFS=$'\t' read -r vm status dir _; do
-		[ -n "$vm" ] || continue
-		short="$(dvm_vm_short_name "$vm")" || continue
-		status="${status:-unknown}"
-		dir="${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
-		size="$(dvm_vm_dir_size "$dir")"
-		ram="-"
-		ports="-"
-		case "$status" in
-		Running | running)
-			ram="$(dvm_vm_ram_usage "$vm")"
-			ports="$(dvm_vm_listening_ports "$vm")"
-			;;
-		esac
-		ai_url="$(dvm_vm_ai_url "$vm" "$short" "$status" "$dir")"
-		printf '%-18s %-12s %-8s %-13s %-18s %-24s %s\n' \
-			"$short" "$status" "$size" "$ram" "$ports" "$ai_url" "$dir"
-	done < <(dvm_lima_list_rows | sort)
+dvm_vm_ports_canonical_from_yaml() {
+	local file
+	file="$1/lima.yaml"
+	[ -f "$file" ] || return 0
+	awk '
+		/hostPort:/ { host=$NF; gsub(/"/, "", host) }
+		/guestPort:/ { guest=$NF; gsub(/"/, "", guest) }
+		host && guest { print host ":" guest; host=""; guest="" }
+	' "$file" | sort
 }
 
 dvm_list() {
-	local long
-	long="0"
-	while [ "$#" -gt 0 ]; do
-		case "$1" in
-		-l | --long | --status) long="1" ;;
-		*) dvm_die "usage: dvm list [--long]" ;;
-		esac
-		shift
+	local dir ports short size status vm
+	[ "$#" -eq 0 ] || dvm_die "usage: dvm list"
+	dvm_load_defaults
+	printf '%-18s %-12s %-10s %-18s %s\n' NAME STATUS SIZE PORTS DIR
+	while IFS=$'\t' read -r vm status dir _; do
+		[ -n "$vm" ] || continue
+		short="$(dvm_vm_short_name "$vm")" || continue
+		dir="${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
+		size="-"
+		[ -d "$dir" ] && size="$(du -sh "$dir" 2>/dev/null | awk '{print $1}')" || true
+		ports="$(dvm_vm_ports_from_yaml "$dir")"
+		printf '%-18s %-12s %-10s %-18s %s\n' "$short" "${status:-unknown}" "${size:-"-"}" "$ports" "$dir"
+	done < <(dvm_lima_rows | sort)
+}
+
+dvm_validate_port() {
+	local guest host port
+	port="$1"
+	case "$port" in
+	'' | *[!0-9:]* | *:*:*) dvm_die "invalid port forward: $1" ;;
+	esac
+	case "$port" in
+	*:*) ;;
+	*) dvm_die "port forward must be host:guest: $1" ;;
+	esac
+	host="${port%%:*}"
+	guest="${port#*:}"
+	dvm_validate_port_number host "$host"
+	dvm_validate_port_number guest "$guest"
+}
+
+dvm_configured_ports_canonical() {
+	local port
+	printf '5355:5355\n'
+	for port in $DVM_PORTS; do
+		dvm_validate_port "$port"
+		printf '%s\n' "$port"
+	done | sort
+}
+
+dvm_port_forwards_set_expr() {
+	local expr first guest host port
+	expr='.portForwards = [{"guestPort":5355,"proto":"any","ignore":true}'
+	first="0"
+	for port in $DVM_PORTS; do
+		dvm_validate_port "$port"
+		host="${port%%:*}"
+		guest="${port#*:}"
+		if [ "$first" = "1" ]; then
+			first="0"
+		else
+			expr="$expr,"
+		fi
+		expr="$expr{\"hostPort\":$host,\"guestPort\":$guest,\"hostIP\":\"127.0.0.1\"}"
 	done
-	dvm_load_config
-	dvm_require limactl
-	if [ "$long" = "1" ]; then
-		dvm_list_long
-	else
-		dvm_list_names
-	fi
+	printf '%s]\n' "$expr"
+}
+
+dvm_apply_port_config() {
+	local actual desired expr vm vm_dir
+	vm="$1"
+	dvm_vm_exists "$vm" || dvm_die "VM not found: $vm"
+	vm_dir="$(dvm_vm_dir "$vm")"
+	desired="$(dvm_configured_ports_canonical | paste -sd' ' -)"
+	actual="$(dvm_vm_ports_canonical_from_yaml "$vm_dir" | paste -sd' ' -)"
+	[ "$desired" = "$actual" ] && return 0
+	dvm_log "updating port forwards for $vm (restart required)"
+	expr="$(dvm_port_forwards_set_expr)"
+	limactl stop "$vm" >/dev/null 2>&1 || true
+	limactl edit --tty=false --set "$expr" --start "$vm" >/dev/null
 }
 
 dvm_create() {
-	local name port_forward vm
-	local -a port_forward_args
-	[ "$#" -eq 1 ] || dvm_die "usage: dvm new <name>"
+	local name network_set port vm
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm create <name>"
 	name="$1"
 	dvm_validate_name "$name"
-	dvm_load_config
+	dvm_load_vm_config "$name"
 	dvm_require limactl
 	vm="$(dvm_vm_name "$name")"
-	port_forward_args=()
-	for port_forward in ${DVM_CREATE_PORT_FORWARDS:-}; do
-		case "$port_forward" in
-		'' | *[!A-Za-z0-9.,:=_-]*)
-			dvm_die "invalid port forward: $port_forward"
-			;;
-		esac
-		port_forward_args+=(--port-forward "$port_forward")
-	done
+	case "$DVM_NETWORK" in
+	user-v2) network_set='[{"lima":"user-v2"}]' ;;
+	vzNAT) network_set='[{"vzNAT":true}]' ;;
+	esac
 
-	if limactl list --format '{{.Name}}' 2>/dev/null | grep -Fxq "$vm"; then
+	if dvm_vm_exists "$vm"; then
 		dvm_log "VM already exists: $vm"
 	else
-		dvm_log "creating $vm from $DVM_TEMPLATE"
-		limactl create \
+		dvm_log "creating $vm"
+		set -- create \
 			--name "$vm" \
 			--tty=false \
 			--set ".vmType=\"vz\"" \
@@ -201,27 +179,24 @@ dvm_create() {
 			--set ".user.home=$(dvm_json "$DVM_GUEST_HOME")" \
 			--set ".mountType=\"virtiofs\"" \
 			--set ".mounts=[]" \
-			--set ".networks=[{\"vzNAT\":true}]" \
-			--set ".containerd.system=false | .containerd.user=false" \
-			"${port_forward_args[@]}" \
-			"$DVM_TEMPLATE"
+			--set ".networks=$network_set" \
+			--set '.portForwards=[{"guestPort":5355,"proto":"any","ignore":true}]' \
+			--set ".containerd.system=false | .containerd.user=false"
+		for port in $DVM_PORTS; do
+			dvm_validate_port "$port"
+			set -- "$@" --port-forward "$port,static=true"
+		done
+		limactl "$@" "$DVM_TEMPLATE"
 	fi
-
-	limactl start "$vm"
 	dvm_setup "$name"
-	dvm_key "$name"
 }
 
-dvm_core_setup_remote() {
+dvm_package_setup_remote() {
 	cat <<'REMOTE'
 set -euo pipefail
-name="$1"
-code_dir="$2"
-packages="$3"
-
-mkdir -p "$HOME/.ssh" "$HOME/.gnupg" "$code_dir"
-chmod 0700 "$HOME/.ssh" "$HOME/.gnupg"
-
+code_dir="$1"
+packages="$2"
+mkdir -p "$code_dir"
 if [ -n "$packages" ]; then
 	for package in $packages; do
 		case "$package" in
@@ -238,284 +213,218 @@ if [ -n "$packages" ]; then
 	# shellcheck disable=SC2086
 	sudo dnf5 install -y $packages
 fi
-
-key="$HOME/.ssh/id_ed25519_$name"
-if [ ! -f "$key" ]; then
-	ssh-keygen -t ed25519 -C "$name-dvm" -f "$key" -N ''
-fi
-
-ssh_config="$HOME/.ssh/config"
-touch "$ssh_config"
-chmod 0600 "$ssh_config"
-if ! grep -Fq "# BEGIN DVM $name GITHUB" "$ssh_config"; then
-	cat >>"$ssh_config" <<CONFIG
-# BEGIN DVM $name GITHUB
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/id_ed25519_$name
-  IdentitiesOnly yes
-# END DVM $name GITHUB
-CONFIG
-fi
 REMOTE
+}
+
+dvm_recipe_path() {
+	local core_script script user_script
+	script="$1"
+	case "$script" in
+	/* | ./* | ../*) printf '%s\n' "$script" ;;
+	*)
+		user_script="$DVM_RECIPE_DIR/$script"
+		core_script="$DVM_CORE/recipes/$script"
+		if [ -f "$user_script" ]; then
+			[ -f "$core_script" ] && dvm_warn "using user recipe that shadows built-in recipe: $user_script"
+			printf '%s\n' "$user_script"
+		else
+			printf '%s\n' "$core_script"
+		fi
+		;;
+	esac
+}
+
+dvm_env_args=()
+
+dvm_build_env_args() {
+	local var
+	dvm_env_args=()
+	while IFS= read -r var; do
+		dvm_env_args+=("$var=${!var}")
+	done < <(compgen -v DVM_ | sort)
+}
+
+dvm_run_setup_script() {
+	local script vm
+	vm="$1"
+	script="$(dvm_recipe_path "$2")"
+	[ -f "$script" ] || dvm_die "setup script not found: $script"
+	dvm_log "running setup script: $script"
+	dvm_build_env_args
+	limactl shell "$vm" env "${dvm_env_args[@]}" bash -s <"$script"
+}
+
+dvm_run_inline_setup() {
+	local vm
+	vm="$1"
+	if ! declare -F dvm_vm_setup >/dev/null; then
+		return 0
+	fi
+	dvm_log "running inline setup from $(dvm_vm_config_path "$DVM_NAME")"
+	{
+		printf 'set -euo pipefail\n'
+		declare -f dvm_vm_setup
+		printf 'dvm_vm_setup\n'
+	} | {
+		dvm_build_env_args
+		limactl shell "$vm" env "${dvm_env_args[@]}" bash -s
+	}
 }
 
 dvm_resolve_host_dir() {
-	local dir
-	dir="$1"
-	(
-		cd "$dir" 2>/dev/null &&
-			pwd -P
-	) || dvm_die "directory not found: $dir"
-}
-
-dvm_validate_dotfiles_source() {
-	local source_real home_real
-	source_real="$1"
-	home_real="$(dvm_resolve_host_dir "$HOME")"
-
-	case "$source_real" in
-	/ | "$home_real" | "$home_real/.ssh" | "$home_real/.ssh/"* | "$home_real/.gnupg" | "$home_real/.gnupg/"*)
-		dvm_die "refusing dangerous DVM_DOTFILES_DIR: $source_real"
-		;;
-	esac
-}
-
-dvm_strip_trailing_slashes() {
-	local path
-	path="$1"
-	while [ "$path" != "/" ] && [ "${path%/}" != "$path" ]; do
-		path="${path%/}"
-	done
-	printf '%s\n' "$path"
-}
-
-dvm_normalize_dotfiles_target() {
-	local target guest_home
-	target="$1"
-	target="$(dvm_strip_trailing_slashes "$target")"
-	guest_home="$(dvm_strip_trailing_slashes "$DVM_GUEST_HOME")"
-
-	case "$target" in
-	/*) ;;
-	*) dvm_die "DVM_DOTFILES_TARGET must be an absolute path: $target" ;;
-	esac
-
-	case "$target" in
-	*/../* | */.. | */./* | */.)
-		dvm_die "DVM_DOTFILES_TARGET must not contain . or .. path segments: $target"
-		;;
-	esac
-
-	case "$target" in
-	"$guest_home")
-		dvm_die "refusing unsafe DVM_DOTFILES_TARGET: $target"
-		;;
-	"$guest_home/.ssh" | "$guest_home/.ssh/"* | \
-		"$guest_home/.gnupg" | "$guest_home/.gnupg/"*)
-		dvm_die "refusing unsafe DVM_DOTFILES_TARGET: $target"
-		;;
-	"$guest_home"/*) ;;
-	*) dvm_die "DVM_DOTFILES_TARGET must stay under DVM_GUEST_HOME: $target" ;;
-	esac
-
-	printf '%s\n' "$target"
-}
-
-dvm_sync_dotfiles_remote() {
-	cat <<'REMOTE'
-set -euo pipefail
-target="$1"
-parent="$(dirname "$target")"
-
-mkdir -p "$parent"
-rm -rf "$target"
-mkdir -p "$target"
-tar -C "$target" -xf -
-REMOTE
+	(cd "$1" 2>/dev/null && pwd -P) || dvm_die "directory not found: $1"
 }
 
 dvm_sync_dotfiles() {
-	local vm source_real target remote exclude
+	local exclude source_real target vm
 	vm="$1"
 	[ -n "$DVM_DOTFILES_DIR" ] || return 0
-
 	[ -d "$DVM_DOTFILES_DIR" ] || dvm_die "dotfiles directory not found: $DVM_DOTFILES_DIR"
 	dvm_require tar
-
 	source_real="$(dvm_resolve_host_dir "$DVM_DOTFILES_DIR")"
-	dvm_validate_dotfiles_source "$source_real"
-
-	target="$(dvm_normalize_dotfiles_target "$DVM_DOTFILES_TARGET")"
-
-	remote="$(dvm_sync_dotfiles_remote)"
-
-	dvm_log "syncing dotfiles into $vm: $source_real -> $target"
+	target="${DVM_DOTFILES_TARGET%/}"
+	case "$target" in
+	"$DVM_GUEST_HOME" | "$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.gnupg" | *..*)
+		dvm_die "unsafe DVM_DOTFILES_TARGET: $target"
+		;;
+	"$DVM_GUEST_HOME"/*) ;;
+	*) dvm_die "DVM_DOTFILES_TARGET must stay under DVM_GUEST_HOME: $target" ;;
+	esac
+	dvm_log "syncing dotfiles: $source_real -> $target"
 	(
 		cd "$source_real" || exit 1
-		set -- tar -cf -
+		export COPYFILE_DISABLE=1
+		set -- tar
+		if tar --help 2>/dev/null | grep -q -- '--no-xattrs'; then
+			set -- "$@" --no-xattrs
+		fi
+		set -- "$@" -cf -
 		for exclude in $DVM_DOTFILES_EXCLUDES; do
 			set -- "$@" --exclude "$exclude"
 		done
 		set -- "$@" .
 		"$@"
-	) | limactl shell "$vm" bash -c "$remote" dvm-dotfiles "$target"
+	) | limactl shell "$vm" bash -c 'set -euo pipefail; target="$1"; rm -rf "$target"; mkdir -p "$target"; set -- tar -C "$target"; if tar --help 2>/dev/null | grep -q -- "--warning="; then set -- "$@" --warning=no-unknown-keyword; fi; set -- "$@" -xf -; "$@"' dvm-dotfiles "$target"
 }
 
 dvm_setup() {
-	local name vm remote script
+	local name script vm
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm setup <name>"
 	name="$1"
 	dvm_validate_name "$name"
-	dvm_load_config
+	dvm_load_vm_config "$name"
 	dvm_require limactl
 	vm="$(dvm_vm_name "$name")"
-	remote="$(dvm_core_setup_remote)"
-
-	limactl start "$vm"
-	dvm_log "running core setup in $vm"
-	limactl shell "$vm" bash -c "$remote" dvm-setup "$name" "$DVM_CODE_DIR" "$DVM_PACKAGES"
+	dvm_apply_port_config "$vm"
+	limactl start "$vm" >/dev/null
+	limactl shell "$vm" bash -c "$(dvm_package_setup_remote)" dvm-setup "$DVM_CODE_DIR" "$DVM_PACKAGES"
 	dvm_sync_dotfiles "$vm"
-
 	for script in $DVM_SETUP_SCRIPTS; do
-		[ -n "$script" ] || continue
-		[ -f "$script" ] || dvm_die "setup script not found: $script"
-		dvm_log "running user setup in $vm: $script"
-		limactl shell "$vm" env \
-			"DVM_NAME=$name" \
-			"DVM_VM_NAME=$vm" \
-			"DVM_CODE_DIR=$DVM_CODE_DIR" \
-			"DVM_DOTFILES_TARGET=$DVM_DOTFILES_TARGET" \
-			bash -s <"$script"
+		dvm_run_setup_script "$vm" "$script"
 	done
-}
-
-dvm_setup_all_finish() {
-	local name pid status_dir rc
-	name="$1"
-	pid="$2"
-	status_dir="$3"
-	if wait "$pid"; then
-		rc="0"
-	else
-		rc="$?"
-	fi
-	if [ -s "$status_dir/$name.out" ]; then
-		sed "s/^/[$name] /" "$status_dir/$name.out"
-	fi
-	if [ -s "$status_dir/$name.err" ]; then
-		sed "s/^/[$name] /" "$status_dir/$name.err" >&2
-	fi
-	return "$rc"
+	dvm_run_inline_setup "$vm"
 }
 
 dvm_setup_all() {
-	local active failed failed_names jobs name status_dir total
-	local -a names pids
+	local name
 	[ "$#" -eq 0 ] || dvm_die "usage: dvm setup-all"
-	dvm_load_config
-	jobs="$DVM_SETUP_ALL_JOBS"
-	status_dir="$(mktemp -d)"
-	active="0"
-	failed="0"
-	failed_names=""
-	total="0"
-	names=()
-	pids=()
-
+	dvm_load_defaults
 	for name in $(dvm_list_names); do
-		total=$((total + 1))
-		(
-			dvm_setup "$name"
-		) >"$status_dir/$name.out" 2>"$status_dir/$name.err" &
-		names+=("$name")
-		pids+=("$!")
-		active=$((active + 1))
-
-		if [ "$active" -ge "$jobs" ]; then
-			if ! dvm_setup_all_finish "${names[0]}" "${pids[0]}" "$status_dir"; then
-				failed=$((failed + 1))
-				failed_names="$failed_names ${names[0]}"
-			fi
-			names=("${names[@]:1}")
-			pids=("${pids[@]:1}")
-			active=$((active - 1))
-		fi
+		dvm_setup "$name"
 	done
+}
 
-	while [ "$active" -gt 0 ]; do
-		if ! dvm_setup_all_finish "${names[0]}" "${pids[0]}" "$status_dir"; then
-			failed=$((failed + 1))
-			failed_names="$failed_names ${names[0]}"
-		fi
-		names=("${names[@]:1}")
-		pids=("${pids[@]:1}")
-		active=$((active - 1))
+dvm_upgrade_remote() {
+	cat <<'REMOTE'
+set -euo pipefail
+command -v dnf5 >/dev/null 2>&1 || {
+	echo "dnf5 is required in the guest image" >&2
+	exit 1
+}
+sudo dnf5 upgrade -y
+REMOTE
+}
+
+dvm_upgrade() {
+	local name vm
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm upgrade <name>"
+	name="$1"
+	dvm_validate_name "$name"
+	dvm_load_vm_config "$name"
+	dvm_require limactl
+	vm="$(dvm_vm_name "$name")"
+	dvm_apply_port_config "$vm"
+	limactl start "$vm" >/dev/null
+	dvm_log "upgrading $vm"
+	limactl shell "$vm" bash -c "$(dvm_upgrade_remote)" dvm-upgrade
+	dvm_setup "$name"
+}
+
+dvm_upgrade_all() {
+	local name
+	[ "$#" -eq 0 ] || dvm_die "usage: dvm upgrade-all"
+	dvm_load_defaults
+	for name in $(dvm_list_names); do
+		dvm_upgrade "$name"
 	done
-
-	rm -rf "$status_dir"
-	if [ "$total" -eq 0 ]; then
-		dvm_log "setup-all complete: no VMs found"
-	elif [ "$failed" -eq 0 ]; then
-		dvm_log "setup-all complete: $total succeeded"
-	else
-		dvm_warn "setup-all failed for $failed of $total:$failed_names"
-		return 1
-	fi
 }
 
 dvm_enter() {
-	local name vm quoted_dir remote
+	local name quoted_dir vm
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm enter <name>"
 	name="$1"
 	dvm_validate_name "$name"
-	dvm_load_config
-	dvm_require limactl
+	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
 	quoted_dir="$(dvm_quote "$DVM_CODE_DIR")"
-	remote="mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
-	limactl shell "$vm" bash -lc "$remote"
+	limactl shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
 }
 
 dvm_ssh() {
-	local name vm
+	local name quoted_dir vm
 	[ "$#" -ge 1 ] || dvm_die "usage: dvm ssh <name> [command...]"
 	name="$1"
 	shift
 	dvm_validate_name "$name"
-	dvm_load_config
-	dvm_require limactl
+	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
+	if [ "$#" -eq 0 ]; then
+		quoted_dir="$(dvm_quote "$DVM_CODE_DIR")"
+		limactl shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
+		return 0
+	fi
 	limactl shell "$vm" "$@"
 }
 
-dvm_key() {
-	local name vm remote
-	[ "$#" -eq 1 ] || dvm_die "usage: dvm key <name>"
+dvm_ssh_key() {
+	local name remote vm
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm ssh-key <name>"
 	name="$1"
 	dvm_validate_name "$name"
-	dvm_load_config
-	dvm_require limactl
+	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
-	remote="cat \"\$HOME/.ssh/id_ed25519_$name.pub\""
-	dvm_log "public key for $name:"
-	limactl shell "$vm" bash -lc "$remote"
+	remote='set -euo pipefail; key="$HOME/.ssh/id_ed25519_dvm"; config="$HOME/.ssh/config"; mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"; [ -f "$key" ] || ssh-keygen -t ed25519 -C "$DVM_NAME-dvm" -f "$key" -N ""; touch "$config"; chmod 600 "$config"; if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then { printf "\nHost github.com\n"; printf "  HostName github.com\n"; printf "  User git\n"; printf "  IdentityFile %s\n" "$key"; printf "  IdentitiesOnly yes\n"; printf "  AddKeysToAgent no\n"; } >>"$config"; fi; cat "$key.pub"'
+	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"
+}
+
+dvm_gpg_key() {
+	local name remote vm
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm gpg-key <name>"
+	name="$1"
+	dvm_validate_name "$name"
+	dvm_load_vm_config "$name"
+	vm="$(dvm_vm_name "$name")"
+	remote='set -euo pipefail; uid="$DVM_NAME dvm <dvm-$DVM_NAME@local>"; if ! gpg --list-secret-keys "$uid" >/dev/null 2>&1; then gpg --batch --passphrase "" --quick-gen-key "$uid" ed25519 sign 1y; fi; gpg --armor --export "$uid"; gpg --with-colons --list-secret-keys "$uid" | awk -F: '"'"'$1 == "fpr" { print "fingerprint: " $10; exit }'"'"''
+	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"
 }
 
 dvm_dirty_check_remote() {
 	cat <<'REMOTE'
 set -euo pipefail
 code_dir="$1"
-dirty=0
-
-if ! command -v git >/dev/null 2>&1; then
-	echo "git is not installed; cannot verify clean repositories" >&2
-	exit 2
-fi
-
 [ -d "$code_dir" ] || exit 0
-
+command -v git >/dev/null 2>&1 || exit 0
+dirty=0
 while IFS= read -r gitdir; do
 	repo="${gitdir%/.git}"
 	if ! git -C "$repo" diff --quiet ||
@@ -524,18 +433,13 @@ while IFS= read -r gitdir; do
 		echo "dirty repository: $repo" >&2
 		dirty=1
 	fi
-done < <(
-	find "$code_dir" \
-		\( -type d -name .git -prune -print \) -o \
-		\( -type f -name .git -print \)
-)
-
+done < <(find "$code_dir" \( -type d -name .git -prune -print \) -o \( -type f -name .git -print \))
 exit "$dirty"
 REMOTE
 }
 
 dvm_rm() {
-	local force name vm remote meta_file primary_fpr subkey_fpr
+	local force name vm
 	force="0"
 	[ "$#" -ge 1 ] || dvm_die "usage: dvm rm <name> [--force]"
 	name="$1"
@@ -548,34 +452,14 @@ dvm_rm() {
 		shift
 	done
 	dvm_validate_name "$name"
-	dvm_load_config
-	dvm_require limactl
+	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
-
 	if [ "$force" != "1" ]; then
-		remote="$(dvm_dirty_check_remote)"
-		limactl start "$vm"
-		if ! limactl shell "$vm" bash -c "$remote" dvm-dirty-check "$DVM_CODE_DIR"; then
+		if ! limactl start "$vm" >/dev/null; then
+			dvm_die "could not start $vm to check for dirty repos; retry with --force if you accept the risk"
+		fi
+		limactl shell "$vm" bash -c "$(dvm_dirty_check_remote)" dvm-dirty "$DVM_CODE_DIR" ||
 			dvm_die "refusing to delete $vm; commit/stash changes or pass --force"
-		fi
 	fi
-
 	limactl delete --force "$vm"
-
-	meta_file="$DVM_GPG_DIR/$name.env"
-	if [ -f "$meta_file" ]; then
-		PRIMARY_FPR=""
-		SUBKEY_FPR=""
-		# shellcheck source=/dev/null
-		source "$meta_file"
-		primary_fpr="${PRIMARY_FPR:-}"
-		subkey_fpr="${SUBKEY_FPR:-}"
-		if [ -n "$subkey_fpr" ]; then
-			dvm_warn "GPG signing subkey still exists for $name: $subkey_fpr"
-			if [ -n "$primary_fpr" ]; then
-				dvm_warn "primary key: $primary_fpr"
-			fi
-			dvm_warn "revoke it when this VM should no longer sign: dvm gpg revoke $name"
-		fi
-	fi
 }

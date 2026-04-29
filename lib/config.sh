@@ -1,228 +1,266 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
-dvm_load_config() {
-	# Config is intentionally shell: user-owned config can define variables and hooks.
-	# shellcheck disable=SC1091
-	source "$DVM_CORE/defaults/config.sh"
+dvm_reset_config_vars() {
+	local var
+	while IFS= read -r var; do
+		case "$var" in
+		DVM_CORE | DVM_CONFIG | DVM_STATE | DVM_TEST_*) ;;
+		*) unset "$var" ;;
+		esac
+	done < <(compgen -v DVM_)
+	unset -f dvm_vm_setup 2>/dev/null || true
+}
+
+dvm_source_defaults() {
+	# Config is intentionally shell: the user owns these files.
+	DVM_PREFIX="${DVM_PREFIX:-dvm}"
+	DVM_TEMPLATE="${DVM_TEMPLATE:-template:fedora}"
+	DVM_ARCH="${DVM_ARCH:-$(dvm_default_arch)}"
+	DVM_CPUS="${DVM_CPUS:-2}"
+	DVM_MEMORY="${DVM_MEMORY:-4GiB}"
+	DVM_DISK="${DVM_DISK:-40GiB}"
+	DVM_NETWORK="${DVM_NETWORK:-user-v2}"
+	DVM_GUEST_USER="${DVM_GUEST_USER:-$(id -un)}"
+	DVM_GUEST_HOME="${DVM_GUEST_HOME:-/home/$DVM_GUEST_USER}"
+	DVM_CODE_DIR="${DVM_CODE_DIR:-}"
+	DVM_PACKAGES="${DVM_PACKAGES:-}"
+	DVM_PORTS="${DVM_PORTS:-}"
+	DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-}"
+	DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
+	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-}"
+	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets .aws .docker .kube .netrc .pypirc .npmrc .config/gh .config/op}"
+	DVM_VM_CONFIG_DIR="${DVM_VM_CONFIG_DIR:-$DVM_CONFIG/vms}"
+	DVM_RECIPE_DIR="${DVM_RECIPE_DIR:-$DVM_CONFIG/recipes}"
 	if [ -f "$DVM_CONFIG/config.sh" ]; then
 		# shellcheck source=/dev/null
 		source "$DVM_CONFIG/config.sh"
 	fi
-
-	DVM_PREFIX="${DVM_PREFIX:-dvm}"
-	DVM_TEMPLATE="${DVM_TEMPLATE:-template:fedora}"
-	DVM_ARCH="${DVM_ARCH:-aarch64}"
-	DVM_CPUS="${DVM_CPUS:-4}"
-	DVM_MEMORY="${DVM_MEMORY:-8GiB}"
-	DVM_DISK="${DVM_DISK:-80GiB}"
-	DVM_GUEST_USER="${DVM_GUEST_USER:-$(id -un)}"
-	DVM_GUEST_HOME="${DVM_GUEST_HOME:-/home/$DVM_GUEST_USER}"
-	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code}"
-	DVM_PACKAGES="${DVM_PACKAGES:-git openssh-clients gpg}"
-	DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-$DVM_CONFIG/setup.d/fedora.sh}"
-	DVM_SETUP_ALL_JOBS="${DVM_SETUP_ALL_JOBS:-1}"
-	DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
-	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
-	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets}"
-	DVM_GPG_DIR="${DVM_GPG_DIR:-$DVM_STATE/gpg}"
-	DVM_AI_NAME="${DVM_AI_NAME:-ai}"
-	DVM_AI_PACKAGES="${DVM_AI_PACKAGES:-llama-cpp curl}"
-	DVM_AI_SERVER_CMD="${DVM_AI_SERVER_CMD:-llama-server}"
-	DVM_AI_SERVICE_NAME="${DVM_AI_SERVICE_NAME:-dvm-llama.service}"
-	DVM_AI_SYSTEMD_DIR="${DVM_AI_SYSTEMD_DIR:-/etc/systemd/system}"
-	DVM_AI_HOST="${DVM_AI_HOST:-127.0.0.1}"
-	DVM_AI_PORT="${DVM_AI_PORT:-8080}"
-	DVM_AI_MODELS_DIR="${DVM_AI_MODELS_DIR:-$DVM_GUEST_HOME/models}"
-	DVM_AI_CURRENT_MODEL="${DVM_AI_CURRENT_MODEL:-$DVM_AI_MODELS_DIR/current.gguf}"
-	DVM_AI_DEFAULT_MODEL="${DVM_AI_DEFAULT_MODEL:-qwen25-coder-7b-q4}"
-	DVM_AI_MODELS="${DVM_AI_MODELS:-qwen25-coder-7b-q4=https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf?download=true}"
-	DVM_AI_EXTRA_ARGS="${DVM_AI_EXTRA_ARGS:-}"
-	DVM_AGENT_USER="${DVM_AGENT_USER:-dvm-agent}"
-	DVM_AGENT_HOME="${DVM_AGENT_HOME:-/home/$DVM_AGENT_USER}"
-	DVM_AGENT_PACKAGES="${DVM_AGENT_PACKAGES:-bubblewrap acl shadow-utils}"
-	DVM_AGENT_CLAUDE_CHANNEL="${DVM_AGENT_CLAUDE_CHANNEL:-stable}"
-
-	dvm_validate_config
 }
 
-dvm_validate_config() {
-	case "$DVM_PREFIX" in
-	[a-z]*)
-		case "$DVM_PREFIX" in
-		*[!a-z0-9-]* | *-) dvm_die "invalid DVM_PREFIX: $DVM_PREFIX" ;;
-		esac
-		;;
-	*) dvm_die "invalid DVM_PREFIX: $DVM_PREFIX" ;;
+dvm_default_arch() {
+	case "$(uname -m)" in
+	arm64 | aarch64) printf 'aarch64\n' ;;
+	x86_64 | amd64) printf 'x86_64\n' ;;
+	*) uname -m ;;
 	esac
+}
 
+dvm_load_defaults() {
+	dvm_reset_config_vars
+	dvm_source_defaults
+	dvm_validate_defaults
+}
+
+dvm_validate_defaults() {
+	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code}"
+	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
+
+	dvm_validate_name_value DVM_PREFIX "$DVM_PREFIX"
 	case "$DVM_GUEST_HOME" in
 	/*) ;;
-	*) dvm_die "DVM_GUEST_HOME must be an absolute path: $DVM_GUEST_HOME" ;;
+	*) dvm_die "DVM_GUEST_HOME must be absolute: $DVM_GUEST_HOME" ;;
 	esac
 	case "$DVM_CODE_DIR" in
 	/*) ;;
-	*) dvm_die "DVM_CODE_DIR must be an absolute path: $DVM_CODE_DIR" ;;
+	*) dvm_die "DVM_CODE_DIR must be absolute: $DVM_CODE_DIR" ;;
 	esac
-	case "$DVM_SETUP_ALL_JOBS" in
-	'' | *[!0-9]* | 0) dvm_die "invalid DVM_SETUP_ALL_JOBS: $DVM_SETUP_ALL_JOBS" ;;
+	case "$DVM_CPUS" in
+	'' | *[!0-9]* | 0) dvm_die "invalid DVM_CPUS: $DVM_CPUS" ;;
+	esac
+	case "$DVM_MEMORY" in
+	'' | *[!0-9A-Za-z]*)
+		dvm_die "invalid DVM_MEMORY: $DVM_MEMORY"
+		;;
+	esac
+	printf '%s\n' "$DVM_MEMORY" | grep -Eq '^[0-9]+([KMGTP]i?B)?$' || dvm_die "invalid DVM_MEMORY: $DVM_MEMORY"
+	case "$DVM_DISK" in
+	'' | *[!0-9A-Za-z]*)
+		dvm_die "invalid DVM_DISK: $DVM_DISK"
+		;;
+	esac
+	printf '%s\n' "$DVM_DISK" | grep -Eq '^[0-9]+([KMGTP]i?B)?$' || dvm_die "invalid DVM_DISK: $DVM_DISK"
+	case "$DVM_NETWORK" in
+	user-v2 | vzNAT) ;;
+	*) dvm_die "invalid DVM_NETWORK: $DVM_NETWORK" ;;
 	esac
 }
 
-dvm_config_supported_vars() {
-	cat <<'VARS'
-DVM_PREFIX
-DVM_TEMPLATE
-DVM_ARCH
-DVM_CPUS
-DVM_MEMORY
-DVM_DISK
-DVM_GUEST_USER
-DVM_GUEST_HOME
-DVM_CODE_DIR
-DVM_PACKAGES
-DVM_SETUP_SCRIPTS
-DVM_SETUP_ALL_JOBS
-DVM_DOTFILES_DIR
-DVM_DOTFILES_TARGET
-DVM_DOTFILES_EXCLUDES
-DVM_GPG_DIR
-DVM_AI_NAME
-DVM_AI_PACKAGES
-DVM_AI_SERVER_CMD
-DVM_AI_SERVICE_NAME
-DVM_AI_SYSTEMD_DIR
-DVM_AI_HOST
-DVM_AI_PORT
-DVM_AI_MODELS_DIR
-DVM_AI_CURRENT_MODEL
-DVM_AI_DEFAULT_MODEL
-DVM_AI_MODELS
-DVM_AI_EXTRA_ARGS
-DVM_AGENT_USER
-DVM_AGENT_HOME
-DVM_AGENT_PACKAGES
-DVM_AGENT_CLAUDE_CHANNEL
-VARS
+dvm_vm_config_path() {
+	local name
+	name="$1"
+	printf '%s/%s.sh\n' "$DVM_VM_CONFIG_DIR" "$name"
 }
 
-dvm_config_user_vars() {
-	local config_file
-	config_file="$1"
-	[ -f "$config_file" ] || return 0
-	sed -n 's/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}\(DVM_[A-Za-z0-9_]*\)=.*/\2/p' "$config_file" |
-		sort -u
+dvm_load_vm_config() {
+	local config_file name
+	name="$1"
+	dvm_reset_config_vars
+	dvm_source_defaults
+	DVM_NAME="$name"
+	config_file="$(dvm_vm_config_path "$name")"
+	if [ -f "$config_file" ]; then
+		# shellcheck source=/dev/null
+		source "$config_file"
+	fi
+	dvm_validate_defaults
+	DVM_NAME="$name"
+	DVM_VM_NAME="$(dvm_vm_name "$name")"
 }
 
-dvm_config_unknown_vars() {
-	local config_file supported
-	config_file="$1"
-	supported="$(mktemp)"
-	dvm_config_supported_vars | sort -u >"$supported"
-	comm -23 <(dvm_config_user_vars "$config_file") "$supported"
-	rm -f "$supported"
-}
-
-dvm_config_usage() {
-	cat <<'HELP'
-usage:
-  dvm config path
-  dvm config print-defaults
-  dvm config print-template
-  dvm config diff
-HELP
-}
-
-dvm_config_template() {
+dvm_global_config_template() {
 	cat <<'CONFIG'
-# DVM user config.
-#
-# This file is for local overrides only. DVM loads defaults from the core before
-# sourcing this file, so it can stay mostly empty.
-#
-# Inspect current defaults:
-#   dvm config print-defaults
-#
-# Compare this file with the generated override template:
-#   dvm config diff
+# DVM global defaults.
+# This file is sourced before every per-VM config in vms/<name>.sh.
 
-# VM defaults:
+# Core VM defaults:
 # DVM_PREFIX="dvm"
-# DVM_CPUS="4"
-# DVM_MEMORY="8GiB"
-# DVM_DISK="80GiB"
+# DVM_CPUS="2"
+# DVM_MEMORY="4GiB"
+# DVM_DISK="40GiB"
+# DVM_NETWORK="user-v2"
 
-# Packages installed by `dvm setup <name>`:
-# DVM_PACKAGES="git openssh-clients gpg helix ripgrep fd-find jq"
-
-# Optional dotfiles snapshot copied into each VM during setup:
+# Defaults for most development VMs:
+# DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
 # DVM_DOTFILES_DIR="$HOME/.dotfiles"
-# DVM_DOTFILES_TARGET="$DVM_GUEST_HOME/.dotfiles"
+# DVM_SETUP_SCRIPTS="common.sh"
 
-# Run setup for multiple VMs in parallel:
-# DVM_SETUP_ALL_JOBS="2"
-
-# Local llama.cpp AI VM:
-# DVM_AI_HOST="127.0.0.1"
-# DVM_AI_PORT="8080"
-
-# Hosted AI tools run as this restricted user:
-# DVM_AGENT_USER="dvm-agent"
+# Put shared recipes in:
+#   ~/.config/dvm/recipes/common.sh
+# Use recipes for tools that need extra repos or custom commands, like lazygit from Terra.
+#
+# Per-VM configs can append to these values:
+#   DVM_PACKAGES="$DVM_PACKAGES nodejs pnpm"
+#
+# Or disable them for special VMs:
+#   DVM_PACKAGES=""
+#   DVM_DOTFILES_DIR=""
+#   DVM_SETUP_SCRIPTS=""
 CONFIG
 }
 
-dvm_config_cmd() {
-	local cmd config_file diff_rc template_file
-	cmd="${1:-help}"
-	[ "$#" -eq 0 ] || shift
-	config_file="$DVM_CONFIG/config.sh"
-	case "$cmd" in
-	path)
-		[ "$#" -eq 0 ] || dvm_die "usage: dvm config path"
-		printf '%s\n' "$config_file"
+dvm_vm_config_template() {
+	local name
+	name="$1"
+	cat <<CONFIG
+# DVM config for "$name".
+# This file is shell sourced on the host before create/setup.
+
+# Inherited defaults:
+# This VM inherits ~/.config/dvm/config.sh first. Override, append, or clear values here.
+
+# VM size/template:
+# DVM_TEMPLATE="template:fedora"
+# DVM_CPUS="2"
+# DVM_MEMORY="4GiB"
+# DVM_DISK="40GiB"
+# DVM_NETWORK="user-v2"
+
+# Add packages to the global default package list:
+# DVM_PACKAGES="\$DVM_PACKAGES nodejs pnpm"
+
+# Or replace/disable global default packages:
+# DVM_PACKAGES="git ripgrep jq"
+# DVM_PACKAGES=""
+
+# Host localhost forwards, written as host:guest pairs.
+# DVM_PORTS="3000:3000 5173:5173"
+
+# Dotfiles:
+# Inherit DVM_DOTFILES_DIR from global config, override it, or disable it:
+# DVM_DOTFILES_DIR="\$HOME/.dotfiles"
+# DVM_DOTFILES_DIR=""
+
+# Setup scripts:
+# Names are resolved from \$DVM_RECIPE_DIR, then \$DVM_CORE/recipes, then as paths.
+# Append to global setup:
+# DVM_SETUP_SCRIPTS="\$DVM_SETUP_SCRIPTS my-setup.sh"
+# Replace or disable global setup:
+# DVM_SETUP_SCRIPTS="my-setup.sh"
+# DVM_SETUP_SCRIPTS=""
+
+# Inline setup. Uncomment to run commands inside the VM as the guest user.
+# dvm_vm_setup() {
+# 	sudo dnf5 install -y nodejs pnpm
+# }
+CONFIG
+
+	case "$name" in
+	ai)
+		cat <<'CONFIG'
+
+# Llama VM example:
+# Usually disable normal dev defaults for a dedicated AI VM.
+# DVM_PACKAGES=""
+# DVM_DOTFILES_DIR=""
+# DVM_SETUP_SCRIPTS="llama.sh"
+# DVM_PORTS="8080:8080"
+# DVM_LLAMA_HOST="0.0.0.0"
+# DVM_LLAMA_MODELS="qwen=https://example.com/model.gguf"
+# DVM_LLAMA_DEFAULT_MODEL="qwen"
+CONFIG
 		;;
-	print-defaults | defaults)
-		[ "$#" -eq 0 ] || dvm_die "usage: dvm config print-defaults"
-		cat "$DVM_CORE/defaults/config.sh"
-		;;
-	print-template | template)
-		[ "$#" -eq 0 ] || dvm_die "usage: dvm config print-template"
-		dvm_config_template
-		;;
-	diff)
-		[ "$#" -eq 0 ] || dvm_die "usage: dvm config diff"
-		[ -f "$config_file" ] || dvm_die "config not found: $config_file; run dvm init"
-		template_file="$(mktemp)"
-		dvm_config_template >"$template_file"
-		diff_rc="0"
-		diff -u "$template_file" "$config_file" || diff_rc="$?"
-		rm -f "$template_file"
-		[ "$diff_rc" -le 1 ] || return "$diff_rc"
-		;;
-	help | -h | --help)
-		dvm_config_usage
-		;;
-	*)
-		dvm_config_usage
-		dvm_die "unknown config command: $cmd"
+	cloudflared)
+		cat <<'CONFIG'
+
+# cloudflared VM example:
+# Usually disable normal dev defaults for a dedicated connector VM.
+# DVM_CPUS="1"
+# DVM_MEMORY="1GiB"
+# DVM_DISK="10GiB"
+# DVM_PACKAGES=""
+# DVM_DOTFILES_DIR=""
+# DVM_SETUP_SCRIPTS="cloudflared.sh"
+# DVM_CLOUDFLARED_TOKEN="${CLOUDFLARED_TOKEN:-}"
+CONFIG
 		;;
 	esac
 }
 
+dvm_open_editor() {
+	local file editor
+	file="$1"
+	editor="${VISUAL:-${EDITOR:-}}"
+	if [ -n "$editor" ] && [ -t 0 ] && [ -t 1 ]; then
+		"$editor" "$file"
+	else
+		dvm_log "config: $file"
+	fi
+}
+
 dvm_init() {
-	dvm_load_config
-	mkdir -p "$DVM_CONFIG/setup.d" "$DVM_STATE" "$DVM_GPG_DIR"
-	chmod 0700 "$DVM_STATE" "$DVM_GPG_DIR"
+	local config_file name
+	dvm_load_defaults
+	mkdir -p "$DVM_CONFIG" "$DVM_STATE" "$DVM_VM_CONFIG_DIR" "$DVM_RECIPE_DIR"
+	chmod 0700 "$DVM_STATE"
 
 	if [ ! -f "$DVM_CONFIG/config.sh" ]; then
-		dvm_config_template >"$DVM_CONFIG/config.sh"
+		dvm_global_config_template >"$DVM_CONFIG/config.sh"
 		dvm_log "created $DVM_CONFIG/config.sh"
 	fi
-	if [ ! -f "$DVM_CONFIG/setup.d/fedora.sh" ]; then
-		cp "$DVM_CORE/defaults/setup-fedora.sh" "$DVM_CONFIG/setup.d/fedora.sh"
-		chmod 0755 "$DVM_CONFIG/setup.d/fedora.sh"
-		dvm_log "created $DVM_CONFIG/setup.d/fedora.sh"
+
+	if [ "$#" -eq 0 ]; then
+		dvm_log "config: $DVM_CONFIG"
+		return 0
 	fi
-	dvm_log "config: $DVM_CONFIG"
-	dvm_log "state: $DVM_STATE"
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm init [name]"
+	name="$1"
+	dvm_validate_name "$name"
+	config_file="$(dvm_vm_config_path "$name")"
+	if [ ! -f "$config_file" ]; then
+		dvm_vm_config_template "$name" >"$config_file"
+		dvm_log "created $config_file"
+	fi
+	dvm_open_editor "$config_file"
+}
+
+dvm_edit() {
+	local config_file name
+	[ "$#" -eq 1 ] || dvm_die "usage: dvm edit <name>"
+	name="$1"
+	dvm_validate_name "$name"
+	dvm_load_defaults
+	config_file="$(dvm_vm_config_path "$name")"
+	[ -f "$config_file" ] || dvm_die "VM config not found: $config_file; run dvm init $name"
+	dvm_open_editor "$config_file"
 }

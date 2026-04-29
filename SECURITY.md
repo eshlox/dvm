@@ -33,21 +33,31 @@ Security-sensitive behavior in scope:
 - installing and updating the DVM core
 - VM creation, deletion, and setup commands
 - per-VM SSH key creation
-- GPG signing subkey creation, export, install, and revocation helpers
+- VM-local GPG key creation
 - documentation that affects installation or release verification
 
-User setup scripts, dotfiles, packages installed inside a VM, downloaded models, and
-services configured by users are user-controlled and out of scope unless DVM itself
-handles them insecurely.
+Per-VM config, recipes, dotfiles, packages installed inside a VM, downloaded models,
+AI tools, and services configured by users are user-controlled and out of scope unless
+DVM itself handles them insecurely.
 
 DVM does not mount host dotfiles into VMs by default. If dotfiles sync is enabled, DVM
 copies a filtered snapshot during setup so project code in the VM does not retain a
 persistent read path back to the host.
 
-Hosted AI tools should run through `dvm agent`, which uses a separate VM user and
-bubblewrap to hide the normal VM user's home while exposing project code. This limits
-access to per-VM SSH keys, GPG subkeys, dotfiles, and secret-manager config, but it
-does not make AI-executed project code safe.
+The default dotfiles exclude list skips common credential paths, but it cannot know
+every private file. Review `DVM_DOTFILES_DIR` before enabling dotfiles sync.
+
+For GitHub, prefer repository deploy keys over personal account SSH keys when you want
+repo-level isolation. Personal account SSH keys are account-scoped; multiple VM keys on
+the same GitHub account have the same repo access. Deploy keys are repo-scoped and are
+easier to revoke when one VM is compromised.
+
+If you use hosted AI tools, prefer a separate VM user or a small recipe such as
+`recipes/agent.sh`. DVM no longer treats AI tool installation as core behavior.
+
+Cloudflare Tunnel tokens are credentials. If you use `recipes/cloudflared.sh`, keep the
+token out of project code and dotfiles. The recipe stores it inside the cloudflared VM
+at `/etc/cloudflared/dvm.env`; rotate it in Cloudflare if that VM is compromised.
 
 ## Safe Installation
 
