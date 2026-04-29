@@ -104,7 +104,10 @@ dvm_load_vm_config() {
 		source "$config_file"
 	fi
 	dvm_validate_defaults
+	# Exposed to recipes and inline setup via dvm_build_env_args.
+	# shellcheck disable=SC2034
 	DVM_NAME="$name"
+	# shellcheck disable=SC2034
 	DVM_VM_NAME="$(dvm_vm_name "$name")"
 }
 

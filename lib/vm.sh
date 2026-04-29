@@ -87,7 +87,9 @@ dvm_list() {
 		short="$(dvm_vm_short_name "$vm")" || continue
 		dir="${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
 		size="-"
-		[ -d "$dir" ] && size="$(du -sh "$dir" 2>/dev/null | awk '{print $1}')" || true
+		if [ -d "$dir" ]; then
+			size="$(du -sh "$dir" 2>/dev/null | awk '{print $1}')" || size="-"
+		fi
 		ports="$(dvm_vm_ports_from_yaml "$dir")"
 		printf '%-18s %-12s %-10s %-18s %s\n' "$short" "${status:-unknown}" "${size:-"-"}" "$ports" "$dir"
 	done < <(dvm_lima_rows | sort)
@@ -304,7 +306,19 @@ dvm_sync_dotfiles() {
 		done
 		set -- "$@" .
 		"$@"
-	) | limactl shell "$vm" bash -c 'set -euo pipefail; target="$1"; rm -rf "$target"; mkdir -p "$target"; set -- tar -C "$target"; if tar --help 2>/dev/null | grep -q -- "--warning="; then set -- "$@" --warning=no-unknown-keyword; fi; set -- "$@" -xf -; "$@"' dvm-dotfiles "$target"
+	) | limactl shell "$vm" bash -c "$(cat <<'REMOTE'
+set -euo pipefail
+target="$1"
+rm -rf "$target"
+mkdir -p "$target"
+set -- tar -C "$target"
+if tar --help 2>/dev/null | grep -q -- "--warning="; then
+	set -- "$@" --warning=no-unknown-keyword
+fi
+set -- "$@" -xf -
+"$@"
+REMOTE
+	)" dvm-dotfiles "$target"
 }
 
 dvm_setup() {
@@ -403,6 +417,8 @@ dvm_ssh_key() {
 	dvm_validate_name "$name"
 	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
+	# Expands inside the VM.
+	# shellcheck disable=SC2016
 	remote='set -euo pipefail; key="$HOME/.ssh/id_ed25519_dvm"; config="$HOME/.ssh/config"; mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"; [ -f "$key" ] || ssh-keygen -t ed25519 -C "$DVM_NAME-dvm" -f "$key" -N ""; touch "$config"; chmod 600 "$config"; if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then { printf "\nHost github.com\n"; printf "  HostName github.com\n"; printf "  User git\n"; printf "  IdentityFile %s\n" "$key"; printf "  IdentitiesOnly yes\n"; printf "  AddKeysToAgent no\n"; } >>"$config"; fi; cat "$key.pub"'
 	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"
 }
@@ -414,6 +430,8 @@ dvm_gpg_key() {
 	dvm_validate_name "$name"
 	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
+	# Expands inside the VM.
+	# shellcheck disable=SC2016
 	remote='set -euo pipefail; uid="$DVM_NAME dvm <dvm-$DVM_NAME@local>"; if ! gpg --list-secret-keys "$uid" >/dev/null 2>&1; then gpg --batch --passphrase "" --quick-gen-key "$uid" ed25519 sign 1y; fi; gpg --armor --export "$uid"; gpg --with-colons --list-secret-keys "$uid" | awk -F: '"'"'$1 == "fpr" { print "fingerprint: " $10; exit }'"'"''
 	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"
 }

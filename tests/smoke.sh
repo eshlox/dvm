@@ -347,6 +347,7 @@ mv "$DVM_CONFIG/vms/app.safe.sh" "$DVM_CONFIG/vms/app.sh"
 
 "$TMP/local-bin/dvm-test" ssh app pwd >"$TMP/pwd.out"
 grep -Fxq "$VM_HOME_ROOT/dvm-app/home" "$TMP/pwd.out"
+# shellcheck disable=SC2016
 "$TMP/local-bin/dvm-test" ssh app bash -lc 'cd "$HOME/code"; pwd' >"$TMP/code-pwd.out"
 grep -Fxq "$VM_HOME_ROOT/dvm-app/home/code" "$TMP/code-pwd.out"
 "$TMP/local-bin/dvm-test" ssh-key app >"$TMP/ssh-key.out"
