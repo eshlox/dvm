@@ -1,84 +1,109 @@
-# Config And Dotfiles
+# Config
 
-`dvm init` creates:
+DVM has two config layers.
+
+Global defaults:
 
 ```text
 ~/.config/dvm/config.sh
-~/.config/dvm/setup.d/fedora.sh
-~/.local/share/dvm/
 ```
 
-User configuration is shell code by design. Keep local VM behavior in
-`~/.config/dvm`, not in the DVM core checkout.
-
-## Common Config
-
-```bash
-DVM_PREFIX="dvm"
-DVM_CPUS="4"
-DVM_MEMORY="8GiB"
-DVM_DISK="80GiB"
-
-DVM_PACKAGES="git openssh-clients gpg helix ripgrep fd-find jq"
-DVM_SETUP_SCRIPTS="$DVM_CONFIG/setup.d/fedora.sh"
-DVM_SETUP_ALL_JOBS="1"
-DVM_DOTFILES_DIR="$HOME/.dotfiles"
-```
-
-The core targets Lima `template:fedora` and assumes `dnf5` inside the guest.
-
-## Setup Scripts
-
-`DVM_SETUP_SCRIPTS` is a space-separated list of host scripts. Each script is piped
-into the VM and runs as the guest user after core setup.
-
-Setup scripts receive:
+Per-VM config:
 
 ```text
-DVM_NAME
-DVM_VM_NAME
-DVM_CODE_DIR
-DVM_DOTFILES_TARGET
+~/.config/dvm/vms/<name>.sh
 ```
 
-Use setup scripts for packages, shell config, editor config, and project-specific
-configuration that should be reproducible across VMs.
+The global config is loaded first, then the per-VM config. Because config is shell, a
+VM can inherit, append, replace, or clear global values.
 
-## Dotfiles Snapshot
+## Global Defaults
 
-If `DVM_DOTFILES_DIR` is set, DVM copies a filtered snapshot of that host directory into
-the VM before setup scripts run. DVM does not mount the host directory live.
-
-Defaults:
+Use global config for settings that apply to most VMs:
 
 ```bash
-DVM_DOTFILES_TARGET="$DVM_GUEST_HOME/.dotfiles"
-DVM_DOTFILES_EXCLUDES=".git .ssh .gnupg .env secrets"
+DVM_CPUS="2"
+DVM_MEMORY="4GiB"
+DVM_DISK="40GiB"
+DVM_NETWORK="user-v2"
+
+DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
+DVM_DOTFILES_DIR="$HOME/.dotfiles"
+DVM_SETUP_SCRIPTS="common.sh"
 ```
 
-Safety rules:
+Put shared setup in:
 
-- dotfiles sync is opt-in
-- source paths such as `/`, `$HOME`, `~/.ssh`, and `~/.gnupg` are refused
-- target paths must stay under `DVM_GUEST_HOME`
-- target paths must not be `DVM_GUEST_HOME` itself and must not contain `.` or `..`
-  path segments
-- `.git`, `.ssh`, `.gnupg`, `.env`, and `secrets` are excluded by default
+```text
+~/.config/dvm/recipes/common.sh
+```
 
-Example setup script:
+Use `DVM_PACKAGES` for simple Fedora packages. Use `common.sh` for anything that needs
+extra commands, external repos, service setup, or custom logic.
+
+Example `~/.config/dvm/recipes/common.sh`:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p "$DVM_CODE_DIR"
+sudo dnf5 install -y git ripgrep fd-find jq helix yazi
 
-if [ -x "$DVM_DOTFILES_TARGET/install.sh" ]; then
-  "$DVM_DOTFILES_TARGET/install.sh"
+if ! rpm -q terra-release >/dev/null 2>&1; then
+	sudo dnf5 install -y --nogpgcheck \
+		--repofrompath "terra,https://repos.fyralabs.com/terra$releasever" \
+		terra-release
 fi
+sudo dnf5 install -y lazygit
+
+sudo dnf5 install -y nodejs npm
+if ! command -v corepack >/dev/null 2>&1; then
+	sudo npm install -g corepack@latest
+fi
+sudo corepack enable
+sudo corepack prepare pnpm@latest --activate
 ```
 
-## Default Config Reference
+## Per-VM Additions
 
-The generated default config lives in [defaults/config.sh](../defaults/config.sh).
-Review that file when adding new VM defaults.
+Append to global packages or setup:
+
+```bash
+DVM_PACKAGES="$DVM_PACKAGES nodejs pnpm"
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS node.sh"
+```
+
+Add inline setup for one VM:
+
+```bash
+dvm_vm_setup() {
+	mkdir -p "$DVM_CODE_DIR/myapp"
+}
+```
+
+## Per-VM Overrides
+
+Replace global defaults:
+
+```bash
+DVM_PACKAGES="git python3 uv"
+DVM_SETUP_SCRIPTS="python.sh"
+```
+
+Disable global setup for special VMs like `ai` or `cloudflared`:
+
+```bash
+DVM_PACKAGES=""
+DVM_DOTFILES_DIR=""
+DVM_SETUP_SCRIPTS="llama.sh"
+```
+
+## Generated Examples
+
+`dvm init <name>` creates a general per-VM template. Some common names get extra
+commented examples:
+
+- `dvm init ai`: llama VM hints
+- `dvm init cloudflared`: cloudflared connector VM hints
+
+These are examples only. Nothing is enabled until you uncomment or add values.

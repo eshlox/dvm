@@ -39,9 +39,33 @@ dvm_json() {
 dvm_validate_name() {
 	local name
 	name="$1"
+	dvm_validate_name_value name "$name"
+}
+
+dvm_validate_name_value() {
+	local label name
+	label="$1"
+	name="$2"
 	case "$name" in
-	'' | *[!a-z0-9-]* | -*)
-		dvm_die "invalid name '$name'; use lowercase letters, numbers, and hyphens"
+	[a-z]*)
+		case "$name" in
+		*[!a-z0-9-]* | *-) dvm_die "invalid $label: $name" ;;
+		esac
+		;;
+	*) dvm_die "invalid $label: $name" ;;
+	esac
+}
+
+dvm_validate_port_number() {
+	local label number
+	label="$1"
+	number="$2"
+	case "$number" in
+	'' | *[!0-9]*)
+		dvm_die "invalid $label port: $number"
 		;;
 	esac
+	if [ "$number" -lt 1 ] || [ "$number" -gt 65535 ]; then
+		dvm_die "invalid $label port: $number"
+	fi
 }
