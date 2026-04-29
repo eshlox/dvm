@@ -80,6 +80,17 @@ dvm list
 
 `dvm list` shows VM names without the prefix.
 
+For a human-readable status table:
+
+```bash
+dvm list --long
+```
+
+The long view keeps the simple `dvm list` output script-friendly and adds Lima status,
+host-side VM directory size, guest memory used/total for running VMs, listening TCP
+ports for running VMs, the localhost AI URL when a static Lima forward is configured,
+and the Lima instance directory. If the AI VM has no forward yet, run `dvm ai expose`.
+
 ## Delete
 
 ```bash

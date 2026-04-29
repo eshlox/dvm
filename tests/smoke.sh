@@ -162,6 +162,39 @@ set -euo pipefail
 printf 'uv %s\n' "$*" >>"$DVM_TEST_LOG"
 MOCK
 
+cat >"$MOCK_BIN/free" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "-h" ]; then
+	cat <<'FREE'
+               total        used        free      shared  buff/cache   available
+Mem:           1.0Gi       128Mi       512Mi       0.0Ki       384Mi       768Mi
+Swap:             0B          0B          0B
+FREE
+else
+	exec /usr/bin/free "$@"
+fi
+MOCK
+
+cat >"$MOCK_BIN/ss" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+cat <<'SS'
+LISTEN 0 4096 127.0.0.1:22 0.0.0.0:*
+LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:*
+SS
+MOCK
+
+cat >"$MOCK_BIN/hostname" <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "-I" ]; then
+	printf '192.0.2.15 \n'
+	exit 0
+fi
+exec /bin/hostname "$@"
+MOCK
+
 cat >"$MOCK_BIN/ssh-keygen" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -191,9 +224,49 @@ add_vm() {
 	grep -Fxq "$vm" "$DVM_TEST_LIST" || printf '%s\n' "$vm" >>"$DVM_TEST_LIST"
 }
 
+write_lima_port_forward() {
+	local guest host rest spec vm
+	vm="$1"
+	spec="$2"
+	host="${spec%%:*}"
+	rest="${spec#*:}"
+	guest="${rest%%,*}"
+	mkdir -p "$DVM_TEST_VM_HOME/$vm"
+	cat >"$DVM_TEST_VM_HOME/$vm/lima.yaml" <<YAML
+portForwards:
+- guestPort: $guest
+  hostPort: $host
+  hostIP: "127.0.0.1"
+YAML
+}
+
 case "${1:-}" in
 list)
 	if [ "${2:-}" = "--format" ]; then
+		case "${3:-}" in
+		*Status*Dir*)
+			while IFS= read -r vm; do
+				[ -n "$vm" ] || continue
+				status="Running"
+				case "$vm" in
+				*stopped*) status="Stopped" ;;
+				esac
+				printf '%s\t%s\t%s/%s\n' "$vm" "$status" "$DVM_TEST_VM_HOME" "$vm"
+			done <"$DVM_TEST_LIST" 2>/dev/null || true
+			exit 0
+			;;
+		*Status*)
+			while IFS= read -r vm; do
+				[ -n "$vm" ] || continue
+				status="Running"
+				case "$vm" in
+				*stopped*) status="Stopped" ;;
+				esac
+				printf '%s\t%s\n' "$vm" "$status"
+			done <"$DVM_TEST_LIST" 2>/dev/null || true
+			exit 0
+			;;
+		esac
 		cat "$DVM_TEST_LIST" 2>/dev/null || true
 		exit 0
 	fi
@@ -201,10 +274,15 @@ list)
 	;;
 create)
 	vm=""
+	port_forward=""
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
 		--name)
 			vm="$2"
+			shift
+			;;
+		--port-forward)
+			port_forward="$2"
 			shift
 			;;
 		esac
@@ -212,11 +290,46 @@ create)
 	done
 	[ -n "$vm" ]
 	printf 'create %s\n' "$vm" >>"$DVM_TEST_LOG"
+	if [ -n "$port_forward" ]; then
+		printf 'port-forward %s\n' "$port_forward" >>"$DVM_TEST_LOG"
+		write_lima_port_forward "$vm" "$port_forward"
+	fi
+	add_vm "$vm"
+	;;
+edit)
+	vm=""
+	set_expr=""
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--set)
+			set_expr="$2"
+			shift
+			;;
+		--tty=*)
+			;;
+		--start)
+			;;
+		*)
+			vm="$1"
+			;;
+		esac
+		shift
+	done
+	[ -n "$vm" ]
+	printf 'edit %s\n' "$vm" >>"$DVM_TEST_LOG"
+	guest="$(printf '%s\n' "$set_expr" | sed -n 's/.*"guestPort":\([0-9][0-9]*\).*/\1/p')"
+	host="$(printf '%s\n' "$set_expr" | sed -n 's/.*"hostPort":\([0-9][0-9]*\).*/\1/p')"
+	if [ -n "$guest" ] && [ -n "$host" ]; then
+		write_lima_port_forward "$vm" "$host:$guest,static=true"
+	fi
 	add_vm "$vm"
 	;;
 start)
 	add_vm "$2"
 	printf 'start %s\n' "$2" >>"$DVM_TEST_LOG"
+	;;
+stop)
+	printf 'stop %s\n' "$2" >>"$DVM_TEST_LOG"
 	;;
 shell)
 	vm="$2"
@@ -261,6 +374,9 @@ chmod +x \
 	"$MOCK_BIN/bwrap" \
 	"$MOCK_BIN/npm" \
 	"$MOCK_BIN/uv" \
+	"$MOCK_BIN/free" \
+	"$MOCK_BIN/ss" \
+	"$MOCK_BIN/hostname" \
 	"$MOCK_BIN/ssh-keygen" \
 	"$MOCK_BIN/limactl"
 
@@ -288,6 +404,15 @@ printf 'do not copy\n' >"$HOST_DOTFILES/secrets"
 [ -L "$TMP/local-bin/dvm-test" ]
 [ -f "$DVM_CONFIG/config.sh" ]
 [ -f "$DVM_CONFIG/setup.d/fedora.sh" ]
+grep -Fq 'This file is for local overrides only' "$DVM_CONFIG/config.sh"
+if grep -q '^DVM_PREFIX=' "$DVM_CONFIG/config.sh"; then
+	echo "init config should not pin DVM_PREFIX" >&2
+	exit 1
+fi
+"$TMP/local-bin/dvm-test" config print-template >"$TMP/config-template.out"
+grep -Fq 'This file is for local overrides only' "$TMP/config-template.out"
+"$TMP/local-bin/dvm-test" config diff >"$TMP/init-config.diff"
+[ ! -s "$TMP/init-config.diff" ]
 
 cat >"$DVM_CONFIG/config.sh" <<CONFIG
 DVM_PREFIX="testvm"
@@ -323,6 +448,15 @@ grep -Fq 'app' "$VM_HOME_ROOT/testvm-app/setup-ran"
 
 "$TMP/local-bin/dvm-test" list >"$TMP/list.out"
 grep -Fxq app "$TMP/list.out"
+"$TMP/local-bin/dvm-test" list --long >"$TMP/list-long.out"
+grep -Fq 'NAME' "$TMP/list-long.out"
+grep -Fq 'STATUS' "$TMP/list-long.out"
+grep -Fq 'PORTS' "$TMP/list-long.out"
+grep -Fq 'AI_URL' "$TMP/list-long.out"
+grep -Fq 'app' "$TMP/list-long.out"
+grep -Fq 'Running' "$TMP/list-long.out"
+grep -Fq '128Mi/1.0Gi' "$TMP/list-long.out"
+grep -Fq '22,8080' "$TMP/list-long.out"
 rm -f "$HOST_DOTFILES/bashrc"
 printf 'export EDITOR=hx\n' >"$HOST_DOTFILES/zshrc"
 "$TMP/local-bin/dvm-test" setup-all >/dev/null 2>"$TMP/setup-all.err"
@@ -474,6 +608,7 @@ CONFIG
 
 "$TMP/local-bin/dvm-test" ai create >"$TMP/ai-create.out" 2>"$TMP/ai-create.err"
 grep -Fq 'create testvm-ai' "$LOG"
+grep -Fq 'port-forward 18080:18080,static=true' "$LOG"
 grep -Fq 'dnf5 install -y llama-cpp curl' "$LOG"
 grep -Fq 'systemctl enable dvm-llama.service' "$LOG"
 grep -Fq 'systemctl restart dvm-llama.service' "$LOG"
@@ -498,8 +633,41 @@ grep -Fq 'service: active' "$TMP/ai-status.out"
 grep -Fq 'enabled: enabled' "$TMP/ai-status.out"
 grep -Fq 'model: other.gguf' "$TMP/ai-status.out"
 "$TMP/local-bin/dvm-test" ai host >"$TMP/ai-host.out"
-grep -Fq 'vm: http://127.0.0.1:18080' "$TMP/ai-host.out"
-grep -Fq 'host: not exposed (DVM_AI_HOST=127.0.0.1)' "$TMP/ai-host.out"
+grep -Fq 'host: http://127.0.0.1:18080' "$TMP/ai-host.out"
+grep -Fq 'inside-vm: http://127.0.0.1:18080' "$TMP/ai-host.out"
+"$TMP/local-bin/dvm-test" list --long >"$TMP/ai-list-long.out"
+grep -Fq 'ai' "$TMP/ai-list-long.out"
+grep -Fq 'http://127.0.0.1:18080' "$TMP/ai-list-long.out"
+rm -f "$VM_HOME_ROOT/testvm-ai/lima.yaml"
+"$TMP/local-bin/dvm-test" ai host >"$TMP/ai-host-not-forwarded.out"
+grep -Fq 'host: not forwarded (run: dvm ai expose ai)' "$TMP/ai-host-not-forwarded.out"
+"$TMP/local-bin/dvm-test" ai expose >"$TMP/ai-expose.out" 2>"$TMP/ai-expose.err"
+grep -Fq 'host: http://127.0.0.1:18080' "$TMP/ai-expose.out"
+grep -Fq 'edit testvm-ai' "$LOG"
+
+cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
+DVM_PREFIX="testvm"
+DVM_GUEST_HOME="$VM_HOME_ROOT/testvm-ai"
+DVM_CODE_DIR="$VM_HOME_ROOT/testvm-ai/code"
+DVM_PACKAGES="git openssh-clients gpg"
+DVM_SETUP_SCRIPTS=" "
+DVM_GPG_DIR="$DVM_STATE/gpg"
+DVM_AI_NAME="ai"
+DVM_AI_MODELS_DIR="$VM_HOME_ROOT/testvm-ai/models"
+DVM_AI_CURRENT_MODEL="$VM_HOME_ROOT/testvm-ai/models/current.gguf"
+DVM_AI_SYSTEMD_DIR="$TMP/systemd"
+DVM_AI_PORT="18080"
+DVM_AI_HOST="0.0.0.0"
+DVM_AI_DEFAULT_MODEL="tiny"
+DVM_AI_MODELS="tiny=https://example.test/tiny.gguf"
+CONFIG
+"$TMP/local-bin/dvm-test" ai host >"$TMP/ai-host-exposed.out"
+grep -Fq 'host: http://127.0.0.1:18080' "$TMP/ai-host-exposed.out"
+grep -Fq 'guest-network: http://192.0.2.15:18080' "$TMP/ai-host-exposed.out"
+"$TMP/local-bin/dvm-test" list --long >"$TMP/ai-list-long-exposed.out"
+grep -Fq 'http://127.0.0.1:18080' "$TMP/ai-list-long-exposed.out"
+mv "$DVM_CONFIG/config.safe.sh" "$DVM_CONFIG/config.sh"
 
 cp "$DVM_CONFIG/config.sh" "$DVM_CONFIG/config.safe.sh"
 cat >"$DVM_CONFIG/config.sh" <<CONFIG

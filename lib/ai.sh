@@ -11,6 +11,7 @@ usage:
   dvm ai use [--vm name] <model>
   dvm ai status [name]
   dvm ai host [name]
+  dvm ai expose [name]
 HELP
 }
 
@@ -406,11 +407,9 @@ port="$1"
 listen_host="$2"
 guest_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 
-printf 'vm: http://127.0.0.1:%s\n' "$port"
+printf 'inside-vm: http://127.0.0.1:%s\n' "$port"
 if [ "$listen_host" = "0.0.0.0" ] && [ -n "$guest_ip" ]; then
-	printf 'guest: http://%s:%s\n' "$guest_ip" "$port"
-else
-	printf 'host: not exposed (DVM_AI_HOST=%s)\n' "$listen_host"
+	printf 'guest-network: http://%s:%s\n' "$guest_ip" "$port"
 fi
 REMOTE
 }
@@ -431,6 +430,42 @@ dvm_ai_start_vm() {
 	vm="$(dvm_vm_name "$name")"
 	limactl start "$vm" >/dev/null
 	printf '%s\n' "$vm"
+}
+
+dvm_ai_port_forward_spec() {
+	printf '%s:%s,static=true\n' "$DVM_AI_PORT" "$DVM_AI_PORT"
+}
+
+dvm_ai_port_forward_set_expr() {
+	printf '.portForwards = ((.portForwards // []) | map(select((.guestPort != %s) or (.hostPort != %s))) + [{"guestPort":%s,"hostPort":%s,"hostIP":"127.0.0.1"}])\n' \
+		"$DVM_AI_PORT" "$DVM_AI_PORT" "$DVM_AI_PORT" "$DVM_AI_PORT"
+}
+
+dvm_ai_vm_dir() {
+	local dir row_status row_vm vm
+	vm="$1"
+	while IFS=$'\t' read -r row_vm row_status dir _; do
+		[ "$row_vm" = "$vm" ] || continue
+		printf '%s\n' "${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
+		return 0
+	done < <(dvm_lima_list_rows)
+	printf '%s\n' "${LIMA_HOME:-$HOME/.lima}/$vm"
+}
+
+dvm_ai_forward_configured() {
+	local dir vm
+	vm="$1"
+	dir="$(dvm_ai_vm_dir "$vm")"
+	dvm_vm_has_port_forward_dir "$dir" "$DVM_AI_PORT" "$DVM_AI_PORT"
+}
+
+dvm_ai_configure_forward() {
+	local expr vm
+	vm="$1"
+	expr="$(dvm_ai_port_forward_set_expr)"
+	# Lima refuses to edit a running instance, so apply this as a short restart.
+	limactl stop "$vm" >/dev/null 2>&1 || true
+	limactl edit --tty=false --set "$expr" --start "$vm" >/dev/null
 }
 
 dvm_ai_setup() {
@@ -574,16 +609,42 @@ dvm_ai_host() {
 	vm="$(dvm_ai_start_vm "$name")"
 	remote="$(dvm_ai_host_remote)"
 	printf 'vm: %s\n' "$name"
+	if dvm_ai_forward_configured "$vm"; then
+		printf 'host: http://127.0.0.1:%s\n' "$DVM_AI_PORT"
+	else
+		printf 'host: not forwarded (run: dvm ai expose %s)\n' "$name"
+	fi
 	limactl shell "$vm" bash -c "$remote" dvm-ai-host "$DVM_AI_PORT" "$DVM_AI_HOST"
 }
 
+dvm_ai_expose() {
+	local name vm
+	dvm_load_config
+	name="$(dvm_ai_vm_name_arg "usage: dvm ai expose [name]" "$@")"
+	dvm_ai_validate_config
+	dvm_require limactl
+	vm="$(dvm_vm_name "$name")"
+	if ! limactl list --format '{{.Name}}' 2>/dev/null | grep -Fxq "$vm"; then
+		dvm_die "AI VM not found: $name; run dvm ai create"
+	fi
+	if ! dvm_ai_forward_configured "$vm"; then
+		dvm_log "configuring localhost AI port forward for $vm"
+		dvm_ai_configure_forward "$vm"
+	fi
+	printf 'host: http://127.0.0.1:%s\n' "$DVM_AI_PORT"
+}
+
 dvm_ai_create() {
-	local name default_model
+	local default_model name vm
 	dvm_load_config
 	name="$(dvm_ai_vm_name_arg "usage: dvm ai create [name]" "$@")"
 	dvm_ai_validate_config
+	vm="$(dvm_vm_name "$name")"
 
-	dvm_create "$name"
+	DVM_CREATE_PORT_FORWARDS="$(dvm_ai_port_forward_spec)" dvm_create "$name"
+	if ! dvm_ai_forward_configured "$vm"; then
+		dvm_ai_configure_forward "$vm"
+	fi
 	dvm_ai_setup "$name"
 
 	if [ -n "$DVM_AI_MODELS" ]; then
@@ -610,6 +671,7 @@ dvm_ai_cmd() {
 	use | switch) dvm_ai_use "$@" ;;
 	status) dvm_ai_status "$@" ;;
 	host | url) dvm_ai_host "$@" ;;
+	expose | forward) dvm_ai_expose "$@" ;;
 	help | -h | --help) dvm_ai_usage ;;
 	*)
 		dvm_ai_usage

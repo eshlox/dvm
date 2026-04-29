@@ -43,7 +43,8 @@ dvm ai create
 
 This creates `dvm-ai`, installs Fedora's `llama-cpp` package, writes a systemd service
 for `llama-server`, downloads configured models, points `current.gguf` at
-`DVM_AI_DEFAULT_MODEL`, and restarts the service.
+`DVM_AI_DEFAULT_MODEL`, configures a Lima localhost port forward, and restarts the
+service.
 
 Use a non-default VM name:
 
@@ -81,9 +82,19 @@ Print host URLs:
 dvm ai host
 ```
 
-By default llama-server listens on `127.0.0.1` inside the VM. Set
-`DVM_AI_HOST="0.0.0.0"` only if you intentionally want the service reachable on the
-guest VM network address.
+Open the `host:` URL, normally `http://127.0.0.1:8080`. DVM uses a static Lima
+localhost port forward so the browser talks to the host loopback address, not the
+guest's `192.168.5.15` address.
+
+Older AI VMs created before this forwarding rule can be fixed once:
+
+```bash
+dvm ai expose
+```
+
+By default llama-server listens on `127.0.0.1` inside the VM. Keep that default unless
+you intentionally want to expose the service on the VM network with
+`DVM_AI_HOST="0.0.0.0"`.
 
 Reapply service configuration:
 

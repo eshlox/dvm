@@ -84,11 +84,12 @@ dvm setup-all
 dvm enter <name>
 dvm ssh <name> [command...]
 dvm key <name>
-dvm list
+dvm list [--long]
 dvm rm <name> [--force]
-dvm ai create|setup|pull|models|use|status|host ...
+dvm ai create|setup|pull|models|use|status|host|expose ...
 dvm agent setup|install|<name> ...
 dvm gpg create|install|forget|revoke ...
+dvm config path|print-defaults|print-template|diff
 dvm doctor
 dvm completion zsh
 ```

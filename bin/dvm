@@ -46,11 +46,12 @@ usage:
   dvm enter <name>
   dvm ssh <name> [command...]
   dvm key <name>
-  dvm list
+  dvm list [--long]
   dvm rm <name> [--force]
-  dvm ai create|setup|pull|models|use|status|host ...
+  dvm ai create|setup|pull|models|use|status|host|expose ...
   dvm agent setup|install|<name> ...
   dvm gpg create|install|forget|revoke ...
+  dvm config path|print-defaults|print-template|diff
   dvm doctor
   dvm completion zsh
 
@@ -72,11 +73,12 @@ dvm_main() {
 	enter) dvm_enter "$@" ;;
 	ssh) dvm_ssh "$@" ;;
 	key) dvm_key "$@" ;;
-	list | ls) dvm_list_names "$@" ;;
+	list | ls) dvm_list "$@" ;;
 	rm | delete) dvm_rm "$@" ;;
 	ai) dvm_ai_cmd "$@" ;;
 	agent) dvm_agent_cmd "$@" ;;
 	gpg) dvm_gpg_cmd "$@" ;;
+	config) dvm_config_cmd "$@" ;;
 	doctor) dvm_doctor "$@" ;;
 	completion) dvm_completion "$@" ;;
 	help | -h | --help) dvm_help ;;

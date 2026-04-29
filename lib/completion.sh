@@ -22,6 +22,7 @@ _dvm() {
     'ai:manage a llama.cpp VM'
     'agent:run AI tools as the restricted agent user'
     'gpg:manage VM GPG signing subkeys'
+    'config:inspect DVM config'
     'doctor:check local requirements'
     'completion:print shell completion'
     'help:show help'
@@ -38,10 +39,13 @@ _dvm() {
     enter|setup|ssh|key|rm)
       _describe -t vms 'VM' vms
       ;;
+    list|ls)
+      _values 'list option' --long -l --status
+      ;;
     ai)
       if (( CURRENT == 3 )); then
-        _values 'ai command' create setup pull models use status host
-      elif [[ "$words[3]" == (create|setup|models|status|host) ]]; then
+        _values 'ai command' create setup pull models use status host expose
+      elif [[ "$words[3]" == (create|setup|models|status|host|expose) ]]; then
         _describe -t vms 'VM' vms
       else
         _describe -t vms 'VM' vms
@@ -65,6 +69,9 @@ _dvm() {
         _describe -t vms 'VM' vms
         _values 'gpg option' --expire --signing-key
       fi
+      ;;
+    config)
+      _values 'config command' path print-defaults defaults print-template template diff
       ;;
     completion)
       _values 'shell' bash zsh

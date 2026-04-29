@@ -25,14 +25,165 @@ dvm_list_names() {
 	done < <(limactl list --format '{{.Name}}' 2>/dev/null | sort)
 }
 
+dvm_lima_list_rows() {
+	local format
+	format="$(printf '{{.Name}}\t{{.Status}}\t{{.Dir}}')"
+	if limactl list --format "$format" 2>/dev/null; then
+		return 0
+	fi
+	format="$(printf '{{.Name}}\t{{.Status}}')"
+	if limactl list --format "$format" 2>/dev/null; then
+		return 0
+	fi
+	limactl list --format '{{.Name}}' 2>/dev/null
+}
+
+dvm_vm_dir_size() {
+	local dir size
+	dir="$1"
+	size="-"
+	if [ -d "$dir" ]; then
+		size="$(du -sh "$dir" 2>/dev/null | awk '{print $1}')" || size="-"
+	fi
+	printf '%s\n' "${size:-"-"}"
+}
+
+dvm_vm_ram_usage() {
+	local vm
+	vm="$1"
+	limactl shell "$vm" bash -lc '
+		if command -v free >/dev/null 2>&1; then
+			free -h | awk '"'"'$1 == "Mem:" { print $3 "/" $2; exit }'"'"'
+		else
+			printf "-\n"
+		fi
+	' 2>/dev/null || printf -- '-\n'
+}
+
+dvm_vm_listening_ports() {
+	local vm
+	vm="$1"
+	limactl shell "$vm" bash -lc '
+		if ! command -v ss >/dev/null 2>&1; then
+			printf "-\n"
+			exit 0
+		fi
+		ports="$(
+			ss -H -tln 2>/dev/null |
+				awk '"'"'{
+					addr = $4
+					if (addr ~ /\]:[0-9]+$/) {
+						sub(/^.*\]:/, "", addr)
+					} else {
+						sub(/^.*:/, "", addr)
+					}
+					if (addr ~ /^[0-9]+$/) {
+						print addr
+					}
+				}'"'"' |
+				sort -n -u |
+				paste -sd, -
+		)"
+		printf "%s\n" "${ports:-"-"}"
+	' 2>/dev/null || printf -- '-\n'
+}
+
+dvm_vm_has_port_forward_dir() {
+	local dir file guest_port host_port
+	dir="$1"
+	host_port="$2"
+	guest_port="$3"
+	file="$dir/lima.yaml"
+	[ -f "$file" ] || return 1
+	grep -Eq "hostPort:[[:space:]]*\"?$host_port\"?([[:space:]]*(#.*)?)?$" "$file" &&
+		grep -Eq "guestPort:[[:space:]]*\"?$guest_port\"?([[:space:]]*(#.*)?)?$" "$file"
+}
+
+dvm_vm_ai_url() {
+	local dir short status vm
+	vm="$1"
+	short="$2"
+	status="$3"
+	dir="$4"
+	if [ "$short" != "$DVM_AI_NAME" ]; then
+		printf -- '-\n'
+		return 0
+	fi
+	case "$status" in
+	Running | running) ;;
+	*)
+		printf -- '-\n'
+		return 0
+		;;
+	esac
+	if dvm_vm_has_port_forward_dir "$dir" "$DVM_AI_PORT" "$DVM_AI_PORT"; then
+		printf 'http://127.0.0.1:%s\n' "$DVM_AI_PORT"
+	else
+		printf 'run dvm ai expose\n'
+	fi
+}
+
+dvm_list_long() {
+	local ai_url dir ports ram short size status vm
+	printf '%-18s %-12s %-8s %-13s %-18s %-24s %s\n' \
+		"NAME" "STATUS" "SIZE" "RAM" "PORTS" "AI_URL" "DIR"
+	while IFS=$'\t' read -r vm status dir _; do
+		[ -n "$vm" ] || continue
+		short="$(dvm_vm_short_name "$vm")" || continue
+		status="${status:-unknown}"
+		dir="${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
+		size="$(dvm_vm_dir_size "$dir")"
+		ram="-"
+		ports="-"
+		case "$status" in
+		Running | running)
+			ram="$(dvm_vm_ram_usage "$vm")"
+			ports="$(dvm_vm_listening_ports "$vm")"
+			;;
+		esac
+		ai_url="$(dvm_vm_ai_url "$vm" "$short" "$status" "$dir")"
+		printf '%-18s %-12s %-8s %-13s %-18s %-24s %s\n' \
+			"$short" "$status" "$size" "$ram" "$ports" "$ai_url" "$dir"
+	done < <(dvm_lima_list_rows | sort)
+}
+
+dvm_list() {
+	local long
+	long="0"
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		-l | --long | --status) long="1" ;;
+		*) dvm_die "usage: dvm list [--long]" ;;
+		esac
+		shift
+	done
+	dvm_load_config
+	dvm_require limactl
+	if [ "$long" = "1" ]; then
+		dvm_list_long
+	else
+		dvm_list_names
+	fi
+}
+
 dvm_create() {
-	local name vm
+	local name port_forward vm
+	local -a port_forward_args
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm new <name>"
 	name="$1"
 	dvm_validate_name "$name"
 	dvm_load_config
 	dvm_require limactl
 	vm="$(dvm_vm_name "$name")"
+	port_forward_args=()
+	for port_forward in ${DVM_CREATE_PORT_FORWARDS:-}; do
+		case "$port_forward" in
+		'' | *[!A-Za-z0-9.,:=_-]*)
+			dvm_die "invalid port forward: $port_forward"
+			;;
+		esac
+		port_forward_args+=(--port-forward "$port_forward")
+	done
 
 	if limactl list --format '{{.Name}}' 2>/dev/null | grep -Fxq "$vm"; then
 		dvm_log "VM already exists: $vm"
@@ -52,6 +203,7 @@ dvm_create() {
 			--set ".mounts=[]" \
 			--set ".networks=[{\"vzNAT\":true}]" \
 			--set ".containerd.system=false | .containerd.user=false" \
+			"${port_forward_args[@]}" \
 			"$DVM_TEMPLATE"
 	fi
 
