@@ -139,10 +139,65 @@ For macOS host versus Fedora VM differences, store a local role and branch in te
 {{ end }}
 ```
 
+If you want DVM to provide those chezmoi values during VM setup, create
+`~/.config/chezmoi/chezmoi.toml` from `~/.config/dvm/private.sh` before running
+`chezmoi apply`.
+
+Host private file:
+
+```bash
+# ~/.config/dvm/private.sh
+DVM_GIT_NAME="Your Name"
+DVM_GIT_EMAIL="you@example.com"
+DVM_GIT_SIGNING_KEY="ABCDEF1234567890"
+```
+
+Recipe:
+
+```bash
+# ~/.config/dvm/recipes/dotfiles.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/private.sh}"
+: "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/private.sh}"
+: "${DVM_GIT_SIGNING_KEY:=}"
+
+sudo dnf5 install -y chezmoi
+
+mkdir -p "$HOME/.config/chezmoi"
+cat >"$HOME/.config/chezmoi/chezmoi.toml" <<CHEZMOI
+[data]
+role = "vm"
+name = "$DVM_GIT_NAME"
+email = "$DVM_GIT_EMAIL"
+signingKey = "$DVM_GIT_SIGNING_KEY"
+CHEZMOI
+chmod 600 "$HOME/.config/chezmoi/chezmoi.toml"
+
+if [ ! -d "$HOME/.local/share/chezmoi" ]; then
+	chezmoi init git@github.com:YOUR_USER/dotfiles.git
+fi
+chezmoi apply
+```
+
+Activate it:
+
+```bash
+# ~/.config/dvm/config.sh
+[ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS dotfiles.sh"
+```
+
 ### Private Git Config Recipe
 
 Use this when your public dotfiles include shared Git config, but private values such
-as name, email, or signing key must stay out of the repository.
+as name, email, or signing key must stay out of the repository, and chezmoi does not
+template those values itself.
+
+Do not use this as the only private-data step if your chezmoi templates contain
+`{{ .name }}`, `{{ .email }}`, or `{{ .signingKey }}`. In that case, use the chezmoi
+config recipe above so `chezmoi apply` has the data it needs.
 
 There are three files:
 
