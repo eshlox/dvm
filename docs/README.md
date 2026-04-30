@@ -1,5 +1,6 @@
 # Docs
 
+- [Install](install.md)
 - [Dependencies](dependencies.md)
 - [Config](config.md)
 - [Create VMs](create.md)
