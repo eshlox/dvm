@@ -44,3 +44,52 @@ These keys live inside the VM. They are not copied from the host.
 
 The generated GPG key is passwordless. Do not export its secret key unless you are
 comfortable losing the VM-only boundary.
+
+## Git Signing Config
+
+Do not hardcode `user.signingkey` in shared dotfiles when each VM has its own GPG key.
+Split Git config into shared and local files.
+
+Tracked `~/.gitconfig`:
+
+```ini
+[include]
+	path = ~/.config/git/common.gitconfig
+[include]
+	path = ~/.config/git/local.gitconfig
+```
+
+Tracked `~/.config/git/common.gitconfig`:
+
+```ini
+[user]
+	name = Your Name
+	email = you@example.com
+
+[commit]
+	gpgsign = true
+
+[gpg]
+	format = openpgp
+```
+
+Untracked `~/.config/git/local.gitconfig` inside each VM:
+
+```ini
+[user]
+	signingkey = ABCDEF1234567890
+```
+
+Get the VM fingerprint:
+
+```bash
+dvm gpg-key app
+```
+
+Then put that fingerprint in the VM-local `local.gitconfig`.
+
+For bare-repo dotfiles, exclude the local file from the dotfiles repo:
+
+```text
+.config/git/local.gitconfig
+```

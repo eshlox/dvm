@@ -105,6 +105,28 @@ If your dotfiles repo needs per-machine data, configure that in chezmoi itself.
 DVM should stay workflow-neutral. Dotfiles are user setup, so configure them in
 `~/.config/dvm/config.sh`, `~/.config/dvm/recipes/`, or one VM's config.
 
+## Git Signing
+
+Do not track a VM-specific Git `user.signingkey` in shared dotfiles. Track common Git
+settings, then include an untracked VM-local file for the signing key.
+
+Tracked:
+
+```ini
+[include]
+	path = ~/.config/git/common.gitconfig
+[include]
+	path = ~/.config/git/local.gitconfig
+```
+
+Untracked in each VM:
+
+```text
+~/.config/git/local.gitconfig
+```
+
+See [SSH and GPG](keys.md) for the full example.
+
 References:
 
 - https://www.chezmoi.io/
