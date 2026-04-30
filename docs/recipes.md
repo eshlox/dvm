@@ -40,7 +40,7 @@ Use shared recipes for packages that need extra repository setup:
 set -euo pipefail
 
 sudo dnf5 install -y --nogpgcheck \
-	--repofrompath "terra,https://repos.fyralabs.com/terra$releasever" \
+	--repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' \
 	terra-release
 sudo dnf5 install -y lazygit
 ```

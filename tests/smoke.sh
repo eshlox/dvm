@@ -265,6 +265,7 @@ CONFIG
 mkdir -p "$DVM_CONFIG/recipes" "$TMP/dotfiles"
 printf 'set -o vi\n' >"$TMP/dotfiles/bashrc"
 printf 'secret\n' >"$TMP/dotfiles/.env"
+printf 'private\n' >"$TMP/dotfiles/private.sh"
 cat >"$DVM_CONFIG/recipes/app.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -295,6 +296,7 @@ grep -Fxq 'custom:recipe-env' "$VM_HOME_ROOT/dvm-app/home/custom-ran"
 grep -Fxq 'inline:app' "$VM_HOME_ROOT/dvm-app/home/inline-ran"
 [ -f "$VM_HOME_ROOT/dvm-app/home/.dotfiles/bashrc" ]
 [ ! -e "$VM_HOME_ROOT/dvm-app/home/.dotfiles/.env" ]
+[ ! -e "$VM_HOME_ROOT/dvm-app/home/.dotfiles/private.sh" ]
 
 "$TMP/local-bin/dvm-test" list >"$TMP/list.out"
 grep -Fq app "$TMP/list.out"

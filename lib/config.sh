@@ -29,7 +29,7 @@ dvm_source_defaults() {
 	DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-}"
 	DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
 	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-}"
-	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets .aws .docker .kube .netrc .pypirc .npmrc .config/gh .config/op}"
+	DVM_DOTFILES_EXCLUDES="${DVM_DOTFILES_EXCLUDES:-.git .ssh .gnupg .env secrets private.sh .aws .docker .kube .netrc .pypirc .npmrc .config/gh .config/op}"
 	DVM_VM_CONFIG_DIR="${DVM_VM_CONFIG_DIR:-$DVM_CONFIG/vms}"
 	DVM_RECIPE_DIR="${DVM_RECIPE_DIR:-$DVM_CONFIG/recipes}"
 	if [ -f "$DVM_CONFIG/config.sh" ]; then
@@ -122,6 +122,9 @@ dvm_global_config_template() {
 # DVM_MEMORY="4GiB"
 # DVM_DISK="40GiB"
 # DVM_NETWORK="user-v2"
+
+# Private local values. Do not commit this file.
+# [ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
 
 # Defaults for most development VMs:
 # DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
