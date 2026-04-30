@@ -20,7 +20,8 @@ DVM_SETUP_SCRIPTS="common.sh"
 DVM excludes common secret paths by default, including `private.sh`, `.env`, `.ssh`,
 `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.pypirc`, `.npmrc`, `.config/gh`, and
 `.config/op`. Review `DVM_DOTFILES_DIR` before enabling sync because DVM cannot know
-every private file name you use.
+every private file name you use. `private.sh` is excluded as a guardrail, not as the
+recommended DVM config workflow.
 
 `~/.config/dvm/recipes/common.sh`:
 
@@ -111,7 +112,7 @@ Private data option A: keep values out of the repo in the local chezmoi config:
 role = "vm"
 name = "Your Name"
 email = "you@example.com"
-signingKey = "ABCDEF1234567890"
+signingKey = ""
 ```
 
 That file is local to the machine or VM, usually:
@@ -131,6 +132,10 @@ Use templates in the public repo:
 {{- end }}
 ```
 
+`signingKey` can stay empty until you generate a VM-local GPG key with
+`dvm gpg-key <name>`. After that, put the fingerprint into the VM's local chezmoi
+config and run `dvm setup <name>` again.
+
 For macOS host versus Fedora VM differences, store a local role and branch in templates:
 
 ```gotemplate
@@ -140,16 +145,15 @@ For macOS host versus Fedora VM differences, store a local role and branch in te
 ```
 
 If you want DVM to provide those chezmoi values during VM setup, create
-`~/.config/chezmoi/chezmoi.toml` from `~/.config/dvm/private.sh` before running
-`chezmoi apply`.
+`~/.config/chezmoi/chezmoi.toml` from local DVM config before running `chezmoi apply`.
 
-Host private file:
+Local DVM config:
 
 ```bash
-# ~/.config/dvm/private.sh
+# ~/.config/dvm/config.sh
 DVM_GIT_NAME="Your Name"
 DVM_GIT_EMAIL="you@example.com"
-DVM_GIT_SIGNING_KEY="ABCDEF1234567890"
+DVM_GIT_SIGNING_KEY=""
 ```
 
 Recipe:
@@ -159,8 +163,8 @@ Recipe:
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/private.sh}"
-: "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/private.sh}"
+: "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/config.sh}"
+: "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/config.sh}"
 : "${DVM_GIT_SIGNING_KEY:=}"
 
 sudo dnf5 install -y chezmoi
@@ -185,7 +189,6 @@ Activate it:
 
 ```bash
 # ~/.config/dvm/config.sh
-[ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS dotfiles.sh"
 ```
 
@@ -199,35 +202,23 @@ Do not use this as the only private-data step if your chezmoi templates contain
 `{{ .name }}`, `{{ .email }}`, or `{{ .signingKey }}`. In that case, use the chezmoi
 config recipe above so `chezmoi apply` has the data it needs.
 
-There are three files:
+There are two files plus one activation line:
 
-- `~/.config/dvm/private.sh`: private host values, never committed
+- `~/.config/dvm/config.sh` or `~/.config/dvm/vms/<name>.sh`: private local DVM values and activation
 - `~/.config/dvm/recipes/git-local.sh`: recipe that writes VM-local Git config
-- `~/.config/dvm/config.sh` or `~/.config/dvm/vms/<name>.sh`: activation
 
-1. Source the private file from DVM global config:
+1. Put private local values in DVM config:
 
 ```bash
 # ~/.config/dvm/config.sh
-[ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
-```
-
-2. Create the private host file:
-
-```bash
-# ~/.config/dvm/private.sh
 DVM_GIT_NAME="Your Name"
 DVM_GIT_EMAIL="you@example.com"
-DVM_GIT_SIGNING_KEY="ABCDEF1234567890"
+DVM_GIT_SIGNING_KEY=""
 ```
 
-Lock it down:
+`DVM_GIT_SIGNING_KEY` can stay empty until you generate a VM-local GPG key.
 
-```bash
-chmod 600 ~/.config/dvm/private.sh
-```
-
-3. Put the recipe here:
+2. Put the recipe here:
 
 ```text
 ~/.config/dvm/recipes/git-local.sh
@@ -239,8 +230,8 @@ Recipe contents:
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/private.sh}"
-: "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/private.sh}"
+: "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/config.sh}"
+: "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/config.sh}"
 : "${DVM_GIT_SIGNING_KEY:=}"
 
 mkdir -p "$HOME/.config/git"
@@ -259,7 +250,7 @@ GITCONFIG
 chmod 600 "$HOME/.config/git/local.gitconfig"
 ```
 
-4. Activate the recipe globally if most VMs should get it:
+3. Activate the recipe globally if most VMs should get it:
 
 ```bash
 # ~/.config/dvm/config.sh
@@ -273,7 +264,7 @@ Or activate it only for one VM:
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"
 ```
 
-5. Run setup:
+4. Run setup:
 
 ```bash
 dvm setup app
@@ -288,9 +279,8 @@ Your tracked Git config should include the generated local file:
 	path = ~/.config/git/local.gitconfig
 ```
 
-Do not commit `~/.config/dvm/private.sh`. DVM excludes `private.sh` from copied
-dotfiles snapshots by default, but your dotfiles repository should also ignore it if
-you keep a file with that name there.
+Do not publish `~/.config/dvm` as-is. It is local machine state, not a public dotfiles
+source.
 
 Do not store SSH keys, GPG private keys, tokens, real signing keys, or secret-manager
 config in a public chezmoi repo.

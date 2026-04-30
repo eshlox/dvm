@@ -47,10 +47,10 @@ persistent read path back to the host.
 The default dotfiles exclude list skips common credential paths, but it cannot know
 every private file. Review `DVM_DOTFILES_DIR` before enabling dotfiles sync.
 
-Keep host-local private config in `~/.config/dvm/private.sh` and do not commit it.
-DVM excludes `private.sh` from copied dotfiles snapshots by default. This prevents
-accidental sync, but it is not a secret manager. Any value written into a VM by setup
-is readable by code running in that VM.
+Treat `~/.config/dvm` as private local machine state. It may contain project names,
+tunnel names, email, package choices, and other setup details. Do not publish it as-is
+in a public dotfiles repo. Any value written into a VM by setup is readable by code
+running in that VM.
 
 For GitHub, prefer repository deploy keys over personal account SSH keys when you want
 repo-level isolation. Personal account SSH keys are account-scoped; multiple VM keys on

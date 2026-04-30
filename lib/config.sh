@@ -123,8 +123,8 @@ dvm_global_config_template() {
 # DVM_DISK="40GiB"
 # DVM_NETWORK="user-v2"
 
-# Private local values. Do not commit this file.
-# [ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
+# Keep ~/.config/dvm local. It can contain project names, tunnel names, email,
+# setup choices, and other machine-specific values.
 
 # Defaults for most development VMs:
 # DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
