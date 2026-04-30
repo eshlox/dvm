@@ -93,3 +93,9 @@ For bare-repo dotfiles, exclude the local file from the dotfiles repo:
 ```text
 .config/git/local.gitconfig
 ```
+
+To automate this from DVM, put private host values in `~/.config/dvm/private.sh`, put
+the writer script in `~/.config/dvm/recipes/git-local.sh`, and activate it with
+`DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`.
+
+See [Dotfiles](dotfiles.md#private-git-config-recipe) for the exact files and commands.
