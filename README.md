@@ -6,6 +6,9 @@ DVM is a small Bash wrapper around Lima for creating disposable Fedora developme
 on macOS. It is meant to keep project code, package scripts, AI tools, language
 runtimes, SSH/GPG keys, and random dev dependencies away from the host.
 
+DVM targets macOS today. The same VM-isolation idea can make sense on Linux, but Linux
+support is not implemented or tested.
+
 It is intentionally not a full VM platform, package manager, dotfiles framework,
 secret manager, or hard sandbox beyond what Lima/macOS virtualization provide. The core
 stays small. Most of the project is docs and examples for wiring your own per-VM setup.

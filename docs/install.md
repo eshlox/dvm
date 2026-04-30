@@ -5,6 +5,8 @@ symlink to `bin/dvm`, so the checkout remains the DVM core.
 
 ## Requirements
 
+DVM currently targets macOS hosts.
+
 ```bash
 brew install lima
 ```
