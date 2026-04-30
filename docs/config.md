@@ -57,6 +57,10 @@ Recipes receive `DVM_*` values, so this is useful for generating VM-local config
 without putting names, emails, signing keys, or tokens into a public recipe. It is not
 a sandbox. If a recipe writes a value into the VM, code in that VM can read it.
 
+Example use: put a Git identity recipe in `~/.config/dvm/recipes/git-local.sh`, then
+activate it with `DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`. See
+[Dotfiles](dotfiles.md#private-git-config-recipe) for the full copy/paste example.
+
 Put shared setup in:
 
 ```text
