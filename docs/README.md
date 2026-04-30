@@ -3,6 +3,7 @@
 - [Dependencies](dependencies.md)
 - [Config](config.md)
 - [Create VMs](create.md)
+- [Dotfiles](dotfiles.md)
 - [Recipes](recipes.md)
 - [Extending DVM](extending.md)
 - [Llama](llama.md)

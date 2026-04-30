@@ -30,6 +30,9 @@ For shared setup used by most VMs, put a recipe such as `common.sh` in
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
+Dotfiles managers such as chezmoi or yadm should also live in user recipes, not DVM
+core. See [Dotfiles](dotfiles.md).
+
 Use shared recipes for packages that need extra repository setup:
 
 ```bash

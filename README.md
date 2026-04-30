@@ -27,7 +27,6 @@ Example:
 ```bash
 DVM_PACKAGES="git ripgrep jq helix"
 DVM_PORTS="3000:3000"
-DVM_DOTFILES_DIR="$HOME/.dotfiles"
 
 dvm_vm_setup() {
 	mkdir -p "$DVM_CODE_DIR"
@@ -57,6 +56,7 @@ Docs:
 - [Dependencies](docs/dependencies.md)
 - [Config](docs/config.md)
 - [Create VMs](docs/create.md)
+- [Dotfiles](docs/dotfiles.md)
 - [Recipes](docs/recipes.md)
 - [Extending DVM](docs/extending.md)
 - [Llama](docs/llama.md)
