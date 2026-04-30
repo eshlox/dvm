@@ -1,6 +1,18 @@
 # Dependencies
 
-## Host
+## Host Support
+
+DVM currently targets macOS hosts.
+
+Linux support is conceptually possible and can still make sense when you want a VM
+boundary instead of container isolation from Podman, toolbox, distrobox, or similar
+tools. It is not implemented or tested today because DVM currently creates Lima VMs
+with macOS `vmType: vz`.
+
+Windows is not supported. Use WSL2, Dev Containers, Hyper-V, or a dedicated Linux VM
+instead.
+
+## Host Dependencies
 
 Required:
 
