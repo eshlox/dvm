@@ -64,6 +64,7 @@ dvm rm <name> [--force]
 
 Docs:
 
+- [Install](docs/install.md)
 - [Dependencies](docs/dependencies.md)
 - [Config](docs/config.md)
 - [Create VMs](docs/create.md)
