@@ -31,31 +31,26 @@ DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
-Keep private local values in a separate file:
+Treat `~/.config/dvm` as private local machine state. It can contain project names,
+tunnel names, package choices, email, and other setup details that are not necessarily
+secrets but still do not belong in a public repo.
+
+If you use public dotfiles, do not publish `~/.config/dvm` directly. Keep reusable
+examples in your dotfiles docs or snippets, then keep the real DVM config local.
+
+It is fine to keep non-secret identity values here:
 
 ```bash
 # ~/.config/dvm/config.sh
-[ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
-```
-
-Example private file:
-
-```bash
-# ~/.config/dvm/private.sh
 DVM_GIT_NAME="Your Name"
 DVM_GIT_EMAIL="you@example.com"
-DVM_GIT_SIGNING_KEY="ABCDEF1234567890"
-```
-
-Do not commit `private.sh`. Keep it local and lock it down:
-
-```bash
-chmod 600 ~/.config/dvm/private.sh
+DVM_GIT_SIGNING_KEY=""
 ```
 
 Recipes receive `DVM_*` values, so this is useful for generating VM-local config
-without putting names, emails, signing keys, or tokens into a public recipe. It is not
-a sandbox. If a recipe writes a value into the VM, code in that VM can read it.
+without putting names, emails, signing keys, or tokens into a public recipe. Leave
+`DVM_GIT_SIGNING_KEY` empty until you generate a VM GPG key. It is not a sandbox. If a
+recipe writes a value into the VM, code in that VM can read it.
 
 Example use: put a Git identity recipe in `~/.config/dvm/recipes/git-local.sh`, then
 activate it with `DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`. See

@@ -88,14 +88,37 @@ dvm gpg-key app
 
 Then put that fingerprint in the VM-local `local.gitconfig`.
 
+If you do not have a GPG key yet, leave the signing key out at first. Generate it
+later, then rerun setup:
+
+```bash
+dvm gpg-key app
+```
+
+If you automate Git config from DVM, keep the value empty until then:
+
+```bash
+# ~/.config/dvm/config.sh or ~/.config/dvm/vms/app.sh
+DVM_GIT_SIGNING_KEY=""
+```
+
+After `dvm gpg-key app` prints the fingerprint, set `DVM_GIT_SIGNING_KEY` and run:
+
+```bash
+dvm setup app
+```
+
+If each VM has a different GPG key, put `DVM_GIT_SIGNING_KEY` in that VM's config
+instead of global `~/.config/dvm/config.sh`.
+
 For bare-repo dotfiles, exclude the local file from the dotfiles repo:
 
 ```text
 .config/git/local.gitconfig
 ```
 
-To automate this from DVM, put private host values in `~/.config/dvm/private.sh`, put
-the writer script in `~/.config/dvm/recipes/git-local.sh`, and activate it with
-`DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`.
+To automate this from DVM, put local values in `~/.config/dvm/config.sh` or the VM's
+config, put the writer script in `~/.config/dvm/recipes/git-local.sh`, and activate it
+with `DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`.
 
 See [Dotfiles](dotfiles.md#private-git-config-recipe) for the exact files and commands.
