@@ -28,7 +28,6 @@ DVM_DISK="40GiB"
 DVM_NETWORK="user-v2"
 
 DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
-DVM_DOTFILES_DIR="$HOME/.dotfiles"
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
@@ -40,6 +39,9 @@ Put shared setup in:
 
 Use `DVM_PACKAGES` for simple Fedora packages. Use `common.sh` for anything that needs
 extra commands, external repos, service setup, or custom logic.
+
+Dotfiles are optional and workflow-specific. See [Dotfiles](dotfiles.md) for plain
+snapshot, bare repo, yadm, and chezmoi examples.
 
 Example `~/.config/dvm/recipes/common.sh`:
 
@@ -94,7 +96,6 @@ Disable global setup for special VMs like `ai` or `cloudflared`:
 
 ```bash
 DVM_PACKAGES=""
-DVM_DOTFILES_DIR=""
 DVM_SETUP_SCRIPTS="llama.sh"
 ```
 

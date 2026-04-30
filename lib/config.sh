@@ -125,19 +125,19 @@ dvm_global_config_template() {
 
 # Defaults for most development VMs:
 # DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
-# DVM_DOTFILES_DIR="$HOME/.dotfiles"
 # DVM_SETUP_SCRIPTS="common.sh"
 
 # Put shared recipes in:
 #   ~/.config/dvm/recipes/common.sh
 # Use recipes for tools that need extra repos or custom commands, like lazygit from Terra.
+# Dotfiles are optional. See docs/dotfiles.md for plain snapshot, bare repo, yadm,
+# and chezmoi examples.
 #
 # Per-VM configs can append to these values:
 #   DVM_PACKAGES="$DVM_PACKAGES nodejs pnpm"
 #
 # Or disable them for special VMs:
 #   DVM_PACKAGES=""
-#   DVM_DOTFILES_DIR=""
 #   DVM_SETUP_SCRIPTS=""
 CONFIG
 }
