@@ -90,10 +90,52 @@ Example `~/.config/dvm/recipes/dotfiles.sh`:
 set -euo pipefail
 
 sudo dnf5 install -y chezmoi
-chezmoi init --apply git@github.com:YOUR_USER/dotfiles.git
+if [ ! -d "$HOME/.local/share/chezmoi" ]; then
+	chezmoi init git@github.com:YOUR_USER/dotfiles.git
+fi
+chezmoi apply
 ```
 
-If your dotfiles repo needs per-machine data, configure that in chezmoi itself.
+Chezmoi is a good fit when the dotfiles repo is public but each machine or VM needs
+private local values such as Git name, email, role, or signing key.
+
+Keep those values out of the repo in the local chezmoi config:
+
+```toml
+[data]
+role = "vm"
+name = "Your Name"
+email = "you@example.com"
+signingKey = "ABCDEF1234567890"
+```
+
+That file is local to the machine or VM, usually:
+
+```text
+~/.config/chezmoi/chezmoi.toml
+```
+
+Use templates in the public repo:
+
+```gotemplate
+[user]
+	name = {{ .name | quote }}
+	email = {{ .email | quote }}
+{{- if .signingKey }}
+	signingkey = {{ .signingKey | quote }}
+{{- end }}
+```
+
+For macOS host versus Fedora VM differences, store a local role and branch in templates:
+
+```gotemplate
+{{ if eq .role "vm" }}
+# VM-only config
+{{ end }}
+```
+
+Do not store SSH keys, GPG private keys, tokens, real signing keys, or secret-manager
+config in a public chezmoi repo.
 
 ## Choosing
 
