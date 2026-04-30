@@ -31,6 +31,32 @@ DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
+Keep private local values in a separate file:
+
+```bash
+# ~/.config/dvm/config.sh
+[ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
+```
+
+Example private file:
+
+```bash
+# ~/.config/dvm/private.sh
+DVM_GIT_NAME="Your Name"
+DVM_GIT_EMAIL="you@example.com"
+DVM_GIT_SIGNING_KEY="ABCDEF1234567890"
+```
+
+Do not commit `private.sh`. Keep it local and lock it down:
+
+```bash
+chmod 600 ~/.config/dvm/private.sh
+```
+
+Recipes receive `DVM_*` values, so this is useful for generating VM-local config
+without putting names, emails, signing keys, or tokens into a public recipe. It is not
+a sandbox. If a recipe writes a value into the VM, code in that VM can read it.
+
 Put shared setup in:
 
 ```text
@@ -53,7 +79,7 @@ sudo dnf5 install -y git ripgrep fd-find jq helix yazi
 
 if ! rpm -q terra-release >/dev/null 2>&1; then
 	sudo dnf5 install -y --nogpgcheck \
-		--repofrompath "terra,https://repos.fyralabs.com/terra$releasever" \
+		--repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' \
 		terra-release
 fi
 sudo dnf5 install -y lazygit

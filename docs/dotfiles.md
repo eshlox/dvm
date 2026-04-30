@@ -17,6 +17,11 @@ DVM_DOTFILES_TARGET="$DVM_GUEST_HOME/.dotfiles"
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
+DVM excludes common secret paths by default, including `private.sh`, `.env`, `.ssh`,
+`.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.pypirc`, `.npmrc`, `.config/gh`, and
+`.config/op`. Review `DVM_DOTFILES_DIR` before enabling sync because DVM cannot know
+every private file name you use.
+
 `~/.config/dvm/recipes/common.sh`:
 
 ```bash
@@ -99,7 +104,7 @@ chezmoi apply
 Chezmoi is a good fit when the dotfiles repo is public but each machine or VM needs
 private local values such as Git name, email, role, or signing key.
 
-Keep those values out of the repo in the local chezmoi config:
+Private data option A: keep values out of the repo in the local chezmoi config:
 
 ```toml
 [data]
@@ -133,6 +138,43 @@ For macOS host versus Fedora VM differences, store a local role and branch in te
 # VM-only config
 {{ end }}
 ```
+
+Private data option B: keep values in DVM's local private file and generate VM-local
+config from a recipe.
+
+Host file:
+
+```bash
+# ~/.config/dvm/config.sh
+[ -f "$DVM_CONFIG/private.sh" ] && source "$DVM_CONFIG/private.sh"
+```
+
+```bash
+# ~/.config/dvm/private.sh
+DVM_GIT_NAME="Your Name"
+DVM_GIT_EMAIL="you@example.com"
+DVM_GIT_SIGNING_KEY="ABCDEF1234567890"
+```
+
+VM recipe:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p "$HOME/.config/git"
+cat >"$HOME/.config/git/local.gitconfig" <<GITCONFIG
+[user]
+	name = $DVM_GIT_NAME
+	email = $DVM_GIT_EMAIL
+	signingkey = $DVM_GIT_SIGNING_KEY
+GITCONFIG
+chmod 600 "$HOME/.config/git/local.gitconfig"
+```
+
+Do not commit `~/.config/dvm/private.sh`. DVM's copied dotfiles snapshot excludes
+`private.sh` by default, but your dotfiles repository should also ignore it if you keep
+a file with that name there.
 
 Do not store SSH keys, GPG private keys, tokens, real signing keys, or secret-manager
 config in a public chezmoi repo.
