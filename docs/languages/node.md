@@ -3,6 +3,8 @@
 Recommended: install Node from Fedora and use Corepack for pnpm/yarn. DVM does not
 ship a Node recipe because project Node setup varies too much.
 
+For project-level npm/pnpm hardening, see [Node Supply Chain Security](node-security.md).
+
 VM config:
 
 ```bash

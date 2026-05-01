@@ -19,7 +19,7 @@ Find the task, open one file, copy the example, then modify it.
 
 ## Setup Examples
 
-- [Languages](languages/README.md): Node and Python
+- [Languages](languages/README.md): Node, Node supply-chain hardening, and Python
 - [Dotfiles](dotfiles/README.md): snapshot, bare repo, yadm, chezmoi
 - [SSH, GPG, and signing](keys.md): GitHub deploy keys and commit signing
 

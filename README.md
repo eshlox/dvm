@@ -83,6 +83,6 @@ Docs:
 
 - Start: [Install](docs/install.md), [Dependencies](docs/dependencies.md), [Create VMs](docs/create.md), [Config](docs/config.md)
 - Daily use: [Commands](docs/commands.md), [Recipes](docs/recipes.md), [Updates](docs/updates.md), [Networking](docs/networking.md), [Releases](docs/releases.md)
-- Setup examples: [Languages](docs/languages/README.md), [Dotfiles](docs/dotfiles/README.md), [SSH, GPG, and signing](docs/keys.md)
+- Setup examples: [Languages](docs/languages/README.md), [Node supply-chain hardening](docs/languages/node-security.md), [Dotfiles](docs/dotfiles/README.md), [SSH, GPG, and signing](docs/keys.md)
 - Services and AI: [AI](docs/ai/README.md), [Services](docs/services/README.md)
 - Project: [Extending DVM](docs/extending.md), [Uninstall](docs/uninstall.md)

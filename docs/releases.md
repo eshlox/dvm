@@ -94,6 +94,7 @@ Prefer OIDC or trusted publishing:
 
 - Use GitHub OIDC for cloud providers.
 - Use trusted publishing for registries that support it, such as PyPI.
+- Use npm trusted publishing or provenance for npm packages when available.
 - Use `GITHUB_TOKEN` for GitHub releases.
 - Use `packages: write` only when publishing to GitHub Packages or GHCR.
 
