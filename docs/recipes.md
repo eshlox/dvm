@@ -11,13 +11,14 @@ DVM resolves `DVM_SETUP_SCRIPTS` in this order:
 Example:
 
 ```bash
-DVM_SETUP_SCRIPTS="llama.sh agent.sh cloudflared.sh"
+DVM_SETUP_SCRIPTS="common.sh ai.sh"
 ```
 
 Built-in recipes:
 
 - `llama.sh`: install and run llama.cpp server
-- `agent.sh`: create a separate `dvm-agent` user for AI tools
+- `ai.sh`: install hosted AI CLIs as `dvm-agent` and create wrapper commands
+- `agent.sh`: create only the separate `dvm-agent` user
 - `cloudflared.sh`: install Cloudflare's `cloudflared` connector and optionally run it as a service
 
 Keep custom recipes small. Use recipes for package installs, repositories, services,

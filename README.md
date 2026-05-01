@@ -47,6 +47,16 @@ dvm_vm_setup() {
 }
 ```
 
+Hosted AI CLIs are a recipe:
+
+```bash
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+DVM_AI_TOOLS="claude codex opencode mistral"
+```
+
+Then run `dvm setup myapp` and use `claude`, `codex`, `opencode`, or `vibe`
+inside the VM.
+
 Commands:
 
 ```text

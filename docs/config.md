@@ -92,6 +92,13 @@ Append to global setup:
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS project.sh"
 ```
 
+Enable hosted AI tools for one VM:
+
+```bash
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+DVM_AI_TOOLS="claude codex"
+```
+
 Add inline setup for one VM:
 
 ```bash

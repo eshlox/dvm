@@ -29,6 +29,7 @@ Run one command:
 
 ```bash
 dvm app pnpm test
+dvm app claude
 dvm ssh app sudo dnf5 install -y htop
 dvm ssh app journalctl --user -xe
 ```

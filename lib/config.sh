@@ -127,6 +127,8 @@ dvm_global_config_template() {
 
 # Default setup for most development VMs:
 # DVM_SETUP_SCRIPTS="common.sh"
+# DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+# DVM_AI_TOOLS="claude codex opencode mistral"
 
 # Put shared recipes in:
 #   ~/.config/dvm/recipes/common.sh
@@ -170,6 +172,12 @@ dvm_vm_config_template() {
 # Replace or disable global setup:
 # DVM_SETUP_SCRIPTS="my-setup.sh"
 # DVM_SETUP_SCRIPTS=""
+
+# Hosted AI CLIs:
+# Add ai.sh to DVM_SETUP_SCRIPTS, then pick tools:
+# DVM_SETUP_SCRIPTS="\$DVM_SETUP_SCRIPTS ai.sh"
+# DVM_AI_TOOLS="claude codex opencode mistral"
+# DVM_CLAUDE_CHANNEL="stable"
 
 # Inline setup. Use for project-local final touches. Put package installs in recipes.
 # dvm_vm_setup() {

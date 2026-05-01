@@ -1,26 +1,34 @@
 # OpenCode
 
-Install and run OpenCode as `dvm-agent`.
+Use `ai.sh` and select `opencode`.
 
-Prerequisite:
+`~/.config/dvm/vms/app.sh`:
+
+```bash
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+DVM_AI_TOOLS="opencode"
+```
+
+Install or update:
 
 ```bash
 dvm setup app
-dvm ssh app sudo dnf5 install -y npm
-dvm ssh app sudo -H -u dvm-agent -- bash -lc 'npm config set prefix "$HOME/.local"'
-```
-
-Install:
-
-```bash
-dvm ssh app sudo -H -u dvm-agent -- bash -lc 'npm install -g opencode-ai'
 ```
 
 Run:
 
 ```bash
-dvm ssh app sudo -H -u dvm-agent -- bash -lc 'cd /home/<vm-user>/code && ~/.local/bin/opencode'
+dvm app opencode
 ```
+
+Inside the VM or tmux:
+
+```bash
+opencode
+```
+
+`ai.sh` installs `opencode-ai@latest` with npm under `dvm-agent` and creates a wrapper
+that runs OpenCode from `/home/dvm-agent/.local/bin/opencode`.
 
 Reference:
 

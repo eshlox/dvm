@@ -98,12 +98,12 @@ Good docs-only additions:
 
 - Node project setup
 - Python project setup
-- installing a hosted AI CLI
 - framework-specific dev server setup
 
 Good recipe additions:
 
 - `llama.sh`: common local AI service, VM-contained, idempotent
+- `ai.sh`: common hosted AI CLI setup, credentials stay under `dvm-agent`
 - `cloudflared.sh`: common connector service, credentials stay in one VM
 - future `tailscale.sh`: only if it stays small and documents login/token handling
 
