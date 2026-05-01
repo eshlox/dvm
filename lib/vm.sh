@@ -244,31 +244,6 @@ dvm_create() {
 	dvm_setup "$name"
 }
 
-dvm_package_setup_remote() {
-	cat <<'REMOTE'
-set -euo pipefail
-code_dir="$1"
-packages="$2"
-mkdir -p "$code_dir"
-if [ -n "$packages" ]; then
-	for package in $packages; do
-		case "$package" in
-		-* | *[!A-Za-z0-9._+:@-]*)
-			echo "invalid package token: $package" >&2
-			exit 1
-			;;
-		esac
-	done
-	command -v dnf5 >/dev/null 2>&1 || {
-		echo "dnf5 is required in the guest image" >&2
-		exit 1
-	}
-	# shellcheck disable=SC2086
-	sudo dnf5 install -y $packages
-fi
-REMOTE
-}
-
 dvm_recipe_path() {
 	local core_script script user_script
 	script="$1"
@@ -382,7 +357,7 @@ dvm_setup() {
 	vm="$(dvm_vm_name "$name")"
 	dvm_apply_port_config "$vm"
 	limactl start "$vm" >/dev/null
-	limactl shell "$vm" bash -c "$(dvm_package_setup_remote)" dvm-setup "$DVM_CODE_DIR" "$DVM_PACKAGES"
+	limactl shell "$vm" mkdir -p "$DVM_CODE_DIR"
 	dvm_sync_dotfiles "$vm"
 	for script in $DVM_SETUP_SCRIPTS; do
 		dvm_run_setup_script "$vm" "$script"

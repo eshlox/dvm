@@ -25,8 +25,8 @@ tools/dotfiles you want in most VMs, and clear or override those values in speci
 Useful per-VM config:
 
 ```bash
-DVM_PACKAGES="$DVM_PACKAGES nodejs pnpm"
 DVM_PORTS="3000:3000 5173:5173"
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS node.sh"
 ```
 
 See [Config](config.md) for append/override/disable examples.
@@ -47,6 +47,9 @@ dvm_vm_setup() {
 	mkdir -p "$DVM_CODE_DIR"
 }
 ```
+
+Use recipes for package installation. Keep `dvm_vm_setup()` for project-local final
+touches.
 
 After editing config:
 

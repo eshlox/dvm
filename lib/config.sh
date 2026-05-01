@@ -24,7 +24,6 @@ dvm_source_defaults() {
 	DVM_GUEST_USER="${DVM_GUEST_USER:-$(id -un)}"
 	DVM_GUEST_HOME="${DVM_GUEST_HOME:-/home/$DVM_GUEST_USER}"
 	DVM_CODE_DIR="${DVM_CODE_DIR:-}"
-	DVM_PACKAGES="${DVM_PACKAGES:-}"
 	DVM_PORTS="${DVM_PORTS:-}"
 	DVM_SETUP_SCRIPTS="${DVM_SETUP_SCRIPTS:-}"
 	DVM_DOTFILES_DIR="${DVM_DOTFILES_DIR:-}"
@@ -126,21 +125,15 @@ dvm_global_config_template() {
 # Keep ~/.config/dvm local. It can contain project names, tunnel names, email,
 # setup choices, and other machine-specific values.
 
-# Defaults for most development VMs:
-# DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
+# Default setup for most development VMs:
 # DVM_SETUP_SCRIPTS="common.sh"
 
 # Put shared recipes in:
 #   ~/.config/dvm/recipes/common.sh
-# Use recipes for tools that need extra repos or custom commands, like lazygit from Terra.
-# Dotfiles are optional. See docs/dotfiles.md for plain snapshot, bare repo, yadm,
-# and chezmoi examples.
+# Install packages and tools from recipes, for example:
+#   sudo dnf5 install -y git ripgrep fd-find jq helix yazi
 #
-# Per-VM configs can append to these values:
-#   DVM_PACKAGES="$DVM_PACKAGES nodejs pnpm"
-#
-# Or disable them for special VMs:
-#   DVM_PACKAGES=""
+# Disable shared setup for special VMs:
 #   DVM_SETUP_SCRIPTS=""
 CONFIG
 }
@@ -162,13 +155,6 @@ dvm_vm_config_template() {
 # DVM_DISK="40GiB"
 # DVM_NETWORK="user-v2"
 
-# Add packages to the global default package list:
-# DVM_PACKAGES="\$DVM_PACKAGES nodejs pnpm"
-
-# Or replace/disable global default packages:
-# DVM_PACKAGES="git ripgrep jq"
-# DVM_PACKAGES=""
-
 # Host localhost forwards, written as host:guest pairs.
 # DVM_PORTS="3000:3000 5173:5173"
 
@@ -185,9 +171,9 @@ dvm_vm_config_template() {
 # DVM_SETUP_SCRIPTS="my-setup.sh"
 # DVM_SETUP_SCRIPTS=""
 
-# Inline setup. Uncomment to run commands inside the VM as the guest user.
+# Inline setup. Use for project-local final touches. Put package installs in recipes.
 # dvm_vm_setup() {
-# 	sudo dnf5 install -y nodejs pnpm
+# 	mkdir -p "$DVM_CODE_DIR/myapp"
 # }
 CONFIG
 
@@ -197,7 +183,6 @@ CONFIG
 
 # Llama VM example:
 # Usually disable normal dev defaults for a dedicated AI VM.
-# DVM_PACKAGES=""
 # DVM_DOTFILES_DIR=""
 # DVM_SETUP_SCRIPTS="llama.sh"
 # DVM_PORTS="8080:8080"
@@ -214,7 +199,6 @@ CONFIG
 # DVM_CPUS="1"
 # DVM_MEMORY="1GiB"
 # DVM_DISK="10GiB"
-# DVM_PACKAGES=""
 # DVM_DOTFILES_DIR=""
 # DVM_SETUP_SCRIPTS="cloudflared.sh"
 # DVM_CLOUDFLARED_TOKEN="${CLOUDFLARED_TOKEN:-}"

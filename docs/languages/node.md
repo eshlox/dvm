@@ -6,27 +6,30 @@ ship a Node recipe because project Node setup varies too much.
 VM config:
 
 ```bash
-DVM_PACKAGES="git nodejs npm ripgrep jq"
 DVM_PORTS="3000:3000 5173:5173"
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS node.sh"
+```
 
-dvm_vm_setup() {
-	mkdir -p "$DVM_CODE_DIR"
-	sudo corepack enable
-	sudo corepack prepare pnpm@latest --activate
-}
+`~/.config/dvm/recipes/node.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo dnf5 install -y git nodejs npm ripgrep jq
+sudo corepack enable
+sudo corepack prepare pnpm@latest --activate
 ```
 
 If `corepack` is missing from Fedora's Node package, install it with npm:
 
 ```bash
-dvm_vm_setup() {
-	sudo dnf5 install -y nodejs npm
-	if ! command -v corepack >/dev/null 2>&1; then
-		sudo npm install -g corepack@latest
-	fi
-	sudo corepack enable
-	sudo corepack prepare pnpm@latest --activate
-}
+sudo dnf5 install -y nodejs npm
+if ! command -v corepack >/dev/null 2>&1; then
+	sudo npm install -g corepack@latest
+fi
+sudo corepack enable
+sudo corepack prepare pnpm@latest --activate
 ```
 
 For shared Node tooling in most VMs, put the same block in

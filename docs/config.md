@@ -27,7 +27,6 @@ DVM_MEMORY="4GiB"
 DVM_DISK="40GiB"
 DVM_NETWORK="user-v2"
 
-DVM_PACKAGES="git ripgrep fd-find jq helix yazi"
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
@@ -61,8 +60,8 @@ Put shared setup in:
 ~/.config/dvm/recipes/common.sh
 ```
 
-Use `DVM_PACKAGES` for simple Fedora packages. Use `common.sh` for anything that needs
-extra commands, external repos, service setup, or custom logic.
+Install packages and tools from recipes. DVM intentionally has one setup path instead
+of a separate package-install phase plus scripts.
 
 Dotfiles are optional and workflow-specific. See [Dotfiles](dotfiles/README.md) for
 snapshot, bare repo, yadm, and chezmoi.
@@ -87,10 +86,9 @@ For Node and pnpm, keep the full setup in [Node](languages/node.md).
 
 ## Per-VM Additions
 
-Append to global packages or setup:
+Append to global setup:
 
 ```bash
-DVM_PACKAGES="$DVM_PACKAGES htop"
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS project.sh"
 ```
 
@@ -107,14 +105,12 @@ dvm_vm_setup() {
 Replace global defaults:
 
 ```bash
-DVM_PACKAGES="git python3 uv"
 DVM_SETUP_SCRIPTS="python.sh"
 ```
 
 Disable global setup for special VMs like `ai` or `cloudflared`:
 
 ```bash
-DVM_PACKAGES=""
 DVM_SETUP_SCRIPTS="llama.sh"
 ```
 

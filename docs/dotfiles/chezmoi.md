@@ -56,13 +56,28 @@ chmod 600 "$HOME/.config/chezmoi/chezmoi.toml"
 if [ ! -d "$HOME/.local/share/chezmoi" ]; then
 	chezmoi init git@github.com:YOUR_USER/dotfiles.git
 fi
-chezmoi apply --force
+chezmoi update --force
 ```
 
 Run it:
 
 ```bash
 dvm setup app
+```
+
+`chezmoi init` only clones the source once. `chezmoi update --force` fetches the latest
+dotfiles and applies them every time `dvm setup app` runs.
+
+If you do not want setup to pull from Git every time, use this instead:
+
+```bash
+chezmoi apply --force
+```
+
+Then update manually when needed:
+
+```bash
+dvm ssh app chezmoi update --force
 ```
 
 ## Chezmoi Template
@@ -131,11 +146,11 @@ chezmoi: .zshrc: could not open a new TTY
 For DVM recipes, use:
 
 ```bash
-chezmoi apply --force
+chezmoi update --force
 ```
 
-This lets the dotfiles repo win during setup. Use it only if your dotfiles repo is the
-source of truth.
+This fetches the latest dotfiles and lets the dotfiles repo win during setup. Use it
+only if your dotfiles repo is the source of truth.
 
 To fix an existing VM without recreating it:
 
@@ -151,7 +166,7 @@ dvm ssh app chezmoi diff
 ```
 
 If the only unexpected change is Lima's `# Lima BEGIN` block, add that block to the VM
-template below, then run `chezmoi apply --force`.
+template below, then run `chezmoi update --force`.
 
 ## Lima Shell Block
 
