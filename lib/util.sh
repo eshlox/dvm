@@ -57,15 +57,19 @@ dvm_validate_name_value() {
 }
 
 dvm_validate_port_number() {
-	local label number
+	local label number value
 	label="$1"
 	number="$2"
 	case "$number" in
 	'' | *[!0-9]*)
 		dvm_die "invalid $label port: $number"
 		;;
+	0*)
+		dvm_die "invalid $label port: $number"
+		;;
 	esac
-	if [ "$number" -lt 1 ] || [ "$number" -gt 65535 ]; then
+	value="$number"
+	if [ "${#value}" -gt 5 ] || [ "$value" -lt 1 ] || [ "$value" -gt 65535 ]; then
 		dvm_die "invalid $label port: $number"
 	fi
 }

@@ -25,8 +25,8 @@ sudo dnf5 install -y cloudflared
 if [ -z "$token" ]; then
 	if systemctl list-unit-files "$service" --no-legend 2>/dev/null | awk -v svc="$service" '$1 == svc { found = 1 } END { exit !found }'; then
 		printf 'cloudflared service already configured: %s\n' "$service"
-else
-	cat <<HELP
+	else
+		cat <<HELP
 cloudflared installed.
 
 To configure a static cloudflared service, rerun setup with:

@@ -184,7 +184,7 @@ dvm_port_forwards_set_expr() {
 		else
 			expr="$expr,"
 		fi
-		expr="$expr{\"hostPort\":$host,\"guestPort\":$guest,\"hostIP\":\"127.0.0.1\"}"
+		expr="$expr{\"hostPort\":$host,\"guestPort\":$guest,\"hostIP\":\"127.0.0.1\",\"static\":true}"
 	done
 	printf '%s]\n' "$expr"
 }
@@ -267,6 +267,7 @@ dvm_env_args=()
 dvm_build_env_args() {
 	local var
 	dvm_env_args=()
+	# Recipes are trusted setup code; expose every DVM_* value, including secrets.
 	while IFS= read -r var; do
 		dvm_env_args+=("$var=${!var}")
 	done < <(compgen -v DVM_ | sort)
@@ -312,7 +313,7 @@ dvm_sync_dotfiles() {
 	source_real="$(dvm_resolve_host_dir "$DVM_DOTFILES_DIR")"
 	target="${DVM_DOTFILES_TARGET%/}"
 	case "$target" in
-	"$DVM_GUEST_HOME" | "$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.gnupg" | *..*)
+	"$DVM_GUEST_HOME" | "$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.ssh/"* | "$DVM_GUEST_HOME/.gnupg" | "$DVM_GUEST_HOME/.gnupg/"* | *..*)
 		dvm_die "unsafe DVM_DOTFILES_TARGET: $target"
 		;;
 	"$DVM_GUEST_HOME"/*) ;;
@@ -335,6 +336,31 @@ dvm_sync_dotfiles() {
 	) | limactl shell "$vm" bash -c "$(cat <<'REMOTE'
 set -euo pipefail
 target="$1"
+home="$2"
+case "$target" in
+"$home"/*) ;;
+*) echo "unsafe DVM_DOTFILES_TARGET: $target" >&2; exit 1 ;;
+esac
+case "$target" in
+"$home" | "$home/.ssh" | "$home/.ssh/"* | "$home/.gnupg" | "$home/.gnupg/"* | *..*)
+	echo "unsafe DVM_DOTFILES_TARGET: $target" >&2
+	exit 1
+	;;
+esac
+parent="${target%/*}"
+mkdir -p "$parent"
+home_real="$(cd "$home" 2>/dev/null && pwd -P)" || {
+	echo "unsafe DVM_GUEST_HOME: $home" >&2
+	exit 1
+}
+parent_real="$(cd "$parent" 2>/dev/null && pwd -P)" || {
+	echo "unsafe DVM_DOTFILES_TARGET parent: $parent" >&2
+	exit 1
+}
+case "$parent_real" in
+"$home_real" | "$home_real"/*) ;;
+*) echo "unsafe DVM_DOTFILES_TARGET parent: $parent" >&2; exit 1 ;;
+esac
 rm -rf "$target"
 mkdir -p "$target"
 set -- tar -C "$target"
@@ -344,7 +370,7 @@ fi
 set -- "$@" -xf -
 "$@"
 REMOTE
-	)" dvm-dotfiles "$target"
+	)" dvm-dotfiles "$target" "$DVM_GUEST_HOME"
 }
 
 dvm_setup() {
@@ -366,12 +392,8 @@ dvm_setup() {
 }
 
 dvm_setup_all() {
-	local name
 	[ "$#" -eq 0 ] || dvm_die "usage: dvm setup-all"
-	dvm_load_defaults
-	for name in $(dvm_list_names); do
-		dvm_setup "$name"
-	done
+	dvm_run_for_all setup
 }
 
 dvm_upgrade_remote() {
@@ -401,12 +423,33 @@ dvm_upgrade() {
 }
 
 dvm_upgrade_all() {
-	local name
 	[ "$#" -eq 0 ] || dvm_die "usage: dvm upgrade-all"
+	dvm_run_for_all upgrade
+}
+
+dvm_run_for_all() {
+	local action failed failures name ok total
+	action="$1"
+	failed="0"
+	failures=()
+	ok="0"
+	total="0"
 	dvm_load_defaults
 	for name in $(dvm_list_names); do
-		dvm_upgrade "$name"
+		total=$((total + 1))
+		if "$DVM_CORE/bin/dvm" "$action" "$name"; then
+			ok=$((ok + 1))
+		else
+			failed="1"
+			failures+=("$name")
+			dvm_warn "$action failed: $name"
+		fi
 	done
+	if [ "$failed" = "1" ]; then
+		dvm_warn "$action-all: $ok/$total succeeded; failed: ${failures[*]}"
+		return 1
+	fi
+	dvm_log "$action-all: $ok/$total succeeded"
 }
 
 dvm_guest_term() {
@@ -501,6 +544,7 @@ dvm_gpg_key() {
 	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
 	# Expands inside the VM.
+	# VM-local convenience key; see SECURITY.md for the disposable-VM threat model.
 	# shellcheck disable=SC2016
 	remote='set -euo pipefail; uid="$DVM_NAME dvm <dvm-$DVM_NAME@local>"; if ! gpg --list-secret-keys "$uid" >/dev/null 2>&1; then gpg --batch --passphrase "" --quick-gen-key "$uid" ed25519 sign 1y; fi; gpg --armor --export "$uid"; gpg --with-colons --list-secret-keys "$uid" | awk -F: '"'"'$1 == "fpr" { print "fingerprint: " $10; exit }'"'"''
 	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"

@@ -151,6 +151,9 @@ EOF
 }
 
 dvm_ai_validate
+if [ "$ai_yolo" = "1" ]; then
+	printf 'ai.sh: warning: DVM_AI_YOLO=1 enables non-interactive AI tool approvals\n' >&2
+fi
 dvm_ai_ensure_agent_user
 
 if dvm_ai_needs_tool claude; then

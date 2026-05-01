@@ -107,7 +107,7 @@ YAML
 }
 
 write_port_forwards_from_expr() {
-	local expr port vm
+	local expr guest host object port static vm
 	vm="$1"
 	expr="$2"
 	rm -f "$DVM_TEST_VM_HOME/$vm/lima.yaml"
@@ -115,14 +115,21 @@ write_port_forwards_from_expr() {
 		printf 'ignore-port 5355\n' >>"$DVM_TEST_LOG"
 		write_ignore_port "$vm" 5355
 	fi
-	while IFS= read -r port; do
-		[ -n "$port" ] || continue
+	while IFS= read -r object; do
+		host="$(printf '%s\n' "$object" | sed -n 's/.*"hostPort":\([0-9][0-9]*\).*/\1/p')"
+		guest="$(printf '%s\n' "$object" | sed -n 's/.*"guestPort":\([0-9][0-9]*\).*/\1/p')"
+		[ -n "$host" ] && [ -n "$guest" ] || continue
+		port="$host:$guest"
 		[ "$port" = "5355:5355" ] && continue
-		write_port_forward "$vm" "$port,static=true"
+		static="false"
+		case "$object" in
+		*'"static":true'*) static="true" ;;
+		esac
+		printf 'edit-port-forward %s,static=%s\n' "$port" "$static" >>"$DVM_TEST_LOG"
+		write_port_forward "$vm" "$port,static=$static"
 	done < <(
 		printf '%s\n' "$expr" |
-			tr '{}' '\n' |
-			sed -n 's/.*"hostPort":\([0-9][0-9]*\).*"guestPort":\([0-9][0-9]*\).*/\1:\2/p'
+			tr '{}' '\n'
 	)
 }
 
@@ -246,6 +253,8 @@ mkdir -p "$HOME"
 "$ROOT/install.sh" --prefix "$TMP/local-bin" --name dvm-test --init >/dev/null 2>&1
 [ -L "$TMP/local-bin/dvm-test" ]
 [ -f "$DVM_CONFIG/config.sh" ]
+"$TMP/local-bin/dvm-test" version >"$TMP/version.out"
+grep -Eq '^dvm ' "$TMP/version.out"
 
 "$TMP/local-bin/dvm-test" init app >/dev/null 2>&1
 [ -f "$DVM_CONFIG/vms/app.sh" ]
@@ -332,6 +341,7 @@ CONFIG
 "$TMP/local-bin/dvm-test" setup app >/dev/null 2>&1
 grep -Fq 'stop dvm-app' "$LOG"
 grep -Fq 'edit dvm-app' "$LOG"
+grep -Fq 'edit-port-forward 8080:8080,static=true' "$LOG"
 grep -Fq 'dnf5 install -y git ripgrep' "$LOG"
 "$TMP/local-bin/dvm-test" list >"$TMP/list-long-reconfigured.out"
 grep -Fq '3000:3000,5173:5173,8080:8080' "$TMP/list-long-reconfigured.out"
@@ -346,6 +356,26 @@ if "$TMP/local-bin/dvm-test" setup app >/dev/null 2>"$TMP/bad-port.err"; then
 	exit 1
 fi
 grep -Fq 'invalid host port' "$TMP/bad-port.err"
+cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
+DVM_PORTS="0099:99"
+CONFIG
+if "$TMP/local-bin/dvm-test" setup app >/dev/null 2>"$TMP/leading-zero-port.err"; then
+	echo "setup unexpectedly accepted a leading-zero host port" >&2
+	exit 1
+fi
+grep -Fq 'invalid host port: 0099' "$TMP/leading-zero-port.err"
+cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
+DVM_PORTS="3000:3000 5173:5173 8080:8080"
+DVM_DOTFILES_DIR="$TMP/dotfiles"
+DVM_DOTFILES_TARGET="\$DVM_GUEST_HOME/.ssh/dotfiles"
+CONFIG
+if "$TMP/local-bin/dvm-test" setup app >/dev/null 2>"$TMP/bad-dotfiles-target.err"; then
+	echo "setup unexpectedly accepted a dotfiles target under .ssh" >&2
+	exit 1
+fi
+grep -Fq 'unsafe DVM_DOTFILES_TARGET' "$TMP/bad-dotfiles-target.err"
 cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
 DVM_PORTS="3000:3000 5173:5173 8080:8080"
@@ -377,8 +407,69 @@ grep -Fq 'gpgsign = true' "$VM_HOME_ROOT/dvm-app/home/.config/git/config"
 grep -Fq 'BEGIN PGP PUBLIC KEY BLOCK' "$TMP/gpg-key.out"
 grep -Fq 'fingerprint: ABCDEF1234567890' "$TMP/gpg-key.out"
 
+cat >"$DVM_CONFIG/vms/bad.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-bad/home"
+DVM_SETUP_SCRIPTS=""
+CONFIG
+"$TMP/local-bin/dvm-test" create bad >/dev/null 2>&1
+cat >"$DVM_CONFIG/vms/zok.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-zok/home"
+DVM_SETUP_SCRIPTS=""
+dvm_vm_setup() {
+	printf 'setup-all:%s\n' "\$DVM_NAME" >"\$HOME/setup-all-ran"
+}
+CONFIG
+"$TMP/local-bin/dvm-test" create zok >/dev/null 2>&1
+rm -f "$VM_HOME_ROOT/dvm-zok/home/setup-all-ran"
+cat >"$DVM_CONFIG/vms/bad.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-bad/home"
+DVM_SETUP_SCRIPTS=""
+dvm_vm_setup() {
+	false
+}
+CONFIG
+if "$TMP/local-bin/dvm-test" setup-all >/dev/null 2>"$TMP/setup-all-partial.err"; then
+	echo "setup-all unexpectedly ignored a failing VM" >&2
+	exit 1
+fi
+grep -Fxq 'setup-all:zok' "$VM_HOME_ROOT/dvm-zok/home/setup-all-ran"
+grep -Fq 'setup failed: bad' "$TMP/setup-all-partial.err"
+grep -Fq 'setup-all: ' "$TMP/setup-all-partial.err"
+grep -Fq 'failed: bad' "$TMP/setup-all-partial.err"
+cat >"$DVM_CONFIG/vms/bad.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-bad/home"
+DVM_SETUP_SCRIPTS=""
+CONFIG
+
 "$TMP/local-bin/dvm-test" setup-all >/dev/null 2>&1
 grep -Fxq 'inline:app' "$VM_HOME_ROOT/dvm-app/home/inline-ran"
+rm -f "$VM_HOME_ROOT/dvm-zok/home/upgrade-all-ran"
+cat >"$DVM_CONFIG/vms/zok.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-zok/home"
+DVM_SETUP_SCRIPTS=""
+dvm_vm_setup() {
+	printf 'upgrade-all:%s\n' "\$DVM_NAME" >"\$HOME/upgrade-all-ran"
+}
+CONFIG
+cat >"$DVM_CONFIG/vms/bad.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-bad/home"
+DVM_SETUP_SCRIPTS=""
+dvm_vm_setup() {
+	false
+}
+CONFIG
+if "$TMP/local-bin/dvm-test" upgrade-all >/dev/null 2>"$TMP/upgrade-all-partial.err"; then
+	echo "upgrade-all unexpectedly ignored a failing VM" >&2
+	exit 1
+fi
+grep -Fxq 'upgrade-all:zok' "$VM_HOME_ROOT/dvm-zok/home/upgrade-all-ran"
+grep -Fq 'upgrade failed: bad' "$TMP/upgrade-all-partial.err"
+grep -Fq 'upgrade-all: ' "$TMP/upgrade-all-partial.err"
+grep -Fq 'failed: bad' "$TMP/upgrade-all-partial.err"
+cat >"$DVM_CONFIG/vms/bad.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-bad/home"
+DVM_SETUP_SCRIPTS=""
+CONFIG
 "$TMP/local-bin/dvm-test" upgrade-all >/dev/null 2>&1
 grep -Fq 'dnf5 upgrade -y' "$LOG"
 

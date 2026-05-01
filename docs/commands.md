@@ -90,7 +90,10 @@ Keys are opt-in. VM creation does not create them.
 dvm list
 dvm rm app
 dvm rm app --force
+dvm version
 ```
 
 `dvm rm app` checks for dirty Git work inside `DVM_CODE_DIR` before deleting. Use
 `--force` only when you accept losing uncommitted work in that VM.
+
+`dvm version` prints the current Git tag or commit when DVM is run from a checkout.

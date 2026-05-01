@@ -42,11 +42,25 @@ usage:
   dvm gpg-key <name>
   dvm list
   dvm rm <name> [--force]
+  dvm version
 
 Shortcut:
   dvm <name> enters that VM.
   dvm <name> <command...> runs a command in that VM.
 HELP
+}
+
+dvm_version() {
+	local version
+	[ "$#" -eq 0 ] || dvm_die "usage: dvm version"
+	if dvm_command_exists git && [ -d "$DVM_CORE/.git" ]; then
+		version="$(git -C "$DVM_CORE" describe --tags --always --dirty 2>/dev/null || true)"
+		if [ -n "$version" ]; then
+			printf 'dvm %s\n' "$version"
+			return 0
+		fi
+	fi
+	printf 'dvm unknown (%s)\n' "$DVM_CORE"
 }
 
 dvm_main() {
@@ -67,6 +81,7 @@ dvm_main() {
 	gpg-key) dvm_gpg_key "$@" ;;
 	list | ls) dvm_list "$@" ;;
 	rm | delete) dvm_rm "$@" ;;
+	version | --version) dvm_version "$@" ;;
 	help | -h | --help) dvm_help ;;
 	*)
 		dvm_load_defaults

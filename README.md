@@ -77,6 +77,7 @@ dvm ssh-key <name>
 dvm gpg-key <name>
 dvm list
 dvm rm <name> [--force]
+dvm version
 ```
 
 Docs:
