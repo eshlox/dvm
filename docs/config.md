@@ -63,9 +63,6 @@ Put shared setup in:
 Install packages and tools from recipes. DVM intentionally has one setup path instead
 of a separate package-install phase plus scripts.
 
-`DVM_PACKAGES` was removed. If an old config still sets it, move those packages into a
-recipe such as `~/.config/dvm/recipes/common.sh`.
-
 Dotfiles are optional and workflow-specific. See [Dotfiles](dotfiles/README.md) for
 snapshot, bare repo, yadm, and chezmoi.
 

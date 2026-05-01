@@ -264,15 +264,6 @@ grep -Fq 'create dvm-empty' "$LOG"
 grep -Fq 'ignore-port 5355' "$LOG"
 
 cat >"$DVM_CONFIG/config.sh" <<CONFIG
-DVM_PACKAGES="git"
-CONFIG
-if "$TMP/local-bin/dvm-test" init removed-packages >/dev/null 2>"$TMP/removed-packages.err"; then
-	echo "init unexpectedly accepted DVM_PACKAGES" >&2
-	exit 1
-fi
-grep -Fq 'DVM_PACKAGES was removed' "$TMP/removed-packages.err"
-
-cat >"$DVM_CONFIG/config.sh" <<CONFIG
 DVM_SETUP_SCRIPTS=""
 CONFIG
 "$TMP/local-bin/dvm-test" init defaults >/dev/null 2>&1

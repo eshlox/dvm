@@ -55,9 +55,6 @@ dvm_validate_defaults() {
 	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code}"
 	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
 
-	if [ "${DVM_PACKAGES+x}" = x ]; then
-		dvm_die "DVM_PACKAGES was removed; install packages in recipes instead"
-	fi
 	dvm_validate_name_value DVM_PREFIX "$DVM_PREFIX"
 	case "$DVM_GUEST_HOME" in
 	/*) ;;
