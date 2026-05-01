@@ -56,7 +56,7 @@ chmod 600 "$HOME/.config/chezmoi/chezmoi.toml"
 if [ ! -d "$HOME/.local/share/chezmoi" ]; then
 	chezmoi init git@github.com:YOUR_USER/dotfiles.git
 fi
-chezmoi apply
+chezmoi apply --force
 ```
 
 Run it:
@@ -107,7 +107,7 @@ map has no entry for key "name"
 Fix:
 
 ```bash
-dvm ssh app 'cat ~/.config/chezmoi/chezmoi.toml'
+dvm ssh app bash -lc 'cat ~/.config/chezmoi/chezmoi.toml'
 dvm setup app
 ```
 
@@ -118,6 +118,68 @@ The file must contain:
 name = "Your Name"
 email = "you@example.com"
 ```
+
+## Existing File Changed
+
+If setup runs non-interactively, chezmoi cannot ask what to do with changed files:
+
+```text
+.zshrc has changed since chezmoi last wrote it?
+chezmoi: .zshrc: could not open a new TTY
+```
+
+For DVM recipes, use:
+
+```bash
+chezmoi apply --force
+```
+
+This lets the dotfiles repo win during setup. Use it only if your dotfiles repo is the
+source of truth.
+
+To fix an existing VM without recreating it:
+
+```bash
+dvm ssh app bash -lc 'cp ~/.zshrc ~/.zshrc.before-chezmoi'
+dvm ssh app chezmoi apply --force
+```
+
+If you want to inspect the diff first:
+
+```bash
+dvm ssh app chezmoi diff
+```
+
+If the only unexpected change is Lima's `# Lima BEGIN` block, add that block to the VM
+template below, then run `chezmoi apply --force`.
+
+## Lima Shell Block
+
+Lima may add this block to `.zshrc` inside each VM:
+
+```bash
+# Lima BEGIN
+# Make sure iptables and mount.fuse3 are available
+PATH="$PATH:/usr/sbin:/sbin"
+export PATH
+# Lima END
+```
+
+It makes guest helper commands available for Lima features such as port forwarding and
+mount support. Do not fight it with chezmoi. Make the VM template include the same
+block instead:
+
+```gotemplate
+{{ if eq .role "vm" }}
+# Lima BEGIN
+# Make sure iptables and mount.fuse3 are available
+PATH="$PATH:/usr/sbin:/sbin"
+export PATH
+# Lima END
+{{ end }}
+```
+
+Then `chezmoi apply` will not see Lima's change as an unmanaged edit.
 
 ## Security
 
