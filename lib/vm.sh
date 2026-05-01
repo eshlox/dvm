@@ -49,32 +49,83 @@ dvm_vm_dir() {
 	printf '%s\n' "${LIMA_HOME:-$HOME/.lima}/$vm"
 }
 
-dvm_vm_ports_from_yaml() {
-	local file guest host ports
+dvm_vm_ports_from_yaml_parse() {
+	local file mode
 	file="$1/lima.yaml"
-	[ -f "$file" ] || {
-		printf -- '-\n'
-		return 0
-	}
-	ports="$(
-		awk '
-			/hostPort:/ { host=$NF; gsub(/"/, "", host) }
-			/guestPort:/ { guest=$NF; gsub(/"/, "", guest) }
-			host && guest { print host ":" guest; host=""; guest="" }
-		' "$file" | paste -sd, -
-	)"
+	mode="$2"
+	[ -f "$file" ] || return 0
+	awk -v mode="$mode" '
+		function reset() {
+			host = ""
+			guest = ""
+			ignore = ""
+		}
+		function value(line, key, tmp) {
+			tmp = line
+			gsub(/"/, "", tmp)
+			sub("^.*" key ":[[:space:]]*", "", tmp)
+			sub("[[:space:]]*#.*$", "", tmp)
+			sub("[[:space:]].*$", "", tmp)
+			return tmp
+		}
+		function emit() {
+			if (guest == "") {
+				return
+			}
+			if (ignore == "true") {
+				if (mode == "canonical") {
+					print guest ":" guest
+				}
+				return
+			}
+			if (host != "") {
+				print host ":" guest
+			}
+		}
+		BEGIN {
+			reset()
+		}
+		/^[[:space:]]*portForwards:/ {
+			in_ports = 1
+			next
+		}
+		in_ports && /^[^[:space:]-]/ {
+			emit()
+			reset()
+			in_ports = 0
+		}
+		!in_ports {
+			next
+		}
+		/^[[:space:]]*-/ {
+			emit()
+			reset()
+		}
+		/hostPort:[[:space:]]*/ {
+			host = value($0, "hostPort")
+		}
+		/guestPort:[[:space:]]*/ {
+			guest = value($0, "guestPort")
+		}
+		/ignore:[[:space:]]*true/ {
+			ignore = "true"
+		}
+		END {
+			if (in_ports) {
+				emit()
+			}
+		}
+	' "$file"
+}
+
+dvm_vm_ports_from_yaml() {
+	local ports
+	ports="$(dvm_vm_ports_from_yaml_parse "$1" display | paste -sd, -)"
 	printf '%s\n' "${ports:-"-"}"
 }
 
 dvm_vm_ports_canonical_from_yaml() {
-	local file
-	file="$1/lima.yaml"
-	[ -f "$file" ] || return 0
-	awk '
-		/hostPort:/ { host=$NF; gsub(/"/, "", host) }
-		/guestPort:/ { guest=$NF; gsub(/"/, "", guest) }
-		host && guest { print host ":" guest; host=""; guest="" }
-	' "$file" | sort
+	dvm_vm_ports_from_yaml_parse "$1" canonical | sort
 }
 
 dvm_list() {
