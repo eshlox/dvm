@@ -79,10 +79,10 @@ Docs should be short and copy/paste oriented.
 
 Prefer one page per topic:
 
-- `docs/llama.md`
-- `docs/cloudflared.md`
-- `docs/node.md`
-- `docs/python.md`
+- `docs/ai/llama.md`
+- `docs/services/cloudflared.md`
+- `docs/languages/node.md`
+- `docs/languages/python.md`
 
 For a new recipe, document:
 

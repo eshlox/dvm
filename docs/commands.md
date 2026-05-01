@@ -1,25 +1,71 @@
-# Commands In VMs
+# Commands
 
-Run a command:
-
-```bash
-dvm ssh app pwd
-dvm ssh app pnpm test
-dvm ssh app sudo dnf5 install -y htop
-```
-
-Logs:
+## Create And Setup
 
 ```bash
-dvm ssh app journalctl --user -xe
-dvm ssh ai sudo journalctl -u dvm-llama.service -f
+dvm init app
+dvm edit app
+dvm create app
+dvm setup app
 ```
 
-Interactive shell:
+`dvm init app` creates `~/.config/dvm/vms/app.sh`.
+
+`dvm create app` creates the Lima VM, starts it, then runs setup.
+
+`dvm setup app` reruns packages, dotfiles sync, recipes, and inline `dvm_vm_setup()`.
+
+## Enter Or Run
 
 ```bash
 dvm app
+dvm enter app
 dvm ssh app
 ```
 
-Both start in `DVM_CODE_DIR`, which defaults to `~/code`.
+All three open an interactive shell in `DVM_CODE_DIR`, which defaults to `~/code`.
+
+Run one command:
+
+```bash
+dvm app pnpm test
+dvm ssh app sudo dnf5 install -y htop
+dvm ssh app journalctl --user -xe
+```
+
+Service logs:
+
+```bash
+dvm ssh ai sudo journalctl -u dvm-llama.service -f
+dvm ssh cloudflared sudo journalctl -u dvm-cloudflared.service -f
+```
+
+## Update
+
+```bash
+dvm setup-all
+dvm upgrade app
+dvm upgrade-all
+```
+
+`upgrade` runs Fedora package upgrades, then reruns setup.
+
+## Keys
+
+```bash
+dvm ssh-key app
+dvm gpg-key app
+```
+
+Keys are opt-in. VM creation does not create them.
+
+## List And Delete
+
+```bash
+dvm list
+dvm rm app
+dvm rm app --force
+```
+
+`dvm rm app` checks for dirty Git work inside `DVM_CODE_DIR` before deleting. Use
+`--force` only when you accept losing uncommitted work in that VM.
