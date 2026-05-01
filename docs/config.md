@@ -30,6 +30,19 @@ DVM_NETWORK="user-v2"
 DVM_SETUP_SCRIPTS="common.sh"
 ```
 
+Per-VM setup defaults `DVM_CODE_DIR` to:
+
+```bash
+DVM_CODE_DIR="$DVM_GUEST_HOME/code/$DVM_NAME"
+```
+
+So `dvm app`, `dvm ssh app`, and AI wrappers start in the project directory by
+default. Override it only when a VM intentionally needs a different workspace:
+
+```bash
+DVM_CODE_DIR="$DVM_GUEST_HOME/code"
+```
+
 Treat `~/.config/dvm` as private local machine state. It can contain project names,
 tunnel names, package choices, email, and other setup details that are not necessarily
 secrets but still do not belong in a public repo.
@@ -103,7 +116,7 @@ Add inline setup for one VM:
 
 ```bash
 dvm_vm_setup() {
-	mkdir -p "$DVM_CODE_DIR/myapp"
+	git clone git@github.com:you/app.git "$DVM_CODE_DIR"
 }
 ```
 

@@ -23,7 +23,8 @@ dvm enter app
 dvm ssh app
 ```
 
-All three open an interactive shell in `DVM_CODE_DIR`, which defaults to `~/code`.
+All three open an interactive shell in `DVM_CODE_DIR`, which defaults to
+`~/code/<vm-name>`.
 
 Run one command:
 

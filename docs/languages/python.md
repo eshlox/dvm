@@ -20,7 +20,6 @@ Project example:
 
 ```bash
 dvm app
-cd ~/code/myproject
 uv sync
 uv run pytest
 ```

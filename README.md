@@ -30,6 +30,8 @@ dvm create myapp
 dvm myapp
 ```
 
+`dvm myapp` opens `~/code/myapp` inside the VM by default.
+
 Each VM has one shell config:
 
 ```text
@@ -43,7 +45,7 @@ DVM_PORTS="3000:3000"
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS common.sh"
 
 dvm_vm_setup() {
-	mkdir -p "$DVM_CODE_DIR"
+	git clone git@github.com:you/myapp.git "$DVM_CODE_DIR"
 }
 ```
 

@@ -28,7 +28,7 @@ Use `dvm_vm_setup()` only for project-local final touches, not package installs:
 
 ```bash
 dvm_vm_setup() {
-	mkdir -p "$DVM_CODE_DIR/myapp"
+	git clone git@github.com:you/app.git "$DVM_CODE_DIR"
 }
 ```
 

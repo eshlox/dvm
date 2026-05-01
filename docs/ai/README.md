@@ -44,7 +44,8 @@ dvm app vibe
 ```
 
 The wrapper keeps the working directory under `DVM_CODE_DIR`. If you start it from
-outside `~/code`, it falls back to `~/code`.
+outside the project directory, it falls back to `DVM_CODE_DIR`, which defaults to
+`~/code/<vm-name>`.
 
 ## Security Model
 
