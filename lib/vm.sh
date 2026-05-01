@@ -409,6 +409,20 @@ dvm_upgrade_all() {
 	done
 }
 
+dvm_guest_term() {
+	printf '%s\n' "${DVM_GUEST_TERM:-${TERM:-xterm-256color}}"
+}
+
+dvm_lima_shell() {
+	local vm
+	vm="$1"
+	shift
+	limactl shell "$vm" env \
+		"DVM_HOST_TERM=$(dvm_guest_term)" \
+		"COLORTERM=${COLORTERM:-}" \
+		bash -lc 'if [ -n "${DVM_HOST_TERM:-}" ] && infocmp "$DVM_HOST_TERM" >/dev/null 2>&1; then export TERM="$DVM_HOST_TERM"; else export TERM=xterm-256color; fi; exec "$@"' dvm-shell "$@"
+}
+
 dvm_enter() {
 	local name quoted_dir vm
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm enter <name>"
@@ -417,7 +431,7 @@ dvm_enter() {
 	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
 	quoted_dir="$(dvm_quote "$DVM_CODE_DIR")"
-	limactl shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
+	dvm_lima_shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
 }
 
 dvm_ssh() {
@@ -430,10 +444,10 @@ dvm_ssh() {
 	vm="$(dvm_vm_name "$name")"
 	if [ "$#" -eq 0 ]; then
 		quoted_dir="$(dvm_quote "$DVM_CODE_DIR")"
-		limactl shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
+		dvm_lima_shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
 		return 0
 	fi
-	limactl shell "$vm" "$@"
+	dvm_lima_shell "$vm" "$@"
 }
 
 dvm_ssh_key() {
