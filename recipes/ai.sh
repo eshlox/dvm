@@ -5,6 +5,7 @@ agent_user="${DVM_AGENT_USER:-dvm-agent}"
 code_dir="${DVM_CODE_DIR:?DVM_CODE_DIR is required}"
 tools="${DVM_AI_TOOLS-claude codex opencode mistral}"
 claude_channel="${DVM_CLAUDE_CHANNEL:-stable}"
+agent_home=""
 
 dvm_ai_die() {
 	printf 'ai.sh: %s\n' "$*" >&2
@@ -39,10 +40,15 @@ dvm_ai_validate() {
 }
 
 dvm_ai_ensure_agent_user() {
+	local agent_group
 	sudo dnf5 install -y acl shadow-utils sudo
 	if ! id -u "$agent_user" >/dev/null 2>&1; then
-		sudo useradd --create-home --shell /bin/bash "$agent_user"
+		sudo useradd --system --create-home --home-dir "/home/$agent_user" --shell /bin/bash "$agent_user"
 	fi
+	agent_home="$(getent passwd "$agent_user" | awk -F: '{ print $6 }')"
+	[ -n "$agent_home" ] || dvm_ai_die "could not resolve home for $agent_user"
+	agent_group="$(id -gn "$agent_user")"
+	sudo install -d -m 700 -o "$agent_user" -g "$agent_group" "$agent_home"
 	sudo mkdir -p "$code_dir"
 	sudo setfacl -m "u:$agent_user:--x" "$DVM_GUEST_HOME" 2>/dev/null || true
 	sudo setfacl -m "u:$agent_user:rwx" "$code_dir"
@@ -123,18 +129,18 @@ fi
 
 if dvm_ai_needs_tool codex; then
 	dvm_ai_install_npm_tool '@openai/codex@latest'
-	dvm_ai_install_wrapper codex "/home/$agent_user/.local/bin/codex"
+	dvm_ai_install_wrapper codex "$agent_home/.local/bin/codex"
 fi
 
 if dvm_ai_needs_tool opencode; then
 	dvm_ai_install_npm_tool 'opencode-ai@latest'
-	dvm_ai_install_wrapper opencode "/home/$agent_user/.local/bin/opencode"
+	dvm_ai_install_wrapper opencode "$agent_home/.local/bin/opencode"
 fi
 
 if dvm_ai_needs_tool mistral; then
 	dvm_ai_install_mistral
-	dvm_ai_install_wrapper vibe "/home/$agent_user/.local/bin/vibe"
-	dvm_ai_install_wrapper mistral "/home/$agent_user/.local/bin/vibe"
+	dvm_ai_install_wrapper vibe "$agent_home/.local/bin/vibe"
+	dvm_ai_install_wrapper mistral "$agent_home/.local/bin/vibe"
 fi
 
 cat <<EOF
