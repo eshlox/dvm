@@ -29,5 +29,5 @@ dot checkout
 dot config status.showUntrackedFiles no
 ```
 
-Do not track VM-local Git signing config in a public bare repo. See
-[SSH and GPG](../keys.md).
+Do not track VM-local Git signing config in a public bare repo. Prefer
+`dvm ssh-key <name>` for SSH commit signing. See [SSH, GPG, and signing](../keys.md).

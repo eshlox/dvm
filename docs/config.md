@@ -56,16 +56,15 @@ It is fine to keep non-secret identity values here:
 # ~/.config/dvm/config.sh
 DVM_GIT_NAME="Your Name"
 DVM_GIT_EMAIL="you@example.com"
-DVM_GIT_SIGNING_KEY=""
 ```
 
 Recipes receive `DVM_*` values, so this is useful for generating VM-local config
-without putting names, emails, signing keys, or tokens into a public recipe. Leave
-`DVM_GIT_SIGNING_KEY` empty until you generate a VM GPG key. It is not a sandbox. If a
-recipe writes a value into the VM, code in that VM can read it.
+without putting names, emails, or tokens into a public recipe. It is not a sandbox. If
+a recipe writes a value into the VM, code in that VM can read it.
 
 Example use: put Git identity values here, then generate VM-local Git config from a
-recipe. See [SSH and GPG](keys.md) for the copy/paste example.
+recipe. Use `dvm ssh-key <name>` for VM-local SSH auth and commit signing. See
+[SSH, GPG, and signing](keys.md).
 
 Put shared setup in:
 

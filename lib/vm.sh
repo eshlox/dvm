@@ -462,7 +462,34 @@ dvm_ssh_key() {
 	vm="$(dvm_vm_name "$name")"
 	# Expands inside the VM.
 	# shellcheck disable=SC2016
-	remote='set -euo pipefail; key="$HOME/.ssh/id_ed25519_dvm"; config="$HOME/.ssh/config"; mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"; [ -f "$key" ] || ssh-keygen -t ed25519 -C "$DVM_NAME-dvm" -f "$key" -N ""; touch "$config"; chmod 600 "$config"; if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then { printf "\nHost github.com\n"; printf "  HostName github.com\n"; printf "  User git\n"; printf "  IdentityFile %s\n" "$key"; printf "  IdentitiesOnly yes\n"; printf "  AddKeysToAgent no\n"; } >>"$config"; fi; cat "$key.pub"'
+	remote='
+set -euo pipefail
+key="$HOME/.ssh/id_ed25519_dvm"
+config="$HOME/.ssh/config"
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+[ -f "$key" ] || ssh-keygen -t ed25519 -C "$DVM_NAME-dvm" -f "$key" -N ""
+touch "$config"
+chmod 600 "$config"
+if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then
+	{
+		printf "\nHost github.com\n"
+		printf "  HostName github.com\n"
+		printf "  User git\n"
+		printf "  IdentityFile %s\n" "$key"
+		printf "  IdentitiesOnly yes\n"
+		printf "  AddKeysToAgent no\n"
+	} >>"$config"
+fi
+if command -v git >/dev/null 2>&1; then
+	git_config="$HOME/.config/git/config"
+	mkdir -p "$(dirname "$git_config")"
+	GIT_CONFIG_GLOBAL="$git_config" git config --global gpg.format ssh
+	GIT_CONFIG_GLOBAL="$git_config" git config --global user.signingkey "$key.pub"
+	GIT_CONFIG_GLOBAL="$git_config" git config --global commit.gpgsign true
+fi
+cat "$key.pub"
+'
 	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"
 }
 
