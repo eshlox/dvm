@@ -16,6 +16,7 @@ access to `DVM_CODE_DIR`, installs selected tools, and creates wrapper commands 
 ```bash
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
 DVM_AI_TOOLS="claude codex opencode mistral"
+DVM_AI_YOLO="1"
 ```
 
 Install or update tools:
@@ -56,6 +57,27 @@ The tools can read and write `DVM_CODE_DIR`, run project commands, install proje
 dependencies, and use packages available in the VM. They should not get the normal VM
 user's home, SSH keys, GPG keys, or dotfiles unless you explicitly copy those into
 `DVM_CODE_DIR`.
+
+## YOLO Mode
+
+`ai.sh` enables YOLO mode by default because the tools run inside the VM as
+`dvm-agent`.
+
+What that means:
+
+- Claude runs with `--dangerously-skip-permissions`
+- Codex runs with `--dangerously-bypass-approvals-and-sandbox`
+- OpenCode gets `permission: allow` through runtime config
+- Mistral Vibe runs with the generated `dvm-yolo` agent
+
+Disable YOLO mode for one VM:
+
+```bash
+DVM_AI_YOLO="0"
+```
+
+DVM is still not a perfect sandbox. YOLO mode is meant for disposable project VMs
+without host mounts or copied secrets.
 
 ## Tool Selection
 

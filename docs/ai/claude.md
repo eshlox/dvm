@@ -7,6 +7,7 @@ Use `ai.sh` and select `claude`.
 ```bash
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
 DVM_AI_TOOLS="claude"
+DVM_AI_YOLO="1"
 ```
 
 Install or update:
@@ -28,7 +29,14 @@ claude
 ```
 
 `ai.sh` installs Claude Code from Anthropic's signed Fedora repo and creates a wrapper
-that runs `/usr/bin/claude` as `dvm-agent`.
+that runs `/usr/bin/claude` as `dvm-agent`. YOLO mode is enabled by default with
+`--dangerously-skip-permissions`.
+
+Disable YOLO mode:
+
+```bash
+DVM_AI_YOLO="0"
+```
 
 Channel:
 

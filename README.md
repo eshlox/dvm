@@ -54,10 +54,12 @@ Hosted AI CLIs are a recipe:
 ```bash
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
 DVM_AI_TOOLS="claude codex opencode mistral"
+DVM_AI_YOLO="1"
 ```
 
 Then run `dvm setup myapp` and use `claude`, `codex`, `opencode`, or `vibe`
-inside the VM.
+inside the VM. AI wrappers run as `dvm-agent` and use YOLO mode by default. Set
+`DVM_AI_YOLO="0"` to keep approval prompts.
 
 Commands:
 

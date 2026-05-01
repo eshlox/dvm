@@ -110,6 +110,7 @@ Enable hosted AI tools for one VM:
 ```bash
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
 DVM_AI_TOOLS="claude codex"
+DVM_AI_YOLO="1"
 ```
 
 Add inline setup for one VM:

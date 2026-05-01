@@ -129,6 +129,7 @@ dvm_global_config_template() {
 # DVM_SETUP_SCRIPTS="common.sh"
 # DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
 # DVM_AI_TOOLS="claude codex opencode mistral"
+# DVM_AI_YOLO="1"
 
 # Put shared recipes in:
 #   ~/.config/dvm/recipes/common.sh
@@ -181,6 +182,7 @@ dvm_vm_config_template() {
 # Add ai.sh to DVM_SETUP_SCRIPTS, then pick tools:
 # DVM_SETUP_SCRIPTS="\$DVM_SETUP_SCRIPTS ai.sh"
 # DVM_AI_TOOLS="claude codex opencode mistral"
+# DVM_AI_YOLO="1"
 # DVM_CLAUDE_CHANNEL="stable"
 
 # Inline setup. Use for project-local final touches. Put package installs in recipes.

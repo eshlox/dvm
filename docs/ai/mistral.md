@@ -7,6 +7,7 @@ Use `ai.sh` and select `mistral`.
 ```bash
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
 DVM_AI_TOOLS="mistral"
+DVM_AI_YOLO="1"
 ```
 
 Install or update:
@@ -28,7 +29,14 @@ vibe
 ```
 
 `ai.sh` installs `mistral-vibe` with uv under `dvm-agent` and creates `vibe` and
-`mistral` wrappers.
+`mistral` wrappers. YOLO mode is enabled by default with a generated `dvm-yolo`
+agent that sets tool permissions to `always`.
+
+Disable YOLO mode:
+
+```bash
+DVM_AI_YOLO="0"
+```
 
 Reference:
 

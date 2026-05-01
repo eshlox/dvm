@@ -414,13 +414,16 @@ dvm_guest_term() {
 }
 
 dvm_lima_shell() {
-	local vm
+	local remote vm
 	vm="$1"
 	shift
+	# Expands inside the VM.
+	# shellcheck disable=SC2016
+	remote='if [ -n "${DVM_HOST_TERM:-}" ] && infocmp "$DVM_HOST_TERM" >/dev/null 2>&1; then export TERM="$DVM_HOST_TERM"; else export TERM=xterm-256color; fi; exec "$@"'
 	limactl shell "$vm" env \
 		"DVM_HOST_TERM=$(dvm_guest_term)" \
 		"COLORTERM=${COLORTERM:-}" \
-		bash -lc 'if [ -n "${DVM_HOST_TERM:-}" ] && infocmp "$DVM_HOST_TERM" >/dev/null 2>&1; then export TERM="$DVM_HOST_TERM"; else export TERM=xterm-256color; fi; exec "$@"' dvm-shell "$@"
+		bash -lc "$remote" dvm-shell "$@"
 }
 
 dvm_enter() {
