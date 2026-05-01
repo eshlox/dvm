@@ -15,12 +15,13 @@ Find the task, open one file, copy the example, then modify it.
 - [Recipes](recipes.md): write setup scripts
 - [Updates](updates.md): rerun setup and upgrade packages
 - [Networking](networking.md): ports, host access, VM-to-VM access
+- [Releases](releases.md): GitHub Actions releases and attestations
 
 ## Setup Examples
 
-- [Languages](languages/README.md): Node and Python
+- [Languages](languages/README.md): Node, Node supply-chain hardening, and Python
 - [Dotfiles](dotfiles/README.md): snapshot, bare repo, yadm, chezmoi
-- [SSH and GPG](keys.md): GitHub deploy keys and signing
+- [SSH, GPG, and signing](keys.md): GitHub deploy keys and commit signing
 
 ## Services
 

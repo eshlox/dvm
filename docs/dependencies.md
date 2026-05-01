@@ -59,7 +59,8 @@ Feature-specific guest tools:
 - `dvm ssh-key <name>` needs `ssh-keygen`
 - `dvm gpg-key <name>` needs `gpg`
 - `llama.sh` installs Fedora `llama-cpp` and `curl`
-- `agent.sh` installs `bubblewrap`, `acl`, `shadow-utils`, and `npm`
+- `ai.sh` installs `acl`, `shadow-utils`, `sudo`, and tool-specific dependencies such as `npm` or `uv`
+- `agent.sh` installs `bubblewrap`, `acl`, `shadow-utils`, and `sudo`
 - `cloudflared.sh` installs `curl`, adds the Cloudflare RPM repo, and installs `cloudflared`
 
 References:

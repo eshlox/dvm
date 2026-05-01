@@ -17,5 +17,6 @@ Options:
 
 Git signing:
 
-- Do not track a VM-specific Git `user.signingkey` in shared dotfiles.
-- See [SSH and GPG](../keys.md).
+- Do not track VM-specific signing config in public dotfiles.
+- Prefer `dvm ssh-key <name>` for VM-local SSH commit signing.
+- See [SSH, GPG, and signing](../keys.md).

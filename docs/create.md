@@ -29,6 +29,13 @@ DVM_PORTS="3000:3000 5173:5173"
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS node.sh"
 ```
 
+DVM opens shells in `DVM_CODE_DIR`, which defaults to `~/code/app` for a VM named
+`app`. Clone the project there:
+
+```bash
+dvm app git clone git@github.com:you/app.git .
+```
+
 See [Config](config.md) for append/override/disable examples.
 
 Default size is intentionally small:
@@ -44,7 +51,7 @@ Inline setup runs inside the VM:
 
 ```bash
 dvm_vm_setup() {
-	mkdir -p "$DVM_CODE_DIR"
+	git clone git@github.com:you/app.git "$DVM_CODE_DIR"
 }
 ```
 

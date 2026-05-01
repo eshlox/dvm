@@ -52,7 +52,7 @@ dvm_load_defaults() {
 }
 
 dvm_validate_defaults() {
-	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code}"
+	DVM_CODE_DIR="${DVM_CODE_DIR:-$DVM_GUEST_HOME/code${DVM_NAME:+/$DVM_NAME}}"
 	DVM_DOTFILES_TARGET="${DVM_DOTFILES_TARGET:-$DVM_GUEST_HOME/.dotfiles}"
 
 	dvm_validate_name_value DVM_PREFIX "$DVM_PREFIX"
@@ -127,6 +127,9 @@ dvm_global_config_template() {
 
 # Default setup for most development VMs:
 # DVM_SETUP_SCRIPTS="common.sh"
+# DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+# DVM_AI_TOOLS="claude codex opencode mistral"
+# DVM_AI_YOLO="1"
 
 # Put shared recipes in:
 #   ~/.config/dvm/recipes/common.sh
@@ -155,6 +158,10 @@ dvm_vm_config_template() {
 # DVM_DISK="40GiB"
 # DVM_NETWORK="user-v2"
 
+# Project directory:
+# Defaults to \$DVM_GUEST_HOME/code/\$DVM_NAME.
+# DVM_CODE_DIR="\$DVM_GUEST_HOME/code/$name"
+
 # Host localhost forwards, written as host:guest pairs.
 # DVM_PORTS="3000:3000 5173:5173"
 
@@ -171,9 +178,16 @@ dvm_vm_config_template() {
 # DVM_SETUP_SCRIPTS="my-setup.sh"
 # DVM_SETUP_SCRIPTS=""
 
+# Hosted AI CLIs:
+# Add ai.sh to DVM_SETUP_SCRIPTS, then pick tools:
+# DVM_SETUP_SCRIPTS="\$DVM_SETUP_SCRIPTS ai.sh"
+# DVM_AI_TOOLS="claude codex opencode mistral"
+# DVM_AI_YOLO="1"
+# DVM_CLAUDE_CHANNEL="stable"
+
 # Inline setup. Use for project-local final touches. Put package installs in recipes.
 # dvm_vm_setup() {
-# 	mkdir -p "$DVM_CODE_DIR/myapp"
+# 	git clone git@github.com:you/$name.git "$DVM_CODE_DIR"
 # }
 CONFIG
 

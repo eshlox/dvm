@@ -1,24 +1,41 @@
 # Mistral Vibe
 
-Install and run Mistral Vibe as `dvm-agent`.
+Use `ai.sh` and select `mistral`.
 
-Prerequisite:
+`~/.config/dvm/vms/app.sh`:
+
+```bash
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+DVM_AI_TOOLS="mistral"
+DVM_AI_YOLO="1"
+```
+
+Install or update:
 
 ```bash
 dvm setup app
-dvm ssh app sudo dnf5 install -y uv
-```
-
-Install:
-
-```bash
-dvm ssh app sudo -H -u dvm-agent -- bash -lc 'uv tool install mistral-vibe'
 ```
 
 Run:
 
 ```bash
-dvm ssh app sudo -H -u dvm-agent -- bash -lc 'cd /home/<vm-user>/code && ~/.local/bin/vibe'
+dvm app vibe
+```
+
+Inside the VM or tmux:
+
+```bash
+vibe
+```
+
+`ai.sh` installs `mistral-vibe` with uv under `dvm-agent` and creates `vibe` and
+`mistral` wrappers. YOLO mode is enabled by default with a generated `dvm-yolo`
+agent that sets tool permissions to `always`.
+
+Disable YOLO mode:
+
+```bash
+DVM_AI_YOLO="0"
 ```
 
 Reference:

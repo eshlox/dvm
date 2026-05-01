@@ -30,6 +30,8 @@ dvm create myapp
 dvm myapp
 ```
 
+`dvm myapp` opens `~/code/myapp` inside the VM by default.
+
 Each VM has one shell config:
 
 ```text
@@ -43,9 +45,21 @@ DVM_PORTS="3000:3000"
 DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS common.sh"
 
 dvm_vm_setup() {
-	mkdir -p "$DVM_CODE_DIR"
+	git clone git@github.com:you/myapp.git "$DVM_CODE_DIR"
 }
 ```
+
+Hosted AI CLIs are a recipe:
+
+```bash
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
+DVM_AI_TOOLS="claude codex opencode mistral"
+DVM_AI_YOLO="1"
+```
+
+Then run `dvm setup myapp` and use `claude`, `codex`, `opencode`, or `vibe`
+inside the VM. AI wrappers run as `dvm-agent` and use YOLO mode by default. Set
+`DVM_AI_YOLO="0"` to keep approval prompts.
 
 Commands:
 
@@ -68,7 +82,7 @@ dvm rm <name> [--force]
 Docs:
 
 - Start: [Install](docs/install.md), [Dependencies](docs/dependencies.md), [Create VMs](docs/create.md), [Config](docs/config.md)
-- Daily use: [Commands](docs/commands.md), [Recipes](docs/recipes.md), [Updates](docs/updates.md), [Networking](docs/networking.md)
-- Setup examples: [Languages](docs/languages/README.md), [Dotfiles](docs/dotfiles/README.md), [SSH and GPG](docs/keys.md)
+- Daily use: [Commands](docs/commands.md), [Recipes](docs/recipes.md), [Updates](docs/updates.md), [Networking](docs/networking.md), [Releases](docs/releases.md)
+- Setup examples: [Languages](docs/languages/README.md), [Node supply-chain hardening](docs/languages/node-security.md), [Dotfiles](docs/dotfiles/README.md), [SSH, GPG, and signing](docs/keys.md)
 - Services and AI: [AI](docs/ai/README.md), [Services](docs/services/README.md)
 - Project: [Extending DVM](docs/extending.md), [Uninstall](docs/uninstall.md)

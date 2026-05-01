@@ -23,12 +23,14 @@ dvm enter app
 dvm ssh app
 ```
 
-All three open an interactive shell in `DVM_CODE_DIR`, which defaults to `~/code`.
+All three open an interactive shell in `DVM_CODE_DIR`, which defaults to
+`~/code/<vm-name>`.
 
 Run one command:
 
 ```bash
 dvm app pnpm test
+dvm app claude
 dvm ssh app sudo dnf5 install -y htop
 dvm ssh app journalctl --user -xe
 ```
@@ -38,6 +40,29 @@ Service logs:
 ```bash
 dvm ssh ai sudo journalctl -u dvm-llama.service -f
 dvm ssh cloudflared sudo journalctl -u dvm-cloudflared.service -f
+```
+
+## Terminal
+
+Some terminals export a custom `TERM`, for example Ghostty, Kitty, Alacritty, WezTerm,
+iTerm2, Warp, Hyper, or Wave. Fedora may not have that exact terminfo entry. When that
+happens, tmux or curses apps can fail with `missing or unsuitable terminal`.
+
+DVM checks whether the VM knows the host `TERM`. If it does, DVM passes it through. If
+not, DVM falls back to `xterm-256color`.
+
+Override the fallback if needed:
+
+```bash
+DVM_GUEST_TERM="xterm-256color"
+```
+
+If you want exact terminal behavior inside one VM, install that terminal's terminfo.
+For Ghostty:
+
+```bash
+dvm ssh app sudo dnf5 install -y ncurses
+infocmp -x xterm-ghostty | dvm ssh app tic -x -
 ```
 
 ## Update

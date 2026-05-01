@@ -257,7 +257,6 @@ grep -Fq 'cloudflared VM example' "$DVM_CONFIG/vms/cloudflared.sh"
 "$TMP/local-bin/dvm-test" init empty >/dev/null 2>&1
 cat >"$DVM_CONFIG/vms/empty.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-empty/home"
-DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
 CONFIG
 "$TMP/local-bin/dvm-test" create empty >/dev/null 2>&1
 grep -Fq 'create dvm-empty' "$LOG"
@@ -269,10 +268,9 @@ CONFIG
 "$TMP/local-bin/dvm-test" init defaults >/dev/null 2>&1
 cat >"$DVM_CONFIG/vms/defaults.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-defaults/home"
-DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
 CONFIG
 "$TMP/local-bin/dvm-test" create defaults >/dev/null 2>&1
-[ -d "$VM_HOME_ROOT/dvm-defaults/home/code" ]
+[ -d "$VM_HOME_ROOT/dvm-defaults/home/code/defaults" ]
 cat >"$DVM_CONFIG/config.sh" <<'CONFIG'
 # test reset
 CONFIG
@@ -290,7 +288,6 @@ printf 'custom:%s\n' "$DVM_CUSTOM_VALUE" >"$HOME/custom-ran"
 SCRIPT
 cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
-DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
 DVM_CUSTOM_VALUE="recipe-env"
 DVM_PORTS="3000:3000 5173:5173"
 DVM_DOTFILES_DIR="$TMP/dotfiles"
@@ -323,7 +320,6 @@ fi
 
 cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
-DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
 DVM_CUSTOM_VALUE="recipe-env"
 DVM_PORTS="3000:3000 5173:5173 8080:8080"
 DVM_DOTFILES_DIR="$TMP/dotfiles"
@@ -368,12 +364,15 @@ mv "$DVM_CONFIG/vms/app.safe.sh" "$DVM_CONFIG/vms/app.sh"
 "$TMP/local-bin/dvm-test" ssh app pwd >"$TMP/pwd.out"
 grep -Fxq "$VM_HOME_ROOT/dvm-app/home" "$TMP/pwd.out"
 # shellcheck disable=SC2016
-"$TMP/local-bin/dvm-test" ssh app bash -lc 'cd "$HOME/code"; pwd' >"$TMP/code-pwd.out"
-grep -Fxq "$VM_HOME_ROOT/dvm-app/home/code" "$TMP/code-pwd.out"
+"$TMP/local-bin/dvm-test" ssh app bash -lc 'cd "$HOME/code/app"; pwd' >"$TMP/code-pwd.out"
+grep -Fxq "$VM_HOME_ROOT/dvm-app/home/code/app" "$TMP/code-pwd.out"
 "$TMP/local-bin/dvm-test" ssh-key app >"$TMP/ssh-key.out"
 grep -Fxq 'ssh-ed25519 public-key' "$TMP/ssh-key.out"
 grep -Fq 'Host github.com' "$VM_HOME_ROOT/dvm-app/home/.ssh/config"
 grep -Fq 'IdentityFile '"$VM_HOME_ROOT/dvm-app/home"'/.ssh/id_ed25519_dvm' "$VM_HOME_ROOT/dvm-app/home/.ssh/config"
+grep -Fq 'format = ssh' "$VM_HOME_ROOT/dvm-app/home/.config/git/config"
+grep -Fq 'signingkey = '"$VM_HOME_ROOT/dvm-app/home"'/.ssh/id_ed25519_dvm.pub' "$VM_HOME_ROOT/dvm-app/home/.config/git/config"
+grep -Fq 'gpgsign = true' "$VM_HOME_ROOT/dvm-app/home/.config/git/config"
 "$TMP/local-bin/dvm-test" gpg-key app >"$TMP/gpg-key.out"
 grep -Fq 'BEGIN PGP PUBLIC KEY BLOCK' "$TMP/gpg-key.out"
 grep -Fq 'fingerprint: ABCDEF1234567890' "$TMP/gpg-key.out"

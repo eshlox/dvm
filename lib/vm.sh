@@ -409,6 +409,23 @@ dvm_upgrade_all() {
 	done
 }
 
+dvm_guest_term() {
+	printf '%s\n' "${DVM_GUEST_TERM:-${TERM:-xterm-256color}}"
+}
+
+dvm_lima_shell() {
+	local remote vm
+	vm="$1"
+	shift
+	# Expands inside the VM.
+	# shellcheck disable=SC2016
+	remote='if [ -n "${DVM_HOST_TERM:-}" ] && infocmp "$DVM_HOST_TERM" >/dev/null 2>&1; then export TERM="$DVM_HOST_TERM"; else export TERM=xterm-256color; fi; exec "$@"'
+	limactl shell "$vm" env \
+		"DVM_HOST_TERM=$(dvm_guest_term)" \
+		"COLORTERM=${COLORTERM:-}" \
+		bash -lc "$remote" dvm-shell "$@"
+}
+
 dvm_enter() {
 	local name quoted_dir vm
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm enter <name>"
@@ -417,7 +434,7 @@ dvm_enter() {
 	dvm_load_vm_config "$name"
 	vm="$(dvm_vm_name "$name")"
 	quoted_dir="$(dvm_quote "$DVM_CODE_DIR")"
-	limactl shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
+	dvm_lima_shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
 }
 
 dvm_ssh() {
@@ -430,10 +447,10 @@ dvm_ssh() {
 	vm="$(dvm_vm_name "$name")"
 	if [ "$#" -eq 0 ]; then
 		quoted_dir="$(dvm_quote "$DVM_CODE_DIR")"
-		limactl shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
+		dvm_lima_shell "$vm" bash -lc "mkdir -p $quoted_dir; cd $quoted_dir; exec \${SHELL:-/bin/bash} -l"
 		return 0
 	fi
-	limactl shell "$vm" "$@"
+	dvm_lima_shell "$vm" "$@"
 }
 
 dvm_ssh_key() {
@@ -445,7 +462,34 @@ dvm_ssh_key() {
 	vm="$(dvm_vm_name "$name")"
 	# Expands inside the VM.
 	# shellcheck disable=SC2016
-	remote='set -euo pipefail; key="$HOME/.ssh/id_ed25519_dvm"; config="$HOME/.ssh/config"; mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"; [ -f "$key" ] || ssh-keygen -t ed25519 -C "$DVM_NAME-dvm" -f "$key" -N ""; touch "$config"; chmod 600 "$config"; if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then { printf "\nHost github.com\n"; printf "  HostName github.com\n"; printf "  User git\n"; printf "  IdentityFile %s\n" "$key"; printf "  IdentitiesOnly yes\n"; printf "  AddKeysToAgent no\n"; } >>"$config"; fi; cat "$key.pub"'
+	remote='
+set -euo pipefail
+key="$HOME/.ssh/id_ed25519_dvm"
+config="$HOME/.ssh/config"
+mkdir -p "$HOME/.ssh"
+chmod 700 "$HOME/.ssh"
+[ -f "$key" ] || ssh-keygen -t ed25519 -C "$DVM_NAME-dvm" -f "$key" -N ""
+touch "$config"
+chmod 600 "$config"
+if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then
+	{
+		printf "\nHost github.com\n"
+		printf "  HostName github.com\n"
+		printf "  User git\n"
+		printf "  IdentityFile %s\n" "$key"
+		printf "  IdentitiesOnly yes\n"
+		printf "  AddKeysToAgent no\n"
+	} >>"$config"
+fi
+if command -v git >/dev/null 2>&1; then
+	git_config="$HOME/.config/git/config"
+	mkdir -p "$(dirname "$git_config")"
+	GIT_CONFIG_GLOBAL="$git_config" git config --global gpg.format ssh
+	GIT_CONFIG_GLOBAL="$git_config" git config --global user.signingkey "$key.pub"
+	GIT_CONFIG_GLOBAL="$git_config" git config --global commit.gpgsign true
+fi
+cat "$key.pub"
+'
 	limactl shell "$vm" env "DVM_NAME=$name" bash -lc "$remote"
 }
 
