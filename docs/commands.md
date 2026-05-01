@@ -13,7 +13,7 @@ dvm setup app
 
 `dvm create app` creates the Lima VM, starts it, then runs setup.
 
-`dvm setup app` reruns packages, dotfiles sync, recipes, and inline `dvm_vm_setup()`.
+`dvm setup app` reruns dotfiles sync, recipes, and inline `dvm_vm_setup()`.
 
 ## Enter Or Run
 

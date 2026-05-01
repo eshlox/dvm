@@ -20,8 +20,16 @@ Built-in recipes:
 - `agent.sh`: create a separate `dvm-agent` user for AI tools
 - `cloudflared.sh`: install Cloudflare's `cloudflared` connector and optionally run it as a service
 
-Keep custom recipes small. If it is project-specific, put it in the VM config as
-`dvm_vm_setup()`.
+Keep custom recipes small. Use recipes for package installs, repositories, services,
+tools, dotfiles, and shell defaults.
+
+Use `dvm_vm_setup()` only for project-local final touches, not package installs:
+
+```bash
+dvm_vm_setup() {
+	mkdir -p "$DVM_CODE_DIR/myapp"
+}
+```
 
 For shared setup used by most VMs, put a recipe such as `common.sh` in
 `~/.config/dvm/recipes/` and enable it from `~/.config/dvm/config.sh`:
@@ -44,6 +52,24 @@ sudo dnf5 install -y --nogpgcheck \
 	terra-release
 sudo dnf5 install -y lazygit
 ```
+
+Set zsh as the default shell for most VMs:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo dnf5 install -y zsh
+
+zsh_path="$(command -v zsh)"
+current_shell="$(getent passwd "$USER" | cut -d: -f7)"
+
+if [ "$current_shell" != "$zsh_path" ]; then
+	sudo chsh -s "$zsh_path" "$USER"
+fi
+```
+
+Keep package installation in recipes so setup has one path.
 
 Special VMs can disable the shared setup:
 

@@ -39,8 +39,8 @@ Each VM has one shell config:
 Example:
 
 ```bash
-DVM_PACKAGES="git ripgrep jq helix"
 DVM_PORTS="3000:3000"
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS common.sh"
 
 dvm_vm_setup() {
 	mkdir -p "$DVM_CODE_DIR"

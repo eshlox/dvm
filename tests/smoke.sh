@@ -264,17 +264,24 @@ grep -Fq 'create dvm-empty' "$LOG"
 grep -Fq 'ignore-port 5355' "$LOG"
 
 cat >"$DVM_CONFIG/config.sh" <<CONFIG
-DVM_PACKAGES="git helix"
+DVM_PACKAGES="git"
+CONFIG
+if "$TMP/local-bin/dvm-test" init removed-packages >/dev/null 2>"$TMP/removed-packages.err"; then
+	echo "init unexpectedly accepted DVM_PACKAGES" >&2
+	exit 1
+fi
+grep -Fq 'DVM_PACKAGES was removed' "$TMP/removed-packages.err"
+
+cat >"$DVM_CONFIG/config.sh" <<CONFIG
 DVM_SETUP_SCRIPTS=""
 CONFIG
 "$TMP/local-bin/dvm-test" init defaults >/dev/null 2>&1
 cat >"$DVM_CONFIG/vms/defaults.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-defaults/home"
 DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
-DVM_PACKAGES="\$DVM_PACKAGES jq"
 CONFIG
 "$TMP/local-bin/dvm-test" create defaults >/dev/null 2>&1
-grep -Fq 'dnf5 install -y git helix jq' "$LOG"
+[ -d "$VM_HOME_ROOT/dvm-defaults/home/code" ]
 cat >"$DVM_CONFIG/config.sh" <<'CONFIG'
 # test reset
 CONFIG
@@ -286,6 +293,7 @@ printf 'private\n' >"$TMP/dotfiles/private.sh"
 cat >"$DVM_CONFIG/recipes/app.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
+dnf5 install -y git ripgrep
 printf 'script:%s\n' "$DVM_NAME" >"$HOME/script-ran"
 printf 'custom:%s\n' "$DVM_CUSTOM_VALUE" >"$HOME/custom-ran"
 SCRIPT
@@ -293,7 +301,6 @@ cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
 DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
 DVM_CUSTOM_VALUE="recipe-env"
-DVM_PACKAGES="git ripgrep"
 DVM_PORTS="3000:3000 5173:5173"
 DVM_DOTFILES_DIR="$TMP/dotfiles"
 DVM_DOTFILES_TARGET="\$DVM_GUEST_HOME/.dotfiles"
@@ -327,7 +334,6 @@ cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
 DVM_CODE_DIR="\$DVM_GUEST_HOME/code"
 DVM_CUSTOM_VALUE="recipe-env"
-DVM_PACKAGES="git ripgrep jq"
 DVM_PORTS="3000:3000 5173:5173 8080:8080"
 DVM_DOTFILES_DIR="$TMP/dotfiles"
 DVM_DOTFILES_TARGET="\$DVM_GUEST_HOME/.dotfiles"
@@ -339,7 +345,7 @@ CONFIG
 "$TMP/local-bin/dvm-test" setup app >/dev/null 2>&1
 grep -Fq 'stop dvm-app' "$LOG"
 grep -Fq 'edit dvm-app' "$LOG"
-grep -Fq 'dnf5 install -y git ripgrep jq' "$LOG"
+grep -Fq 'dnf5 install -y git ripgrep' "$LOG"
 "$TMP/local-bin/dvm-test" list >"$TMP/list-long-reconfigured.out"
 grep -Fq '3000:3000,5173:5173,8080:8080' "$TMP/list-long-reconfigured.out"
 
