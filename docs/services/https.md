@@ -39,10 +39,10 @@ If the HTTPS server runs inside a VM, copy only the leaf certificate and key int
 VM. Do not copy the mkcert root CA key.
 
 ```bash
-dvm ssh app 'mkdir -p ~/.local/share/dvm/certs'
+dvm ssh app bash -lc 'mkdir -p ~/.local/share/dvm/certs'
 limactl copy "$HOME/.local/share/dvm/certs/dvm-local.pem" dvm-app:/tmp/dvm-local.pem
 limactl copy "$HOME/.local/share/dvm/certs/dvm-local-key.pem" dvm-app:/tmp/dvm-local-key.pem
-dvm ssh app 'mv /tmp/dvm-local*.pem ~/.local/share/dvm/certs/ && chmod 600 ~/.local/share/dvm/certs/*-key.pem'
+dvm ssh app bash -lc 'mv /tmp/dvm-local*.pem ~/.local/share/dvm/certs/ && chmod 600 ~/.local/share/dvm/certs/*-key.pem'
 ```
 
 If you generate a certificate inside the VM instead, you still need to copy its public
@@ -65,7 +65,7 @@ For example, if an `app` VM calls llama in an `ai` VM, issue a certificate for
 install the public CA certificate in every caller VM:
 
 ```bash
-dvm ssh app 'sudo cp /tmp/dvm-local-ca.crt /etc/pki/ca-trust/source/anchors/dvm-local-ca.crt && sudo update-ca-trust'
+dvm ssh app bash -lc 'sudo cp /tmp/dvm-local-ca.crt /etc/pki/ca-trust/source/anchors/dvm-local-ca.crt && sudo update-ca-trust'
 ```
 
 Keep the CA private key only in the VM or host that issues certificates. Callers only
