@@ -91,6 +91,21 @@ write_port_forward() {
 YAML
 }
 
+write_ignore_port() {
+	local guest vm
+	vm="$1"
+	guest="$2"
+	mkdir -p "$DVM_TEST_VM_HOME/$vm"
+	if [ ! -f "$DVM_TEST_VM_HOME/$vm/lima.yaml" ]; then
+		printf 'portForwards:\n' >"$DVM_TEST_VM_HOME/$vm/lima.yaml"
+	fi
+	cat >>"$DVM_TEST_VM_HOME/$vm/lima.yaml" <<YAML
+- guestPort: $guest
+  proto: any
+  ignore: true
+YAML
+}
+
 write_port_forwards_from_expr() {
 	local expr port vm
 	vm="$1"
@@ -98,6 +113,7 @@ write_port_forwards_from_expr() {
 	rm -f "$DVM_TEST_VM_HOME/$vm/lima.yaml"
 	if printf '%s\n' "$expr" | grep -Fq '"ignore":true'; then
 		printf 'ignore-port 5355\n' >>"$DVM_TEST_LOG"
+		write_ignore_port "$vm" 5355
 	fi
 	while IFS= read -r port; do
 		[ -n "$port" ] || continue
@@ -145,6 +161,7 @@ create)
 			case "$2" in
 			*'"guestPort":5355'*'"ignore":true'* | *'"ignore":true'*'"guestPort":5355'*)
 				printf 'ignore-port 5355\n' >>"$DVM_TEST_LOG"
+				write_ignore_port "$vm" 5355
 				;;
 			esac
 			shift
@@ -301,6 +318,10 @@ grep -Fxq 'inline:app' "$VM_HOME_ROOT/dvm-app/home/inline-ran"
 "$TMP/local-bin/dvm-test" list >"$TMP/list.out"
 grep -Fq app "$TMP/list.out"
 grep -Fq '3000:3000,5173:5173' "$TMP/list.out"
+if grep -Fq '5355' "$TMP/list.out"; then
+	echo "ignored port 5355 leaked into dvm list output" >&2
+	exit 1
+fi
 
 cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
