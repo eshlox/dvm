@@ -318,7 +318,10 @@ grep -Fxq 'inline:app' "$VM_HOME_ROOT/dvm-app/home/inline-ran"
 "$TMP/local-bin/dvm-test" list >"$TMP/list.out"
 grep -Fq app "$TMP/list.out"
 grep -Fq '3000:3000,5173:5173' "$TMP/list.out"
-! grep -Fq '5355' "$TMP/list.out"
+if grep -Fq '5355' "$TMP/list.out"; then
+	echo "ignored port 5355 leaked into dvm list output" >&2
+	exit 1
+fi
 
 cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
