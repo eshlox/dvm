@@ -52,9 +52,8 @@ without putting names, emails, signing keys, or tokens into a public recipe. Lea
 `DVM_GIT_SIGNING_KEY` empty until you generate a VM GPG key. It is not a sandbox. If a
 recipe writes a value into the VM, code in that VM can read it.
 
-Example use: put a Git identity recipe in `~/.config/dvm/recipes/git-local.sh`, then
-activate it with `DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`. See
-[Dotfiles](dotfiles.md#private-git-config-recipe) for the full copy/paste example.
+Example use: put Git identity values here, then generate VM-local Git config from a
+recipe. See [SSH and GPG](keys.md) for the copy/paste example.
 
 Put shared setup in:
 
@@ -65,8 +64,8 @@ Put shared setup in:
 Use `DVM_PACKAGES` for simple Fedora packages. Use `common.sh` for anything that needs
 extra commands, external repos, service setup, or custom logic.
 
-Dotfiles are optional and workflow-specific. See [Dotfiles](dotfiles.md) for plain
-snapshot, bare repo, yadm, and chezmoi examples.
+Dotfiles are optional and workflow-specific. See [Dotfiles](dotfiles/README.md) for
+snapshot, bare repo, yadm, and chezmoi.
 
 Example `~/.config/dvm/recipes/common.sh`:
 
@@ -82,22 +81,17 @@ if ! rpm -q terra-release >/dev/null 2>&1; then
 		terra-release
 fi
 sudo dnf5 install -y lazygit
-
-sudo dnf5 install -y nodejs npm
-if ! command -v corepack >/dev/null 2>&1; then
-	sudo npm install -g corepack@latest
-fi
-sudo corepack enable
-sudo corepack prepare pnpm@latest --activate
 ```
+
+For Node and pnpm, keep the full setup in [Node](languages/node.md).
 
 ## Per-VM Additions
 
 Append to global packages or setup:
 
 ```bash
-DVM_PACKAGES="$DVM_PACKAGES nodejs pnpm"
-DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS node.sh"
+DVM_PACKAGES="$DVM_PACKAGES htop"
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS project.sh"
 ```
 
 Add inline setup for one VM:

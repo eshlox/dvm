@@ -53,16 +53,16 @@ in a public dotfiles repo. Any value written into a VM by setup is readable by c
 running in that VM.
 
 For GitHub, prefer repository deploy keys over personal account SSH keys when you want
-repo-level isolation. Personal account SSH keys are account-scoped; multiple VM keys on
-the same GitHub account have the same repo access. Deploy keys are repo-scoped and are
-easier to revoke when one VM is compromised.
+repo-level isolation. Personal account SSH keys are account-scoped, so multiple VM keys
+on the same GitHub account have the same repo access. Deploy keys are repo-scoped and
+are easier to revoke when one VM is compromised.
 
 If you use hosted AI tools, prefer a separate VM user or a small recipe such as
 `recipes/agent.sh`. DVM no longer treats AI tool installation as core behavior.
 
 Cloudflare Tunnel tokens are credentials. If you use `recipes/cloudflared.sh`, keep the
 token out of project code and dotfiles. The recipe stores it inside the cloudflared VM
-at `/etc/cloudflared/dvm.env`; rotate it in Cloudflare if that VM is compromised.
+at `/etc/cloudflared/dvm.env`. Rotate it in Cloudflare if that VM is compromised.
 
 ## Safe Installation
 

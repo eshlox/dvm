@@ -62,10 +62,6 @@ Tracked `~/.gitconfig`:
 Tracked `~/.config/git/common.gitconfig`:
 
 ```ini
-[user]
-	name = Your Name
-	email = you@example.com
-
 [commit]
 	gpgsign = true
 
@@ -77,6 +73,8 @@ Untracked `~/.config/git/local.gitconfig` inside each VM:
 
 ```ini
 [user]
+	name = Your Name
+	email = you@example.com
 	signingkey = ABCDEF1234567890
 ```
 
@@ -117,8 +115,51 @@ For bare-repo dotfiles, exclude the local file from the dotfiles repo:
 .config/git/local.gitconfig
 ```
 
-To automate this from DVM, put local values in `~/.config/dvm/config.sh` or the VM's
-config, put the writer script in `~/.config/dvm/recipes/git-local.sh`, and activate it
-with `DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"`.
+## Generate Git Config From DVM
 
-See [Dotfiles](dotfiles.md#private-git-config-recipe) for the exact files and commands.
+Use this when you do not use chezmoi templates for Git identity.
+
+Put local values in global config or in one VM config:
+
+```bash
+# ~/.config/dvm/config.sh
+DVM_GIT_NAME="Your Name"
+DVM_GIT_EMAIL="you@example.com"
+DVM_GIT_SIGNING_KEY=""
+DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS git-local.sh"
+```
+
+Create the recipe:
+
+```bash
+# ~/.config/dvm/recipes/git-local.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/config.sh}"
+: "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/config.sh}"
+: "${DVM_GIT_SIGNING_KEY:=}"
+
+mkdir -p "$HOME/.config/git"
+{
+	cat <<GITCONFIG
+[user]
+	name = $DVM_GIT_NAME
+	email = $DVM_GIT_EMAIL
+GITCONFIG
+	if [ -n "$DVM_GIT_SIGNING_KEY" ]; then
+		cat <<GITCONFIG
+	signingkey = $DVM_GIT_SIGNING_KEY
+GITCONFIG
+	fi
+} >"$HOME/.config/git/local.gitconfig"
+chmod 600 "$HOME/.config/git/local.gitconfig"
+```
+
+Run it:
+
+```bash
+dvm setup app
+```
+
+If you use chezmoi, keep this logic in [Chezmoi](dotfiles/chezmoi.md) instead.
