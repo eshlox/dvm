@@ -26,6 +26,7 @@ DVM_CPUS="2"
 DVM_MEMORY="4GiB"
 DVM_DISK="40GiB"
 DVM_NETWORK="user-v2"
+DVM_HOST_IP="127.0.0.1"
 
 DVM_SETUP_SCRIPTS="common.sh"
 ```
@@ -61,6 +62,9 @@ DVM_GIT_EMAIL="you@example.com"
 Recipes receive `DVM_*` values, so this is useful for generating VM-local config
 without putting names, emails, or tokens into a public recipe. It is not a sandbox. If
 a recipe writes a value into the VM, code in that VM can read it.
+
+`DVM_HOST_IP` controls the host bind address for `DVM_PORTS`. Keep the default
+`127.0.0.1` unless you intentionally want LAN access with `0.0.0.0`.
 
 Example use: put Git identity values here, then generate VM-local Git config from a
 recipe. Use `dvm ssh-key <name>` for VM-local SSH auth and commit signing. See

@@ -14,12 +14,26 @@ Inside the VM:
 
 ```bash
 git commit -m "change"
-git tag v1.2.3
-git push origin main v1.2.3
+scripts/release.sh v1.2.3 --push
 ```
 
-GitHub Actions builds the release from the tag. The host does not need project source,
-Node, Python, GPG, or GitHub credentials for release work.
+The release script moves `CHANGELOG.md` entries from `Unreleased` to
+`v1.2.3 - YYYY-MM-DD`, commits that changelog update, creates an annotated tag, and
+optionally pushes both. GitHub Actions can then build the release from the tag. The
+host does not need project source, Node, Python, GPG, or GitHub credentials for
+release work.
+
+Prepare a release without pushing:
+
+```bash
+scripts/release.sh v1.2.3
+```
+
+Prepare only the changelog, for review in a pull request:
+
+```bash
+scripts/release.sh v1.2.3 --no-commit --no-tag
+```
 
 ## Harden The Repository
 
@@ -32,6 +46,43 @@ Recommended GitHub settings:
 - Use least-privilege `GITHUB_TOKEN` permissions in workflows.
 - Avoid long-lived secrets when GitHub OIDC or trusted publishing is available.
 - Pin third-party actions by commit SHA when security matters.
+
+## Prepare Release Workflow
+
+Use this when you want GitHub Actions to run the single release-prep command:
+
+```yaml
+name: prepare-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v1.2.3"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Prepare release
+        run: scripts/release.sh "${{ inputs.version }}" --push
+```
+
+The pushed tag can trigger the release workflow below.
 
 ## Release Workflow
 

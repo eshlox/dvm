@@ -48,6 +48,8 @@ Add a core command only when:
 ## Recipe Rules
 
 Recipes live in `recipes/` and are run inside the VM by `dvm setup`.
+DVM prepends `recipes/_lib.sh` before each setup script, so built-in and user recipes
+can use the `dvm_recipe_*` helper functions without copying boilerplate.
 
 Good recipe shape:
 
@@ -69,6 +71,7 @@ Rules:
 - keep credentials out of the recipe and docs examples
 - prefer systemd services only for long-running daemons
 - document every `DVM_*` variable the recipe reads
+- use `dvm_recipe_die`, `dvm_recipe_warn`, and validation helpers when they fit
 
 Do not use `curl | sh`. If a third-party install requires that pattern, document the
 manual setup instead of shipping it as a built-in recipe.
@@ -89,7 +92,7 @@ For a new recipe, document:
 - minimal VM config
 - create/setup commands
 - how to verify it works
-- how to view logs
+- how to view logs, preferably with `dvm logs <name> <unit>`
 - security notes if it handles tokens, keys, mounts, or public network access
 
 ## Examples

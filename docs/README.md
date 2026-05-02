@@ -11,7 +11,7 @@ Find the task, open one file, copy the example, then modify it.
 
 ## Daily Use
 
-- [Commands](commands.md): create, enter, run, update, list, delete
+- [Commands](commands.md): create, enter, run, update, diagnose, inspect logs, list, delete
 - [Recipes](recipes.md): write setup scripts
 - [Updates](updates.md): rerun setup and upgrade packages
 - [Networking](networking.md): ports, host access, VM-to-VM access

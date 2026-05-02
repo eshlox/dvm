@@ -14,13 +14,20 @@ DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS dotfiles.sh"
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo="https://github.com/YOUR_USER/dotfiles.git"
+
 sudo dnf5 install -y yadm
+
 if [ ! -d "$HOME/.local/share/yadm/repo.git" ]; then
-	yadm clone git@github.com:YOUR_USER/dotfiles.git || true
+	yadm clone "$repo" || true
 fi
 yadm config local.class vm
 yadm alt
 ```
+
+For private dotfiles, use an SSH URL, install `openssh-clients`, call
+`dvm_recipe_record_ssh_host github.com` before `yadm clone`, then add the VM's
+`dvm ssh-key <name>` public key to GitHub.
 
 Reference:
 

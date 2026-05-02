@@ -25,6 +25,8 @@ source "$DVM_CORE/lib/util.sh"
 source "$DVM_CORE/lib/config.sh"
 # shellcheck disable=SC1091
 source "$DVM_CORE/lib/vm.sh"
+# shellcheck disable=SC1091
+source "$DVM_CORE/lib/diagnostics.sh"
 
 dvm_help() {
 	cat <<'HELP'
@@ -36,6 +38,9 @@ usage:
   dvm setup-all
   dvm upgrade <name>
   dvm upgrade-all
+  dvm doctor [name]
+  dvm status <name>
+  dvm logs <name> [unit] [journalctl-args...]
   dvm enter <name>
   dvm ssh <name> [command...]
   dvm ssh-key <name>
@@ -75,6 +80,9 @@ dvm_main() {
 	setup-all | update-all) dvm_setup_all "$@" ;;
 	upgrade) dvm_upgrade "$@" ;;
 	upgrade-all) dvm_upgrade_all "$@" ;;
+	doctor) dvm_doctor "$@" ;;
+	status) dvm_status "$@" ;;
+	logs) dvm_logs "$@" ;;
 	enter) dvm_enter "$@" ;;
 	ssh) dvm_ssh "$@" ;;
 	ssh-key | key) dvm_ssh_key "$@" ;;

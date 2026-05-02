@@ -4,16 +4,10 @@ set -euo pipefail
 service="${DVM_CLOUDFLARED_SERVICE:-dvm-cloudflared.service}"
 token="${DVM_CLOUDFLARED_TOKEN:-}"
 
-case "$service" in
-*.service) ;;
-*) echo "DVM_CLOUDFLARED_SERVICE must end with .service: $service" >&2; exit 1 ;;
-esac
-case "$service" in
-*/* | *..* | *[!A-Za-z0-9_.@-]*) echo "invalid DVM_CLOUDFLARED_SERVICE: $service" >&2; exit 1 ;;
-esac
+dvm_recipe_validate_service DVM_CLOUDFLARED_SERVICE "$service"
 if [ -n "$token" ]; then
 	case "$token" in
-	*[!A-Za-z0-9._=-]*) echo "invalid DVM_CLOUDFLARED_TOKEN" >&2; exit 1 ;;
+	*[!A-Za-z0-9._=-]*) dvm_recipe_die "invalid DVM_CLOUDFLARED_TOKEN" ;;
 	esac
 fi
 
@@ -65,4 +59,7 @@ UNIT
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$service"
+if sudo journalctl -u "$service" -n 200 --no-pager 2>/dev/null | grep -Fq -- "$token"; then
+	dvm_recipe_warn "$service journal contains the cloudflared token; rotate the token and inspect logs"
+fi
 printf 'cloudflared service configured: %s\n' "$service"

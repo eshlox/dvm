@@ -32,6 +32,17 @@ dvm_lima_rows() {
 	limactl list --format "$format" 2>/dev/null || dvm_lima_names
 }
 
+dvm_lima_row() {
+	local row_dir row_status row_vm vm
+	vm="$1"
+	while IFS=$'\t' read -r row_vm row_status row_dir _; do
+		[ "$row_vm" = "$vm" ] || continue
+		printf '%s\t%s\t%s\n' "$row_vm" "${row_status:-unknown}" "${row_dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
+		return 0
+	done < <(dvm_lima_rows)
+	return 1
+}
+
 dvm_vm_exists() {
 	local vm
 	vm="$1"
@@ -41,11 +52,10 @@ dvm_vm_exists() {
 dvm_vm_dir() {
 	local dir row_vm status vm
 	vm="$1"
-	while IFS=$'\t' read -r row_vm status dir _; do
-		[ "$row_vm" = "$vm" ] || continue
+	if IFS=$'\t' read -r row_vm status dir < <(dvm_lima_row "$vm"); then
 		printf '%s\n' "${dir:-${LIMA_HOME:-$HOME/.lima}/$vm}"
 		return 0
-	done < <(dvm_lima_rows)
+	fi
 	printf '%s\n' "${LIMA_HOME:-$HOME/.lima}/$vm"
 }
 
@@ -57,6 +67,7 @@ dvm_vm_ports_from_yaml_parse() {
 	awk -v mode="$mode" '
 		function reset() {
 			host = ""
+			host_ip = ""
 			guest = ""
 			ignore = ""
 		}
@@ -74,12 +85,19 @@ dvm_vm_ports_from_yaml_parse() {
 			}
 			if (ignore == "true") {
 				if (mode == "canonical") {
-					print guest ":" guest
+					print "ignore:" guest ":" guest
 				}
 				return
 			}
 			if (host != "") {
-				print host ":" guest
+				if (mode == "canonical") {
+					if (host_ip == "") {
+						host_ip = "127.0.0.1"
+					}
+					print host_ip ":" host ":" guest
+				} else {
+					print host ":" guest
+				}
 			}
 		}
 		BEGIN {
@@ -103,6 +121,9 @@ dvm_vm_ports_from_yaml_parse() {
 		}
 		/hostPort:[[:space:]]*/ {
 			host = value($0, "hostPort")
+		}
+		/hostIP:[[:space:]]*/ {
+			host_ip = value($0, "hostIP")
 		}
 		/guestPort:[[:space:]]*/ {
 			guest = value($0, "guestPort")
@@ -164,27 +185,24 @@ dvm_validate_port() {
 
 dvm_configured_ports_canonical() {
 	local port
-	printf '5355:5355\n'
-	for port in $DVM_PORTS; do
-		dvm_validate_port "$port"
-		printf '%s\n' "$port"
-	done | sort
+	{
+		printf 'ignore:5355:5355\n'
+		for port in $DVM_PORTS; do
+			dvm_validate_port "$port"
+			printf '%s:%s\n' "$DVM_HOST_IP" "$port"
+		done
+	} | sort
 }
 
 dvm_port_forwards_set_expr() {
-	local expr first guest host port
+	local expr guest host host_ip port
 	expr='.portForwards = [{"guestPort":5355,"proto":"any","ignore":true}'
-	first="0"
+	host_ip="$(dvm_json "$DVM_HOST_IP")"
 	for port in $DVM_PORTS; do
 		dvm_validate_port "$port"
 		host="${port%%:*}"
 		guest="${port#*:}"
-		if [ "$first" = "1" ]; then
-			first="0"
-		else
-			expr="$expr,"
-		fi
-		expr="$expr{\"hostPort\":$host,\"guestPort\":$guest,\"hostIP\":\"127.0.0.1\",\"static\":true}"
+		expr="$expr,{\"hostPort\":$host,\"guestPort\":$guest,\"hostIP\":$host_ip,\"static\":true}"
 	done
 	printf '%s]\n' "$expr"
 }
@@ -199,12 +217,14 @@ dvm_apply_port_config() {
 	[ "$desired" = "$actual" ] && return 0
 	dvm_log "updating port forwards for $vm (restart required)"
 	expr="$(dvm_port_forwards_set_expr)"
-	limactl stop "$vm" >/dev/null 2>&1 || true
+	if ! limactl stop "$vm" >/dev/null 2>&1; then
+		dvm_warn "could not stop $vm before editing port forwards; continuing"
+	fi
 	limactl edit --tty=false --set "$expr" --start "$vm" >/dev/null
 }
 
 dvm_create() {
-	local name network_set port vm
+	local name network_set vm
 	[ "$#" -eq 1 ] || dvm_die "usage: dvm create <name>"
 	name="$1"
 	dvm_validate_name "$name"
@@ -233,12 +253,8 @@ dvm_create() {
 			--set ".mountType=\"virtiofs\"" \
 			--set ".mounts=[]" \
 			--set ".networks=$network_set" \
-			--set '.portForwards=[{"guestPort":5355,"proto":"any","ignore":true}]' \
+			--set "$(dvm_port_forwards_set_expr)" \
 			--set ".containerd.system=false | .containerd.user=false"
-		for port in $DVM_PORTS; do
-			dvm_validate_port "$port"
-			set -- "$@" --port-forward "$port,static=true"
-		done
 		limactl "$@" "$DVM_TEMPLATE"
 	fi
 	dvm_setup "$name"
@@ -273,6 +289,22 @@ dvm_build_env_args() {
 	done < <(compgen -v DVM_ | sort)
 }
 
+dvm_stream_setup_script() {
+	local fragment script
+	script="$1"
+	if [ -f "$DVM_CORE/recipes/_lib.sh" ]; then
+		cat "$DVM_CORE/recipes/_lib.sh"
+	fi
+	if [ "$script" = "$DVM_CORE/recipes/ai.sh" ]; then
+		for fragment in _ai-common.sh _ai-claude.sh _ai-codex.sh _ai-opencode.sh _ai-mistral.sh; do
+			fragment="$DVM_CORE/recipes/$fragment"
+			[ -f "$fragment" ] || dvm_die "internal AI recipe fragment missing: $fragment"
+			cat "$fragment"
+		done
+	fi
+	cat "$script"
+}
+
 dvm_run_setup_script() {
 	local script vm
 	vm="$1"
@@ -280,7 +312,7 @@ dvm_run_setup_script() {
 	[ -f "$script" ] || dvm_die "setup script not found: $script"
 	dvm_log "running setup script: $script"
 	dvm_build_env_args
-	limactl shell "$vm" env "${dvm_env_args[@]}" bash -s <"$script"
+	dvm_stream_setup_script "$script" | limactl shell "$vm" env "${dvm_env_args[@]}" bash -s
 }
 
 dvm_run_inline_setup() {
@@ -304,36 +336,8 @@ dvm_resolve_host_dir() {
 	(cd "$1" 2>/dev/null && pwd -P) || dvm_die "directory not found: $1"
 }
 
-dvm_sync_dotfiles() {
-	local exclude source_real target vm
-	vm="$1"
-	[ -n "$DVM_DOTFILES_DIR" ] || return 0
-	[ -d "$DVM_DOTFILES_DIR" ] || dvm_die "dotfiles directory not found: $DVM_DOTFILES_DIR"
-	dvm_require tar
-	source_real="$(dvm_resolve_host_dir "$DVM_DOTFILES_DIR")"
-	target="${DVM_DOTFILES_TARGET%/}"
-	case "$target" in
-	"$DVM_GUEST_HOME" | "$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.ssh/"* | "$DVM_GUEST_HOME/.gnupg" | "$DVM_GUEST_HOME/.gnupg/"* | *..*)
-		dvm_die "unsafe DVM_DOTFILES_TARGET: $target"
-		;;
-	"$DVM_GUEST_HOME"/*) ;;
-	*) dvm_die "DVM_DOTFILES_TARGET must stay under DVM_GUEST_HOME: $target" ;;
-	esac
-	dvm_log "syncing dotfiles: $source_real -> $target"
-	(
-		cd "$source_real" || exit 1
-		export COPYFILE_DISABLE=1
-		set -- tar
-		if tar --help 2>/dev/null | grep -q -- '--no-xattrs'; then
-			set -- "$@" --no-xattrs
-		fi
-		set -- "$@" -cf -
-		for exclude in $DVM_DOTFILES_EXCLUDES; do
-			set -- "$@" --exclude "$exclude"
-		done
-		set -- "$@" .
-		"$@"
-	) | limactl shell "$vm" bash -c "$(cat <<'REMOTE'
+dvm_dotfiles_remote_script() {
+	cat <<'REMOTE'
 set -euo pipefail
 target="$1"
 home="$2"
@@ -370,7 +374,39 @@ fi
 set -- "$@" -xf -
 "$@"
 REMOTE
-	)" dvm-dotfiles "$target" "$DVM_GUEST_HOME"
+}
+
+dvm_sync_dotfiles() {
+	local exclude source_real target vm
+	vm="$1"
+	[ -n "$DVM_DOTFILES_DIR" ] || return 0
+	[ -d "$DVM_DOTFILES_DIR" ] || dvm_die "dotfiles directory not found: $DVM_DOTFILES_DIR"
+	dvm_require tar
+	source_real="$(dvm_resolve_host_dir "$DVM_DOTFILES_DIR")"
+	target="${DVM_DOTFILES_TARGET%/}"
+	case "$target" in
+	"$DVM_GUEST_HOME" | "$DVM_GUEST_HOME/.ssh" | "$DVM_GUEST_HOME/.ssh/"* | "$DVM_GUEST_HOME/.gnupg" | "$DVM_GUEST_HOME/.gnupg/"* | *..*)
+		dvm_die "unsafe DVM_DOTFILES_TARGET: $target"
+		;;
+	"$DVM_GUEST_HOME"/*) ;;
+	*) dvm_die "DVM_DOTFILES_TARGET must stay under DVM_GUEST_HOME: $target" ;;
+	esac
+	dvm_log "syncing dotfiles: $source_real -> $target"
+	(
+		cd "$source_real" || exit 1
+		export COPYFILE_DISABLE=1
+		set -- tar
+		if tar --help 2>/dev/null | grep -q -- '--no-xattrs'; then
+			set -- "$@" --no-xattrs
+		fi
+		set -- "$@" -cf -
+		for exclude in $DVM_DOTFILES_EXCLUDES; do
+			set -- "$@" --exclude "$exclude"
+		done
+		set -- "$@" .
+		"$@"
+	) | limactl shell "$vm" \
+		bash -c "$(dvm_dotfiles_remote_script)" dvm-dotfiles "$target" "$DVM_GUEST_HOME"
 }
 
 dvm_setup() {

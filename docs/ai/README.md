@@ -53,10 +53,16 @@ outside the project directory, it falls back to `DVM_CODE_DIR`, which defaults t
 Hosted AI tools run as `dvm-agent`, not as the normal VM user. Their login files and
 tokens live in `/home/dvm-agent`.
 
-The tools can read and write `DVM_CODE_DIR`, run project commands, install project
-dependencies, and use packages available in the VM. They should not get the normal VM
-user's home, SSH keys, GPG keys, or dotfiles unless you explicitly copy those into
-`DVM_CODE_DIR`.
+The recipe grants `dvm-agent` read/write/execute ACLs on `DVM_CODE_DIR`, including a
+default ACL for newly created files. The tools can edit code, run project commands,
+install project dependencies, and use packages available in the VM. With YOLO mode,
+that also means an AI tool can run Git commands such as commits, pushes, or force
+pushes if credentials and remote permissions allow it.
+
+Use normal repository protections for important work: branch protection, protected
+remotes, pre-push hooks, and review before pushing generated changes. The tools should
+not get the normal VM user's home, SSH keys, GPG keys, or dotfiles unless you
+explicitly copy those into `DVM_CODE_DIR`.
 
 ## YOLO Mode
 

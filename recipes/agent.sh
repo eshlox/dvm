@@ -8,10 +8,7 @@ if ! id -u "$agent_user" >/dev/null 2>&1; then
 	sudo useradd --system --create-home --home-dir "/home/$agent_user" --shell /bin/bash "$agent_user"
 fi
 agent_home="$(getent passwd "$agent_user" | awk -F: '{ print $6 }')"
-[ -n "$agent_home" ] || {
-	printf 'agent.sh: could not resolve home for %s\n' "$agent_user" >&2
-	exit 1
-}
+[ -n "$agent_home" ] || dvm_recipe_die "agent.sh: could not resolve home for $agent_user"
 agent_group="$(id -gn "$agent_user")"
 sudo install -d -m 700 -o "$agent_user" -g "$agent_group" "$agent_home"
 sudo mkdir -p "$DVM_CODE_DIR"

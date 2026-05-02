@@ -15,4 +15,6 @@ fi
 find . -path ./.git -prune -o -type f -print0 |
 	xargs -0 perl -ne 'if (/[ \t]$/) { print "$ARGV:$.: trailing whitespace\n"; $bad = 1 } END { exit($bad ? 1 : 0) }'
 
-bash tests/smoke.sh
+for test in tests/*.sh; do
+	bash "$test"
+done

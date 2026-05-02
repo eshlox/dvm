@@ -15,6 +15,11 @@ Options:
 - [yadm](yadm.md): use yadm alternate files
 - [Chezmoi](chezmoi.md): use templates and local machine data
 
+Public dotfiles examples use HTTPS clone URLs so a fresh VM does not need GitHub SSH
+credentials. For a private repo, use an SSH clone URL, call
+`dvm_recipe_record_ssh_host github.com` before cloning, run `dvm ssh-key <name>`, and
+add the printed public key as a deploy key before setup.
+
 Git signing:
 
 - Do not track VM-specific signing config in public dotfiles.

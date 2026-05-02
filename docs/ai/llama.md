@@ -62,6 +62,17 @@ mistral=https://example.com/mistral.gguf
 DVM_LLAMA_DEFAULT_MODEL="qwen"
 ```
 
+Optionally pin model downloads by SHA-256:
+
+```bash
+DVM_LLAMA_MODELS_SHA256="
+qwen=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+"
+```
+
+The recipe verifies the selected model after download. If an existing model has the
+wrong digest, setup redownloads it and fails unless the new file matches.
+
 Run setup:
 
 ```bash
@@ -114,11 +125,11 @@ If `dvm list` shows `PORTS` as `-`, the VM has no host port forward. Add
 dvm setup ai
 ```
 
-If the port exists but the page still does not load, check the service:
+If the port exists but the page still does not load, check the VM and service logs:
 
 ```bash
-dvm ssh ai sudo systemctl status dvm-llama.service
-dvm ssh ai sudo journalctl -u dvm-llama.service -f
+dvm status ai
+dvm logs ai dvm-llama.service -f
 ```
 
 If model download fails with HTTP 400/403, copy the printed URL and test it directly.

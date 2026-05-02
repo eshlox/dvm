@@ -21,6 +21,7 @@ dvm_source_defaults() {
 	DVM_MEMORY="${DVM_MEMORY:-4GiB}"
 	DVM_DISK="${DVM_DISK:-40GiB}"
 	DVM_NETWORK="${DVM_NETWORK:-user-v2}"
+	DVM_HOST_IP="${DVM_HOST_IP:-127.0.0.1}"
 	DVM_GUEST_USER="${DVM_GUEST_USER:-$(id -un)}"
 	DVM_GUEST_HOME="${DVM_GUEST_HOME:-/home/$DVM_GUEST_USER}"
 	DVM_CODE_DIR="${DVM_CODE_DIR:-}"
@@ -83,6 +84,7 @@ dvm_validate_defaults() {
 	user-v2 | vzNAT) ;;
 	*) dvm_die "invalid DVM_NETWORK: $DVM_NETWORK" ;;
 	esac
+	dvm_validate_ipv4 DVM_HOST_IP "$DVM_HOST_IP"
 }
 
 dvm_vm_config_path() {
@@ -121,6 +123,7 @@ dvm_global_config_template() {
 # DVM_MEMORY="4GiB"
 # DVM_DISK="40GiB"
 # DVM_NETWORK="user-v2"
+# DVM_HOST_IP="127.0.0.1"
 
 # Keep ~/.config/dvm local. It can contain project names, tunnel names, email,
 # setup choices, and other machine-specific values.
@@ -157,6 +160,7 @@ dvm_vm_config_template() {
 # DVM_MEMORY="4GiB"
 # DVM_DISK="40GiB"
 # DVM_NETWORK="user-v2"
+# DVM_HOST_IP="127.0.0.1"
 
 # Project directory:
 # Defaults to \$DVM_GUEST_HOME/code/\$DVM_NAME.
@@ -164,6 +168,7 @@ dvm_vm_config_template() {
 
 # Host localhost forwards, written as host:guest pairs.
 # DVM_PORTS="3000:3000 5173:5173"
+# To expose forwarded ports to your LAN, use DVM_HOST_IP="0.0.0.0".
 
 # Dotfiles:
 # Inherit DVM_DOTFILES_DIR from global config, override it, or disable it:

@@ -12,6 +12,22 @@ Then from macOS:
 http://127.0.0.1:8080
 ```
 
+DVM binds forwarded ports to localhost by default:
+
+```bash
+DVM_HOST_IP="127.0.0.1"
+```
+
+For testing from another device on your LAN, bind to all host interfaces:
+
+```bash
+DVM_HOST_IP="0.0.0.0"
+```
+
+Only use that for services you are comfortable exposing to your local network.
+Changing `DVM_HOST_IP` requires `dvm setup <name>` so Lima can rewrite the port
+forwards.
+
 DVM also tells Lima to ignore guest port `5355` automatically. Fedora may listen on
 `5355` for LLMNR, and forwarding it from every VM causes harmless
 `address already in use` warnings on macOS.

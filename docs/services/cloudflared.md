@@ -52,11 +52,11 @@ unset CLOUDFLARED_TOKEN
 The token is written inside the VM as `/etc/cloudflared/dvm.env`. It does not need to
 stay in the DVM config file.
 
-Check logs:
+Check the VM and service logs:
 
 ```bash
-dvm ssh cloudflared sudo systemctl status dvm-cloudflared.service
-dvm ssh cloudflared sudo journalctl -u dvm-cloudflared.service -f
+dvm status cloudflared
+dvm logs cloudflared dvm-cloudflared.service -f
 ```
 
 Rotate the token:
@@ -87,6 +87,10 @@ site with Cloudflare Access or application auth if it is not meant to be public.
 
 Keep the token only in the cloudflared VM. If the VM is compromised, revoke or rotate
 the token in Cloudflare.
+
+During setup the recipe checks recent service logs and warns if the tunnel token appears
+in the journal. If that warning appears, rotate the token in Cloudflare and inspect the
+VM logs before reusing the connector.
 
 References:
 

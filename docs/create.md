@@ -70,8 +70,13 @@ Run one command inside a VM:
 
 ```bash
 dvm ssh app pwd
-dvm ssh app journalctl --user -xe
-dvm ssh app sudo journalctl -u dvm-llama.service -f
+```
+
+Inspect the VM and service logs:
+
+```bash
+dvm status app
+dvm logs app dvm-example.service -f
 ```
 
 Enter an interactive shell:

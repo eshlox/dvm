@@ -32,14 +32,14 @@ Run one command:
 dvm app pnpm test
 dvm app claude
 dvm ssh app sudo dnf5 install -y htop
-dvm ssh app journalctl --user -xe
 ```
 
-Service logs:
+Inspect VMs and service logs:
 
 ```bash
-dvm ssh ai sudo journalctl -u dvm-llama.service -f
-dvm ssh cloudflared sudo journalctl -u dvm-cloudflared.service -f
+dvm status app
+dvm logs ai dvm-llama.service -f
+dvm logs cloudflared dvm-cloudflared.service -f
 ```
 
 ## Terminal
@@ -71,9 +71,14 @@ infocmp -x xterm-ghostty | dvm ssh app tic -x -
 dvm setup-all
 dvm upgrade app
 dvm upgrade-all
+dvm doctor
+dvm doctor app
 ```
 
 `upgrade` runs Fedora package upgrades, then reruns setup.
+
+`doctor` checks host tools, Lima, disk space, and optional per-VM config details such
+as recipe paths, dotfiles, and port availability.
 
 ## Keys
 
@@ -88,12 +93,29 @@ Keys are opt-in. VM creation does not create them.
 
 ```bash
 dvm list
+dvm status app
 dvm rm app
 dvm rm app --force
 dvm version
 ```
 
+`dvm status app` prints a single-VM summary with Lima state, size, ports, host bind
+IP, code directory, setup scripts, dotfiles, and Lima directory.
+
 `dvm rm app` checks for dirty Git work inside `DVM_CODE_DIR` before deleting. Use
 `--force` only when you accept losing uncommitted work in that VM.
 
 `dvm version` prints the current Git tag or commit when DVM is run from a checkout.
+
+## Logs
+
+```bash
+dvm logs ai
+dvm logs cloudflared
+dvm logs app dvm-example.service
+dvm logs ai dvm-llama.service -f
+```
+
+If the VM uses a known service recipe, `dvm logs <name>` infers the service unit.
+Otherwise pass the unit name explicitly. Extra arguments are passed to `journalctl`;
+without extra arguments DVM uses `--no-pager -n 100`.

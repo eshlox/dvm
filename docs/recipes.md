@@ -21,6 +21,13 @@ Built-in recipes:
 - `agent.sh`: create only the separate `dvm-agent` user
 - `cloudflared.sh`: install Cloudflare's `cloudflared` connector and optionally run it as a service
 
+Recipes run with DVM's small helper prelude loaded first. User recipes can call
+`dvm_recipe_die`, `dvm_recipe_warn`, `dvm_recipe_validate_service`,
+`dvm_recipe_validate_port`, `dvm_recipe_validate_https_url`, and
+`dvm_recipe_sha256_file`. They can also call `dvm_recipe_record_ssh_host github.com`
+before non-interactive SSH clones. Files in `recipes/_*.sh` are internal helper
+fragments, not setup scripts to list in `DVM_SETUP_SCRIPTS`.
+
 Keep custom recipes small. Use recipes for package installs, repositories, services,
 tools, dotfiles, and shell defaults.
 

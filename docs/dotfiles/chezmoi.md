@@ -35,7 +35,9 @@ set -euo pipefail
 : "${DVM_GIT_NAME:?set DVM_GIT_NAME in ~/.config/dvm/config.sh}"
 : "${DVM_GIT_EMAIL:?set DVM_GIT_EMAIL in ~/.config/dvm/config.sh}"
 
-sudo dnf5 install -y chezmoi
+sudo dnf5 install -y chezmoi git
+source_dir="$HOME/.local/share/chezmoi"
+repo="https://github.com/YOUR_USER/dotfiles.git"
 
 mkdir -p "$HOME/.config/chezmoi"
 cat >"$HOME/.config/chezmoi/chezmoi.toml" <<CHEZMOI
@@ -46,11 +48,21 @@ email = "$DVM_GIT_EMAIL"
 CHEZMOI
 chmod 600 "$HOME/.config/chezmoi/chezmoi.toml"
 
-if [ ! -d "$HOME/.local/share/chezmoi" ]; then
-	chezmoi init git@github.com:YOUR_USER/dotfiles.git
+if [ -e "$source_dir" ] && ! git -C "$source_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+	rm -rf "$source_dir"
+fi
+if [ ! -d "$source_dir" ]; then
+	chezmoi init "$repo"
 fi
 chezmoi update --force
 ```
+
+For private dotfiles, use an SSH URL such as `git@github.com:YOUR_USER/dotfiles.git`,
+install `openssh-clients`, call `dvm_recipe_record_ssh_host github.com` before
+`chezmoi init`, then add the VM's `dvm ssh-key <name>` public key to GitHub.
+
+The `source_dir` check recovers from a previous failed clone that left
+`~/.local/share/chezmoi` behind without a Git repository.
 
 Run it:
 
@@ -116,6 +128,23 @@ The file must contain:
 [data]
 name = "Your Name"
 email = "you@example.com"
+```
+
+## Fix Broken Source Directory
+
+This can happen after a failed first clone:
+
+```text
+fatal: not a git repository
+chezmoi: git: exit status 128
+```
+
+The recipe above removes `~/.local/share/chezmoi` only when that path exists but is not
+a Git work tree. To fix an existing VM once:
+
+```bash
+dvm ssh app rm -rf ~/.local/share/chezmoi
+dvm setup app
 ```
 
 ## Existing File Changed

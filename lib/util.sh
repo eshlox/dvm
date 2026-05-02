@@ -73,3 +73,52 @@ dvm_validate_port_number() {
 		dvm_die "invalid $label port: $number"
 	fi
 }
+
+dvm_validate_ipv4() {
+	local label octet rest value
+	label="$1"
+	value="$2"
+	case "$value" in
+	'' | *[!0-9.]* | *.*.*.*.* | .* | *. | *..*)
+		dvm_die "invalid $label: $value"
+		;;
+	esac
+	rest="$value"
+	while :; do
+		octet="${rest%%.*}"
+		case "$octet" in
+		'' | *[!0-9]*)
+			dvm_die "invalid $label: $value"
+			;;
+		esac
+		if [ "${#octet}" -gt 1 ]; then
+			case "$octet" in
+			0*) dvm_die "invalid $label: $value" ;;
+			esac
+		fi
+		if [ "${#octet}" -gt 3 ] || [ "$octet" -gt 255 ]; then
+			dvm_die "invalid $label: $value"
+		fi
+		case "$rest" in
+		*.*) rest="${rest#*.}" ;;
+		*) break ;;
+		esac
+	done
+	case "$value" in
+	*.*.*.*) ;;
+	*) dvm_die "invalid $label: $value" ;;
+	esac
+}
+
+dvm_validate_systemd_unit() {
+	local label unit
+	label="$1"
+	unit="$2"
+	case "$unit" in
+	*.service) ;;
+	*) dvm_die "$label must end with .service: $unit" ;;
+	esac
+	case "$unit" in
+	*/* | *..* | *[!A-Za-z0-9_.@-]*) dvm_die "invalid $label: $unit" ;;
+	esac
+}

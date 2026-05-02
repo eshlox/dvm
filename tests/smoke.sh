@@ -11,19 +11,33 @@ LIST_FILE="$TMP/limactl-list"
 LOG="$TMP/log"
 mkdir -p "$MOCK_BIN" "$VM_HOME_ROOT"
 
-cat >"$MOCK_BIN/sudo" <<'MOCK'
+write_mock() {
+	local name
+	name="$1"
+	cat >"$MOCK_BIN/$name"
+}
+
+write_mocks() {
+	write_mock sudo <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 "$@"
 MOCK
 
-cat >"$MOCK_BIN/dnf5" <<'MOCK'
+	write_mock dnf5 <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'dnf5 %s\n' "$*" >>"$DVM_TEST_LOG"
 MOCK
 
-cat >"$MOCK_BIN/ssh-keygen" <<'MOCK'
+	write_mock journalctl <<'MOCK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'journalctl %s\n' "$*" >>"$DVM_TEST_LOG"
+printf 'mock journalctl %s\n' "$*"
+MOCK
+
+	write_mock ssh-keygen <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 out=""
@@ -38,7 +52,7 @@ printf 'private-key\n' >"$out"
 printf 'ssh-ed25519 public-key\n' >"$out.pub"
 MOCK
 
-cat >"$MOCK_BIN/gpg" <<'MOCK'
+	write_mock gpg <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 state="$HOME/.gnupg/dvm-test-key"
@@ -63,7 +77,7 @@ case "$*" in
 esac
 MOCK
 
-cat >"$MOCK_BIN/limactl" <<'MOCK'
+	write_mock limactl <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -75,18 +89,23 @@ add_vm() {
 }
 
 write_port_forward() {
-	local guest host rest spec vm
+	local guest host host_ip rest spec vm
 	vm="$1"
 	spec="$2"
 	host="${spec%%:*}"
 	rest="${spec#*:}"
 	guest="${rest%%,*}"
+	host_ip="127.0.0.1"
+	case "$spec" in
+	*,hostIP=*) host_ip="${spec##*,hostIP=}" ;;
+	esac
 	mkdir -p "$DVM_TEST_VM_HOME/$vm"
 	if [ ! -f "$DVM_TEST_VM_HOME/$vm/lima.yaml" ]; then
 		printf 'portForwards:\n' >"$DVM_TEST_VM_HOME/$vm/lima.yaml"
 	fi
 	cat >>"$DVM_TEST_VM_HOME/$vm/lima.yaml" <<YAML
 - hostPort: $host
+  hostIP: $host_ip
   guestPort: $guest
 YAML
 }
@@ -107,9 +126,10 @@ YAML
 }
 
 write_port_forwards_from_expr() {
-	local expr guest host object port static vm
+	local expr guest host host_ip log_prefix object port static vm
 	vm="$1"
 	expr="$2"
+	log_prefix="${3:-edit-port-forward}"
 	rm -f "$DVM_TEST_VM_HOME/$vm/lima.yaml"
 	if printf '%s\n' "$expr" | grep -Fq '"ignore":true'; then
 		printf 'ignore-port 5355\n' >>"$DVM_TEST_LOG"
@@ -121,12 +141,14 @@ write_port_forwards_from_expr() {
 		[ -n "$host" ] && [ -n "$guest" ] || continue
 		port="$host:$guest"
 		[ "$port" = "5355:5355" ] && continue
+		host_ip="$(printf '%s\n' "$object" | sed -n 's/.*"hostIP":"\([^"]*\)".*/\1/p')"
+		host_ip="${host_ip:-127.0.0.1}"
 		static="false"
 		case "$object" in
 		*'"static":true'*) static="true" ;;
 		esac
-		printf 'edit-port-forward %s,static=%s\n' "$port" "$static" >>"$DVM_TEST_LOG"
-		write_port_forward "$vm" "$port,static=$static"
+		printf '%s %s,static=%s,hostIP=%s\n' "$log_prefix" "$port" "$static" "$host_ip" >>"$DVM_TEST_LOG"
+		write_port_forward "$vm" "$port,static=$static,hostIP=$host_ip"
 	done < <(
 		printf '%s\n' "$expr" |
 			tr '{}' '\n'
@@ -134,6 +156,9 @@ write_port_forwards_from_expr() {
 }
 
 case "${1:-}" in
+--version)
+	printf 'limactl mock\n'
+	;;
 list)
 	if [ "${2:-}" = "--format" ]; then
 		case "${3:-}" in
@@ -166,6 +191,9 @@ create)
 			;;
 		--set)
 			case "$2" in
+			*portForwards*)
+				write_port_forwards_from_expr "$vm" "$2" port-forward
+				;;
 			*'"guestPort":5355'*'"ignore":true'* | *'"ignore":true'*'"guestPort":5355'*)
 				printf 'ignore-port 5355\n' >>"$DVM_TEST_LOG"
 				write_ignore_port "$vm" 5355
@@ -237,7 +265,9 @@ delete)
 	;;
 esac
 MOCK
+}
 
+write_mocks
 chmod +x "$MOCK_BIN"/*
 
 export DVM_TEST_LOG="$LOG"
@@ -291,6 +321,7 @@ printf 'private\n' >"$TMP/dotfiles/private.sh"
 cat >"$DVM_CONFIG/recipes/app.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
+dvm_recipe_validate_port TEST_PORT 1234
 dnf5 install -y git ripgrep
 printf 'script:%s\n' "$DVM_NAME" >"$HOME/script-ran"
 printf 'custom:%s\n' "$DVM_CUSTOM_VALUE" >"$HOME/custom-ran"
@@ -309,8 +340,8 @@ CONFIG
 
 "$TMP/local-bin/dvm-test" create app >/dev/null 2>&1
 grep -Fq 'create dvm-app' "$LOG"
-grep -Fq 'port-forward 3000:3000,static=true' "$LOG"
-grep -Fq 'port-forward 5173:5173,static=true' "$LOG"
+grep -Fq 'port-forward 3000:3000,static=true,hostIP=127.0.0.1' "$LOG"
+grep -Fq 'port-forward 5173:5173,static=true,hostIP=127.0.0.1' "$LOG"
 grep -Fq 'dnf5 install -y git ripgrep' "$LOG"
 grep -Fxq 'script:app' "$VM_HOME_ROOT/dvm-app/home/script-ran"
 grep -Fxq 'custom:recipe-env' "$VM_HOME_ROOT/dvm-app/home/custom-ran"
@@ -341,12 +372,33 @@ CONFIG
 "$TMP/local-bin/dvm-test" setup app >/dev/null 2>&1
 grep -Fq 'stop dvm-app' "$LOG"
 grep -Fq 'edit dvm-app' "$LOG"
-grep -Fq 'edit-port-forward 8080:8080,static=true' "$LOG"
+grep -Fq 'edit-port-forward 8080:8080,static=true,hostIP=127.0.0.1' "$LOG"
 grep -Fq 'dnf5 install -y git ripgrep' "$LOG"
 "$TMP/local-bin/dvm-test" list >"$TMP/list-long-reconfigured.out"
 grep -Fq '3000:3000,5173:5173,8080:8080' "$TMP/list-long-reconfigured.out"
+"$TMP/local-bin/dvm-test" status app >"$TMP/status.out"
+grep -Fq 'name: app' "$TMP/status.out"
+grep -Fq 'status: Running' "$TMP/status.out"
+grep -Fq 'ports: 3000:3000,5173:5173,8080:8080' "$TMP/status.out"
+grep -Fq 'host-ip: 127.0.0.1' "$TMP/status.out"
+"$TMP/local-bin/dvm-test" logs app dvm-llama.service >"$TMP/logs.out"
+grep -Fq 'mock journalctl -u dvm-llama.service --no-pager -n 100' "$TMP/logs.out"
+grep -Fq 'journalctl -u dvm-llama.service --no-pager -n 100' "$LOG"
+"$TMP/local-bin/dvm-test" doctor app >"$TMP/doctor.out"
+grep -Fq 'doctor:' "$TMP/doctor.out"
 
 cp "$DVM_CONFIG/vms/app.sh" "$DVM_CONFIG/vms/app.safe.sh"
+cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
+DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
+DVM_CUSTOM_VALUE="recipe-env"
+DVM_HOST_IP="0.0.0.0"
+DVM_PORTS="3000:3000 5173:5173 8080:8080"
+DVM_DOTFILES_DIR="$TMP/dotfiles"
+DVM_DOTFILES_TARGET="\$DVM_GUEST_HOME/.dotfiles"
+DVM_SETUP_SCRIPTS="app.sh"
+CONFIG
+"$TMP/local-bin/dvm-test" setup app >/dev/null 2>&1
+grep -Fq 'edit-port-forward 8080:8080,static=true,hostIP=0.0.0.0' "$LOG"
 cat >"$DVM_CONFIG/vms/app.sh" <<CONFIG
 DVM_GUEST_HOME="$VM_HOME_ROOT/dvm-app/home"
 DVM_PORTS=":8080"

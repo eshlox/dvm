@@ -35,6 +35,12 @@ bash scripts/check.sh
 Shell code should be Bash, pass `bash -n`, and pass ShellCheck when ShellCheck is
 available. Keep behavior explicit and prefer small functions over broad abstractions.
 
+For every user-facing change, update the relevant docs and add an entry under
+`Unreleased` in [CHANGELOG.md](CHANGELOG.md). This includes command behavior, config
+variables, recipes, setup examples, release workflow changes, and security-relevant
+documentation. If a change is intentionally internal-only, say that in the pull request
+or final summary.
+
 ## Security
 
 Do not report vulnerabilities in public issues. Follow [SECURITY.md](SECURITY.md).
