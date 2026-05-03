@@ -97,6 +97,10 @@ with a letter.
 Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
 `~/.config/dvm/recipes`.
 
+Add tools for every VM in `~/.config/dvm/recipes/baseline.sh`. Add tools for one VM by
+creating `~/.config/dvm/recipes/<name>.sh` and selecting it with `use <name>` in that
+VM config.
+
 First-pass recipes include:
 
 - `baseline`: common shell/dev tools

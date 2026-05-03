@@ -54,6 +54,48 @@ and expose wrappers in `/usr/local/bin`. Put `use agent-user` before these recip
 `node` installs Node.js/npm and enables Corepack when available. `python` installs
 Python, pip, and uv.
 
+## Adding Packages
+
+Use `baseline` only for tools that should be present in every VM:
+
+```bash
+$EDITOR ~/.config/dvm/recipes/baseline.sh
+dvm apply --all
+```
+
+For a DNF package in one VM, prefer a small recipe:
+
+```bash
+$EDITOR ~/.config/dvm/recipes/my-package.sh
+```
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo dnf5 install -y my-package
+```
+
+Then select it from one VM config:
+
+```bash
+use my-package
+```
+
+For a package or tool that does not exist in DNF, use the same split:
+
+- every VM: put the install commands in `~/.config/dvm/recipes/baseline.sh`
+- one VM: put the install commands in `~/.config/dvm/recipes/<name>.sh` and add
+  `use <name>` to that VM config
+
+Project-only setup that belongs in the project repository can also live in:
+
+```text
+$DVM_CODE_DIR/.dvm/apply.sh
+```
+
+That hook runs after baseline and selected recipes, inside the guest.
+
 `chezmoi` applies public dotfiles over HTTPS:
 
 ```bash

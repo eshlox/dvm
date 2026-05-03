@@ -23,6 +23,7 @@
 - Hardened cloudflared token-log checking and expanded the `dvm-agent` ACL deny list.
 - Changed `install.sh --init` to leave VM examples in `share/dvm/vms` instead of
   copying inactive examples into `~/.config/dvm`.
+- Documented how to add DNF and non-DNF tools globally or per VM.
 - Updated install, checks, smoke tests, CI, README, and docs for the Bash-only
   implementation.
 - Added focused docs for commands, config, Lima, AI, services, dotfiles, and
