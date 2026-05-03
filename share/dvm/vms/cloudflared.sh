@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034,SC2088
 # Dedicated Cloudflare Tunnel VM.
 
 DVM_CPUS=2

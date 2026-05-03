@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034,SC2088
 # Example project VM. Copy to ~/.config/dvm/vms/<name>.sh and edit.
 
 DVM_CPUS=4

@@ -19,6 +19,7 @@ if command -v shellcheck >/dev/null 2>&1; then
 fi
 
 find . -path ./.git -prune -o -type f -print0 |
+	# shellcheck disable=SC2016
 	xargs -0 perl -ne 'if (/[ \t]$/) { print "$ARGV:$.: trailing whitespace\n"; $bad = 1 } END { exit($bad ? 1 : 0) }'
 
 for test in tests/*.sh; do

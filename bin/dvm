@@ -359,6 +359,7 @@ apply_all() {
 	[ "$failed" -eq 0 ]
 }
 
+# shellcheck disable=SC2016
 guest_cd_script='
 set -euo pipefail
 code_dir="$1"

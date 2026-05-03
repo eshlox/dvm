@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034,SC2088
 # Global DVM defaults. Copy to ~/.config/dvm/config.sh and edit there.
 
 DVM_CPUS=4
