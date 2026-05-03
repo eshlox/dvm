@@ -7,6 +7,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/bin" "$TMP/config/vms" "$TMP/state"
 cp -R "$ROOT/share/dvm/." "$TMP/config/"
+rm -rf "$TMP/config/vms"
+mkdir -p "$TMP/config/vms"
 
 cat >"$TMP/config/vms/app.sh" <<'VM'
 DVM_CPUS=2
@@ -30,6 +32,15 @@ DVM_DISK=20GiB
 DVM_CODE_DIR="~/code/second"
 
 use python
+VM
+
+cat >"$TMP/config/vms/cloudflared.sh" <<'VM'
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=20GiB
+DVM_CODE_DIR="~/code/cloudflared"
+
+use cloudflared
 VM
 
 cat >"$TMP/bin/limactl" <<'FAKE'

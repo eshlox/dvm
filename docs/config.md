@@ -38,11 +38,13 @@ Active VMs live in:
 Names must start with a lowercase letter and contain only lowercase letters, numbers,
 and hyphens.
 
-Examples are installed into:
+Example VM configs live in the repo:
 
 ```text
-~/.config/dvm/examples/vms
+share/dvm/vms
 ```
+
+Copy one into `~/.config/dvm/vms` when you want it to become active.
 
 Example:
 

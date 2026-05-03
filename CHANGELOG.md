@@ -21,6 +21,8 @@
 - Fixed the Mistral recipe's `mistral` wrapper target and updated the Claude recipe to
   the current signed RPM repository.
 - Hardened cloudflared token-log checking and expanded the `dvm-agent` ACL deny list.
+- Changed `install.sh --init` to leave VM examples in `share/dvm/vms` instead of
+  copying inactive examples into `~/.config/dvm`.
 - Updated install, checks, smoke tests, CI, README, and docs for the Bash-only
   implementation.
 - Added focused docs for commands, config, Lima, AI, services, dotfiles, and

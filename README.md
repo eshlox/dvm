@@ -25,9 +25,8 @@ Install the wrapper:
 ```
 
 This symlinks `bin/dvm` into `~/.local/bin` and copies defaults into
-`~/.config/dvm` without overwriting existing files. Example VM configs are copied to
-`~/.config/dvm/examples/vms`; copy one into `~/.config/dvm/vms` when you want it to be
-active.
+`~/.config/dvm` without overwriting existing files. Example VM configs stay in the repo
+under `share/dvm/vms`; copy one into `~/.config/dvm/vms` when you want it to be active.
 
 ## Commands
 
@@ -67,7 +66,7 @@ Per-VM config:
 Start from an example:
 
 ```bash
-cp ~/.config/dvm/examples/vms/app.sh ~/.config/dvm/vms/app.sh
+cp share/dvm/vms/app.sh ~/.config/dvm/vms/app.sh
 $EDITOR ~/.config/dvm/vms/app.sh
 ```
 
@@ -116,9 +115,8 @@ CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 dvm logs cloudflared
 ```
 
-The example configs are copied by `./install.sh --init` into
-`~/.config/dvm/examples/vms`. Copy them into `~/.config/dvm/vms` when you want those
-VMs to be active.
+Example service configs live in `share/dvm/vms`. Copy one into `~/.config/dvm/vms`
+when you want that VM to be active.
 
 ## Docs
 

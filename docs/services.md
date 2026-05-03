@@ -8,7 +8,7 @@ and lets other VMs reach services through Lima's internal names.
 Create an active config:
 
 ```bash
-cp ~/.config/dvm/examples/vms/llama.sh ~/.config/dvm/vms/llama.sh
+cp share/dvm/vms/llama.sh ~/.config/dvm/vms/llama.sh
 $EDITOR ~/.config/dvm/vms/llama.sh
 dvm apply llama
 ```
@@ -54,7 +54,7 @@ dvm logs llama
 Create an active config:
 
 ```bash
-cp ~/.config/dvm/examples/vms/cloudflared.sh ~/.config/dvm/vms/cloudflared.sh
+cp share/dvm/vms/cloudflared.sh ~/.config/dvm/vms/cloudflared.sh
 CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 ```
 
