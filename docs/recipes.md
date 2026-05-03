@@ -44,6 +44,16 @@ Rules:
 jq. Editors, shells, terminal tools, Git UIs, and language runtimes belong in user
 recipes or project-specific VM configs.
 
+Interactive tools are split into one recipe per tool: `zsh`, `git`, `helix`,
+`lazygit`, `starship`, `fzf`, `git-delta`, `just`, `tmux`, and `yazi`. `zsh` sets zsh
+as the guest user's default login shell. The DNF-backed recipes install from Fedora.
+The upstream-backed recipes try Fedora first and otherwise use pinned official release
+assets with sha256 verification.
+
+`_helpers.sh` is an internal helper that DVM prepends before guest recipes. It provides
+the shared verified-download functions used by pinned upstream recipes; do not select
+it with `use`.
+
 `agent-user` creates `dvm-agent`, grants ACL access to `DVM_CODE_DIR`, creates an agent
 scratch directory, and restricts common main-user secret paths. This is a
 Unix-permissions guardrail, not a complete sandbox.
@@ -56,11 +66,43 @@ Python, pip, and uv.
 
 ## Adding Packages
 
-Use `baseline` only for tools that should be present in every VM:
+Use `baseline` only for required setup basics that should be present in every VM,
+including service VMs. For app VMs, select the tools you want explicitly:
 
 ```bash
-$EDITOR ~/.config/dvm/recipes/baseline.sh
-dvm apply --all
+use zsh
+use git
+use helix
+use lazygit
+use starship
+use fzf
+use git-delta
+use just
+use tmux
+use yazi
+```
+
+If you want a personal bundle, define it in `~/.config/dvm/config.sh`:
+
+```bash
+use_my_tools() {
+	use zsh
+	use git
+	use helix
+	use lazygit
+	use starship
+	use fzf
+	use git-delta
+	use just
+	use tmux
+	use yazi
+}
+```
+
+Then call it from VM configs that should get that bundle:
+
+```bash
+use_my_tools
 ```
 
 For a DNF package in one VM, prefer a small recipe:
@@ -84,9 +126,15 @@ use my-package
 
 For a package or tool that does not exist in DNF, use the same split:
 
-- every VM: put the install commands in `~/.config/dvm/recipes/baseline.sh`
+- every app VM: create a named recipe in `~/.config/dvm/recipes/<name>.sh` and add
+  `use <name>` to those VM configs, or add it to your own helper function
 - one VM: put the install commands in `~/.config/dvm/recipes/<name>.sh` and add
   `use <name>` to that VM config
+
+For non-DNF tools, prefer the pattern used by `lazygit`, `starship`, and `yazi`:
+download from an official HTTPS release URL, pin a version, verify sha256 before
+installing, and avoid `curl | sh` installers. To update, bump the version, URL, and
+sha256 in the recipe, then run `dvm apply <name>` or `dvm apply --all`.
 
 Project-only setup that belongs in the project repository can also live in:
 

@@ -57,6 +57,8 @@ small, but they are the bar for changes.
 - Recipes should install one concept and avoid hidden dependency systems.
 - Remote downloads should come from package managers or pinned URLs with checksums
   when practical.
+- Updating a pinned upstream recipe means updating the version, URL, and sha256
+  together in the recipe.
 
 ## Host
 

@@ -19,6 +19,7 @@ DVM_PORTS="3000:3000"
 DVM_CHEZMOI_REPO="https://github.com/example/dotfiles.git"
 DVM_APP_ONLY="app"
 
+use lazygit
 use node
 use agent-user
 use codex

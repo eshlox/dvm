@@ -13,7 +13,15 @@
 - Added bundled defaults under `share/dvm`: global config, Lima template, example VM
   configs, and reusable guest recipes.
 - Added first-pass recipes for setup basics, `dvm-agent`, Codex, Claude, OpenCode,
-  Mistral, HTTPS chezmoi dotfiles, llama, cloudflared, Node, and Python.
+  Mistral, HTTPS chezmoi dotfiles, llama, cloudflared, Node, Python, zsh, Git, Helix,
+  lazygit, Starship, fzf, Delta, just, tmux, and Yazi.
+- Documented how to define local host-side recipe helper functions without adding a
+  default personal tool bundle.
+- Added sha256-verified pinned upstream fallbacks for lazygit, Starship, and Yazi when
+  they are not available from Fedora repositories.
+- Added a small internal recipe helper prelude for verified upstream downloads.
+- Changed `dvm enter` to open the guest user's configured login shell instead of
+  trusting `$SHELL`.
 - Expanded llama and cloudflared recipes with service options, model aliases/checksums,
   token-file handling, and default log units.
 - Fixed config isolation for `dvm apply --all` and forwarded recipe variables

@@ -295,7 +295,7 @@ ensure_vm() {
 }
 
 run_guest_apply() {
-	local recipe path var
+	local helper recipe path var
 	local -a args
 	args=()
 	while IFS= read -r var; do
@@ -308,6 +308,11 @@ run_guest_apply() {
 	[ -z "${CLOUDFLARED_TOKEN:-}" ] || args+=("CLOUDFLARED_TOKEN=$CLOUDFLARED_TOKEN")
 
 	{
+		helper="$DVM_SHARE/recipes/_helpers.sh"
+		if [ -f "$helper" ]; then
+			printf '# dvm recipe helpers\n'
+			cat "$helper"
+		fi
 		if [ "${DVM_NO_BASELINE:-0}" != "1" ]; then
 			cat "$(recipe_file baseline)"
 		fi
@@ -373,7 +378,9 @@ esac
 mkdir -p "$code_dir"
 cd "$code_dir"
 if [ "$#" -eq 0 ]; then
-	exec "${SHELL:-/bin/bash}" -l
+	login_shell="$(getent passwd "$(id -un)" | cut -d: -f7 || true)"
+	[ -n "$login_shell" ] || login_shell="${SHELL:-/bin/bash}"
+	exec "$login_shell" -l
 fi
 exec "$@"
 '

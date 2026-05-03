@@ -134,13 +134,15 @@ dvm logs cloudflared -f
 Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
 `~/.config/dvm/recipes`.
 
-Add your own tools for every VM in `~/.config/dvm/recipes/baseline.sh`. Add tools for
-one VM by creating `~/.config/dvm/recipes/<name>.sh` and selecting it with `use <name>`
-in that VM config.
+Add your own tools with recipes. Use individual bundled tool recipes such as
+`use helix` and `use lazygit`, or define your own local helper in
+`~/.config/dvm/config.sh`.
 
 First-pass recipes include:
 
 - `baseline`: required setup basics only
+- `zsh`, `git`, `helix`, `lazygit`, `starship`, `fzf`, `git-delta`, `just`,
+  `tmux`, `yazi`: optional interactive tools
 - `agent-user`: `dvm-agent` with ACL access to project code
 - `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM
 - `chezmoi`: public HTTPS dotfiles

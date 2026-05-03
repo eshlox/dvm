@@ -91,6 +91,9 @@ use chezmoi
 - `DVM_CLOUDFLARED_SERVICE`, `DVM_CLOUDFLARED_TOKEN`: cloudflared service settings.
 - `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe.
 
+You can define host-side helper functions in `~/.config/dvm/config.sh` if you want a
+personal bundle of recipes.
+
 `~` in DVM variables always means the guest user's home. The wrapper does not expand it
 on the host.
 
