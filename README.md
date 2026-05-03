@@ -2,91 +2,133 @@
 
 Keep your friends close, your supply chain in a VM.
 
-DVM is a small Bash wrapper around Lima for creating disposable Fedora development VMs
-on macOS. It is meant to keep project code, package scripts, AI tools, language
-runtimes, SSH/GPG keys, and random dev dependencies away from the host.
+DVM is a tiny Bash wrapper around Lima. It creates one Fedora VM per project, runs the
+same baseline tools in every VM, lets each project opt into plain shell recipes, and
+keeps dev tools, AI CLIs, service credentials, and project code inside the VM.
 
-DVM targets macOS today. The same VM-isolation idea can make sense on Linux, but Linux
-support is not implemented or tested.
+The core rule:
 
-It is intentionally not a full VM platform, package manager, dotfiles framework,
-secret manager, or hard sandbox beyond what Lima/macOS virtualization provide. The core
-stays small. Most of the project is docs and examples for wiring your own per-VM setup.
+> DVM renders one Lima VM, starts it, sources one VM config on the host, and runs shell
+> recipes inside the guest.
 
-The idea: one project, one VM, one shell config. Recreate or remove the VM when you are
-done.
+## Install
 
 Requirements:
 
-- macOS 13+
-- Bash
-- Lima: `brew install lima`
+- macOS with Lima installed: `brew install lima`
+- Bash 3.2+; the macOS system Bash works
 
-Core idea:
+Install the wrapper:
 
 ```bash
-dvm init myapp
-dvm create myapp
-dvm myapp
+./install.sh --init
 ```
 
-`dvm myapp` opens `~/code/myapp` inside the VM by default.
+This symlinks `bin/dvm` into `~/.local/bin` and copies defaults into
+`~/.config/dvm` without overwriting existing files. Example VM configs are copied to
+`~/.config/dvm/examples/vms`; copy one into `~/.config/dvm/vms` when you want it to be
+active.
 
-Each VM has one shell config:
+## Commands
 
-```text
-~/.config/dvm/vms/myapp.sh
+```bash
+dvm apply app
+dvm apply --all
+dvm enter app
+dvm ssh app -- pwd
+dvm logs cloudflared
+dvm ssh-key app
+dvm gpg-key app
+dvm list
+dvm rm app --yes
+```
+
+`dvm apply <name>` creates the Lima VM if missing, starts it, runs
+`recipes/baseline.sh`, runs recipes selected by `~/.config/dvm/vms/<name>.sh`, then
+runs `~/code/<name>/.dvm/apply.sh` inside the guest if that file exists.
+
+`dvm rm` requires `--yes` and checks nested Git repos for dirty work before deleting.
+Use `--force` only when you intentionally want to skip that check.
+
+## Config
+
+Global defaults:
+
+```bash
+~/.config/dvm/config.sh
+```
+
+Per-VM config:
+
+```bash
+~/.config/dvm/vms/app.sh
+```
+
+Start from an example:
+
+```bash
+cp ~/.config/dvm/examples/vms/app.sh ~/.config/dvm/vms/app.sh
+$EDITOR ~/.config/dvm/vms/app.sh
 ```
 
 Example:
 
 ```bash
-DVM_PORTS="3000:3000"
-DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS common.sh"
+DVM_CPUS=4
+DVM_MEMORY=8GiB
+DVM_DISK=80GiB
+DVM_CODE_DIR="~/code/app"
+DVM_PORTS="3000:3000 5173:5173"
+DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 
-dvm_vm_setup() {
-	git clone git@github.com:you/myapp.git "$DVM_CODE_DIR"
-}
+use node
+use python
+use agent-user
+use codex
+use claude
+use chezmoi
 ```
 
-Hosted AI CLIs are a recipe:
+`~` in DVM variables means the guest user's home. Host project directories are not
+mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting
+with a letter.
+
+## Recipes
+
+Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
+`~/.config/dvm/recipes`.
+
+First-pass recipes include:
+
+- `baseline`: common shell/dev tools
+- `agent-user`: `dvm-agent` with ACL access to project code
+- `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM
+- `chezmoi`: public HTTPS dotfiles
+- `llama`: dedicated llama service VM
+- `cloudflared`: dedicated Cloudflare Tunnel VM
+- `node`, `python`: language basics
+
+## Dedicated Service VMs
 
 ```bash
-DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
-DVM_AI_TOOLS="claude codex opencode mistral"
-DVM_AI_YOLO="1"
+dvm apply llama
+CLOUDFLARED_TOKEN="..." dvm apply cloudflared
+dvm logs cloudflared
 ```
 
-Then run `dvm setup myapp` and use `claude`, `codex`, `opencode`, or `vibe`
-inside the VM. AI wrappers run as `dvm-agent` and use YOLO mode by default. Set
-`DVM_AI_YOLO="0"` to keep approval prompts.
+The example configs are copied by `./install.sh --init` into
+`~/.config/dvm/examples/vms`. Copy them into `~/.config/dvm/vms` when you want those
+VMs to be active.
 
-Commands:
+## Docs
 
-```text
-dvm init [name]
-dvm edit <name>
-dvm create <name>
-dvm setup <name>
-dvm setup-all
-dvm upgrade <name>
-dvm upgrade-all
-dvm doctor [name]
-dvm status <name>
-dvm logs <name> [unit]
-dvm enter <name>
-dvm ssh <name> [command...]
-dvm ssh-key <name>
-dvm gpg-key <name>
-dvm list
-dvm rm <name> [--force]
-dvm version
-```
-
-Docs:
-
-- Start: [Install](docs/install.md), [Dependencies](docs/dependencies.md), [Create VMs](docs/create.md), [Config](docs/config.md)
-- Daily use: [Commands](docs/commands.md), [Recipes](docs/recipes.md), [Updates](docs/updates.md), [Networking](docs/networking.md), [Releases](docs/releases.md), [Changelog](CHANGELOG.md)
-- Setup examples: [Languages](docs/languages/README.md), [Node supply-chain hardening](docs/languages/node-security.md), [Dotfiles](docs/dotfiles/README.md), [SSH, GPG, and signing](docs/keys.md)
-- Services and AI: [AI](docs/ai/README.md), [Services](docs/services/README.md)
-- Project: [Extending DVM](docs/extending.md), [Uninstall](docs/uninstall.md)
+- [Plan](docs/plan.md): the design boundary and non-goals
+- [Commands](docs/commands.md): command reference
+- [Config](docs/config.md): global and per-VM Bash variables
+- [Lima](docs/lima.md): template and networking decisions
+- [Recipes](docs/recipes.md): recipe authoring and bundled recipe behavior
+- [AI](docs/ai.md): `dvm-agent` and hosted AI tools
+- [Services](docs/services.md): llama and cloudflared VMs
+- [Dotfiles](docs/dotfiles.md): chezmoi over HTTPS
+- [Security Standards](docs/security-standards.md): operating rules
+- [Docs index](docs/README.md)

@@ -1,0 +1,53 @@
+minimumLimaVersion: 2.0.0
+
+base:
+  - template:_images/fedora-43
+
+vmType: "vz"
+arch: "${DVM_ARCH}"
+
+cpus: ${DVM_CPUS}
+memory: "${DVM_MEMORY}"
+disk: "${DVM_DISK}"
+
+mounts: []
+
+containerd:
+  system: false
+  user: false
+
+user:
+  name: "${DVM_USER}"
+  home: "/home/${DVM_USER}"
+  shell: "/bin/bash"
+
+networks:
+  - lima: user-v2
+
+param:
+  Project: "${DVM_NAME}"
+  CodeDir: "${DVM_CODE_DIR}"
+
+portForwards:
+${DVM_PORT_FORWARDS_YAML}
+  - guestPort: 5355
+    proto: any
+    ignore: true
+
+provision:
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      dnf5 install -y sudo shadow-utils tar gzip git
+
+  - mode: user
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      code_dir="$PARAM_CodeDir"
+      case "$code_dir" in
+        "~") code_dir="$HOME" ;;
+        "~/"*) code_dir="$HOME/${code_dir#~/}" ;;
+      esac
+      mkdir -p "$code_dir" "$HOME/.local/bin" "$HOME/.config"

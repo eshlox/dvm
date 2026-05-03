@@ -1,49 +1,29 @@
 # Contributing
 
-DVM is intentionally small. Contributions should keep the core easy to audit and avoid
-turning the project into a general VM platform or package manager.
-
-## Scope
+DVM is intentionally small. Keep the wrapper boring and put setup behavior in recipes
+or docs unless the wrapper truly has to bridge host config to Lima.
 
 Good fits:
 
-- VM lifecycle helpers around Lima
-- small, auditable recipe examples
-- documentation that improves safe usage
-- focused tests for shell behavior
+- small fixes to the wrapper commands
+- guest recipes that are plain, idempotent shell
+- docs that explain how to use or modify recipes
+- shell tests for wrapper behavior
 
 Avoid:
 
-- default language/toolchain installers
-- remote install scripts or `curl | sh` patterns
-- host directory mounts that weaken project isolation by default
-- large framework dependencies
-- features that are better handled by per-VM config or recipes
+- typed schemas, catalogs, planners, reports, or metadata registries
+- recipe dependency systems
+- host code mounts by default
+- secret-store abstractions
+- features better handled by `dvm ssh <name> -- ...`
 
-Before adding a feature, read [Extending DVM](docs/extending.md). Most additions should
-be docs or recipes. Core commands need a stronger reason because they increase the
-maintenance and security surface for every user.
-
-## Development
-
-Run checks before opening a pull request:
+Run checks before handing work back:
 
 ```bash
 bash scripts/check.sh
 ```
 
-Shell code should be Bash, pass `bash -n`, and pass ShellCheck when ShellCheck is
-available. Keep behavior explicit and prefer small functions over broad abstractions.
-
 For every user-facing change, update the relevant docs and add an entry under
-`Unreleased` in [CHANGELOG.md](CHANGELOG.md). This includes command behavior, config
-variables, recipes, setup examples, release workflow changes, and security-relevant
-documentation. If a change is intentionally internal-only, say that in the pull request
-or final summary.
-
-## Security
-
-Do not report vulnerabilities in public issues. Follow [SECURITY.md](SECURITY.md).
-
-Changes that affect installation, VM creation/deletion, key helpers, dotfiles sync, or
-setup execution should include tests or a clear explanation of the remaining risk.
+`Unreleased` in [CHANGELOG.md](CHANGELOG.md). If a change is internal-only, say that in
+the final summary.

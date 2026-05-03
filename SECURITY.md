@@ -13,74 +13,32 @@ public issue with exploit details, secret material, or a working proof of concep
 If private vulnerability reporting is not available, open a public issue requesting a
 private disclosure channel and include no technical details.
 
-Useful report details:
-
-- affected DVM version or commit
-- host macOS version and Lima version
-- exact command or workflow involved
-- impact and whether secrets, SSH keys, GPG keys, or VM isolation are affected
-
 ## Security Model
 
-DVM is a small wrapper around Lima. It helps isolate project work into separate Fedora
-VMs and keeps user-controlled setup outside the core repository. The core targets Lima
-`template:fedora` and assumes `dnf5` in the guest. It is not a sandbox that can
-provide stronger guarantees than Lima, QEMU, macOS virtualization, SSH, GPG, or the
-packages and scripts that users choose to run.
+DVM is a tiny wrapper around Lima. It does not provide stronger isolation than Lima,
+QEMU, macOS virtualization, SSH, Linux permissions, or the packages and scripts users
+run inside their VMs.
 
-Security-sensitive behavior in scope:
+Defaults:
 
-- installing and updating the DVM core
-- VM creation, deletion, and setup commands
-- per-VM SSH key creation
-- VM-local GPG key creation
-- documentation that affects installation or release verification
+- host project directories are not mounted into guests
+- `~` in DVM config means the guest user's home
+- AI tools run inside the VM through `dvm-agent` when the recipe is used
+- public dotfiles use HTTPS by default
+- Cloudflare tokens are passed to apply explicitly and written inside the VM
+- forwarded ports bind to `127.0.0.1` unless config says otherwise
+- `dvm rm --yes` checks nested Git repos before deleting unless `--force` is used
 
-Per-VM config, recipes, dotfiles, packages installed inside a VM, downloaded models,
-AI tools, and services configured by users are user-controlled and out of scope unless
-DVM itself handles them insecurely.
+Apply-time environment values are visible to host process listings while `limactl`
+runs. Use them for short-lived setup tokens only, not long-lived provider secrets.
 
-DVM does not mount host dotfiles into VMs by default. If dotfiles sync is enabled, DVM
-copies a filtered snapshot during setup so project code in the VM does not retain a
-persistent read path back to the host.
+The `dvm-agent` recipe uses Unix ACLs to grant access to project code and restrict
+common main-user secret paths, including SSH/GPG directories, token files, shell
+histories, and common tool config directories. This is a guardrail, not a complete
+sandbox. Guest root, sudo misconfiguration, broad filesystem permissions, known paths
+outside the deny list, or VM compromise can bypass it.
 
-The default dotfiles exclude list skips common credential paths, but it cannot know
-every private file. Review `DVM_DOTFILES_DIR` before enabling dotfiles sync.
-
-Treat `~/.config/dvm` as private local machine state. It may contain project names,
-tunnel names, email, package choices, and other setup details. Do not publish it as-is
-in a public dotfiles repo. Any value written into a VM by setup is readable by code
-running in that VM.
-
-For GitHub, prefer repository deploy keys over personal account SSH keys when you want
-repo-level isolation. Personal account SSH keys are account-scoped, so multiple VM keys
-on the same GitHub account have the same repo access. Deploy keys are repo-scoped and
-are easier to revoke when one VM is compromised.
-
-If you use hosted AI tools, prefer a separate VM user or a small recipe such as
-`recipes/agent.sh`. DVM no longer treats AI tool installation as core behavior.
-
-Cloudflare Tunnel tokens are credentials. If you use `recipes/cloudflared.sh`, keep the
-token out of project code and dotfiles. The recipe stores it inside the cloudflared VM
-at `/etc/cloudflared/dvm.env`. Rotate it in Cloudflare if that VM is compromised.
-
-## Safe Installation
-
-Install from a signed release tag, not from an arbitrary branch. Before running
-`install.sh`, verify the tag:
-
-```bash
-git fetch --tags --force
-git tag -v vX.Y.Z
-```
-
-If tag verification fails, do not install or update.
-
-## Maintainer Release Rules
-
-- Run `bash scripts/check.sh` before tagging.
-- Sign release tags with `git tag -s vX.Y.Z`.
-- Publish releases from signed `v*` tags.
-- Do not move, delete, or replace published release tags.
-- If a release is bad, publish a new fixed release and document the problem.
-- Do not add install paths that execute remote scripts directly.
+Do not put host private keys in recipes or VM configs. Generate VM-local keys with
+`dvm ssh-key <name>` or `dvm gpg-key <name>` when needed. The GPG helper creates an
+unencrypted one-year VM-local signing key for disposable VM use, not a long-lived
+identity key.

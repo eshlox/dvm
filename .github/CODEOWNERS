@@ -2,9 +2,8 @@
 
 /.github/ @eshlox
 /bin/ @eshlox
-/defaults/ @eshlox
+/share/ @eshlox
 /install.sh @eshlox
-/lib/ @eshlox
 /scripts/ @eshlox
 /tests/ @eshlox
 /LICENSE @eshlox

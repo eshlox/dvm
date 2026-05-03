@@ -1,121 +1,89 @@
 # Commands
 
-## Create And Setup
+DVM keeps the command surface small. Most day-to-day work should still be `apply`,
+`enter`, and `ssh`; the extra helpers cover logs and VM-local keys.
+
+## Apply
 
 ```bash
-dvm init app
-dvm edit app
-dvm create app
-dvm setup app
+dvm apply app
+dvm apply --all
 ```
 
-`dvm init app` creates `~/.config/dvm/vms/app.sh`.
+`apply` creates the VM if missing, starts it, runs `baseline`, runs recipes selected in
+`~/.config/dvm/vms/app.sh`, then runs `$DVM_CODE_DIR/.dvm/apply.sh` inside the guest if
+present.
 
-`dvm create app` creates the Lima VM, starts it, then runs setup.
+If the VM already exists, `apply` updates Lima port forwards from `DVM_PORTS` without
+recreating the VM. Lima may restart the instance when ports change.
 
-`dvm setup app` reruns dotfiles sync, recipes, and inline `dvm_vm_setup()`.
+`apply --all` applies every active VM config in `~/.config/dvm/vms/*.sh`, continues
+after failures, and exits non-zero if any VM failed.
 
-## Enter Or Run
+## Enter
 
 ```bash
-dvm app
 dvm enter app
-dvm ssh app
 ```
 
-All three open an interactive shell in `DVM_CODE_DIR`, which defaults to
-`~/code/<vm-name>`.
+Starts the VM and opens an interactive shell in `DVM_CODE_DIR`. The first login shell is
+Bash; after `baseline` changes the guest shell to zsh, later sessions use zsh.
 
-Run one command:
+## SSH
 
 ```bash
-dvm app pnpm test
-dvm app claude
-dvm ssh app sudo dnf5 install -y htop
+dvm ssh app -- pwd
+dvm ssh cloudflared -- journalctl -u dvm-cloudflared.service -f
 ```
 
-Inspect VMs and service logs:
+Runs one command inside the VM from `DVM_CODE_DIR`.
+
+## Logs
 
 ```bash
-dvm status app
-dvm logs ai dvm-llama.service -f
-dvm logs cloudflared dvm-cloudflared.service -f
+dvm logs cloudflared
+dvm logs cloudflared -f
+dvm logs app nginx.service -f
 ```
 
-## Terminal
+Shows `journalctl` output from inside the VM. When the VM config uses exactly one known
+service recipe, DVM picks the unit automatically:
 
-Some terminals export a custom `TERM`, for example Ghostty, Kitty, Alacritty, WezTerm,
-iTerm2, Warp, Hyper, or Wave. Fedora may not have that exact terminfo entry. When that
-happens, tmux or curses apps can fail with `missing or unsuitable terminal`.
+- `use cloudflared`: `dvm-cloudflared.service`
+- `use llama`: `dvm-llama.service`
 
-DVM checks whether the VM knows the host `TERM`. If it does, DVM passes it through. If
-not, DVM falls back to `xterm-256color`.
+Otherwise pass the unit explicitly. With no journal arguments DVM uses
+`--no-pager -n 100`; when DVM can infer the unit, journal arguments can follow the VM
+name directly.
 
-Override the fallback if needed:
-
-```bash
-DVM_GUEST_TERM="xterm-256color"
-```
-
-If you want exact terminal behavior inside one VM, install that terminal's terminfo.
-For Ghostty:
-
-```bash
-dvm ssh app sudo dnf5 install -y ncurses
-infocmp -x xterm-ghostty | dvm ssh app tic -x -
-```
-
-## Update
-
-```bash
-dvm setup-all
-dvm upgrade app
-dvm upgrade-all
-dvm doctor
-dvm doctor app
-```
-
-`upgrade` runs Fedora package upgrades, then reruns setup.
-
-`doctor` checks host tools, Lima, disk space, and optional per-VM config details such
-as recipe paths, dotfiles, and port availability.
-
-## Keys
+## VM-Local Keys
 
 ```bash
 dvm ssh-key app
 dvm gpg-key app
 ```
 
-Keys are opt-in. VM creation does not create them.
+`ssh-key` creates or reuses `~/.ssh/id_ed25519_dvm` inside the VM, prints the public
+key, adds a GitHub SSH config entry, and configures Git SSH signing for that VM.
 
-## List And Delete
+`gpg-key` creates or reuses a one-year VM-local signing key and prints the public key
+plus fingerprint. Neither command copies host private keys into the VM.
+
+## List
 
 ```bash
 dvm list
-dvm status app
-dvm rm app
-dvm rm app --force
-dvm version
 ```
 
-`dvm status app` prints a single-VM summary with Lima state, size, ports, host bind
-IP, code directory, setup scripts, dotfiles, and Lima directory.
+Shows Lima VMs whose names start with `dvm-`.
 
-`dvm rm app` checks for dirty Git work inside `DVM_CODE_DIR` before deleting. Use
-`--force` only when you accept losing uncommitted work in that VM.
-
-`dvm version` prints the current Git tag or commit when DVM is run from a checkout.
-
-## Logs
+## Remove
 
 ```bash
-dvm logs ai
-dvm logs cloudflared
-dvm logs app dvm-example.service
-dvm logs ai dvm-llama.service -f
+dvm rm app --yes
+dvm rm app --yes --force
 ```
 
-If the VM uses a known service recipe, `dvm logs <name>` infers the service unit.
-Otherwise pass the unit name explicitly. Extra arguments are passed to `journalctl`;
-without extra arguments DVM uses `--no-pager -n 100`.
+Deletes the Lima VM. `--yes` is required. Before deleting, DVM starts the VM and scans
+nested Git repos under `DVM_CODE_DIR`; dirty repos stop deletion. `--force` skips that
+scan. Recreate is intentionally `dvm rm app --yes` followed by `dvm apply app`.

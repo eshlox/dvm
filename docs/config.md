@@ -1,149 +1,103 @@
 # Config
 
-DVM has two config layers.
+DVM config is Bash because the wrapper sources it on the host. Keep it boring:
+variables plus `use <recipe>`.
 
-Global defaults:
+## Global Defaults
+
+Global config lives at:
 
 ```text
 ~/.config/dvm/config.sh
 ```
 
-Per-VM config:
+Defaults copied by `./install.sh --init`:
+
+```bash
+DVM_CPUS=4
+DVM_MEMORY=8GiB
+DVM_DISK=80GiB
+DVM_ARCH=default
+DVM_USER="${USER:-developer}"
+DVM_CODE_ROOT="~/code"
+DVM_HOST_IP="127.0.0.1"
+DVM_AI_AGENT_USER="dvm-agent"
+```
+
+`DVM_ARCH=default` resolves to `aarch64` on Apple Silicon and `x86_64` on Intel before
+rendering the Lima YAML.
+
+## VM Config
+
+Active VMs live in:
 
 ```text
 ~/.config/dvm/vms/<name>.sh
 ```
 
-The global config is loaded first, then the per-VM config. Because config is shell, a
-VM can inherit, append, replace, or clear global values.
+Names must start with a lowercase letter and contain only lowercase letters, numbers,
+and hyphens.
 
-## Global Defaults
-
-Use global config for settings that apply to most VMs:
-
-```bash
-DVM_CPUS="2"
-DVM_MEMORY="4GiB"
-DVM_DISK="40GiB"
-DVM_NETWORK="user-v2"
-DVM_HOST_IP="127.0.0.1"
-
-DVM_SETUP_SCRIPTS="common.sh"
-```
-
-Per-VM setup defaults `DVM_CODE_DIR` to:
-
-```bash
-DVM_CODE_DIR="$DVM_GUEST_HOME/code/$DVM_NAME"
-```
-
-So `dvm app`, `dvm ssh app`, and AI wrappers start in the project directory by
-default. Override it only when a VM intentionally needs a different workspace:
-
-```bash
-DVM_CODE_DIR="$DVM_GUEST_HOME/code"
-```
-
-Treat `~/.config/dvm` as private local machine state. It can contain project names,
-tunnel names, package choices, email, and other setup details that are not necessarily
-secrets but still do not belong in a public repo.
-
-If you use public dotfiles, do not publish `~/.config/dvm` directly. Keep reusable
-examples in your dotfiles docs or snippets, then keep the real DVM config local.
-
-It is fine to keep non-secret identity values here:
-
-```bash
-# ~/.config/dvm/config.sh
-DVM_GIT_NAME="Your Name"
-DVM_GIT_EMAIL="you@example.com"
-```
-
-Recipes receive `DVM_*` values, so this is useful for generating VM-local config
-without putting names, emails, or tokens into a public recipe. It is not a sandbox. If
-a recipe writes a value into the VM, code in that VM can read it.
-
-`DVM_HOST_IP` controls the host bind address for `DVM_PORTS`. Keep the default
-`127.0.0.1` unless you intentionally want LAN access with `0.0.0.0`.
-
-Example use: put Git identity values here, then generate VM-local Git config from a
-recipe. Use `dvm ssh-key <name>` for VM-local SSH auth and commit signing. See
-[SSH, GPG, and signing](keys.md).
-
-Put shared setup in:
+Examples are installed into:
 
 ```text
-~/.config/dvm/recipes/common.sh
+~/.config/dvm/examples/vms
 ```
 
-Install packages and tools from recipes. DVM intentionally has one setup path instead
-of a separate package-install phase plus scripts.
-
-Dotfiles are optional and workflow-specific. See [Dotfiles](dotfiles/README.md) for
-snapshot, bare repo, yadm, and chezmoi.
-
-Example `~/.config/dvm/recipes/common.sh`:
+Example:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
+DVM_CPUS=4
+DVM_MEMORY=8GiB
+DVM_DISK=80GiB
+DVM_CODE_DIR="~/code/app"
+DVM_PORTS="3000:3000 5173:5173"
+DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 
-sudo dnf5 install -y git ripgrep fd-find jq helix yazi
-
-if ! rpm -q terra-release >/dev/null 2>&1; then
-	sudo dnf5 install -y --nogpgcheck \
-		--repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' \
-		terra-release
-fi
-sudo dnf5 install -y lazygit
+use node
+use python
+use agent-user
+use codex
+use claude
+use chezmoi
 ```
 
-For Node and pnpm, keep the full setup in [Node](languages/node.md).
+## Variables
 
-## Per-VM Additions
+- `DVM_CPUS`, `DVM_MEMORY`, `DVM_DISK`: Lima VM sizing.
+- `DVM_ARCH`: `default`, `aarch64`, or `x86_64`.
+- `DVM_USER`: primary guest user.
+- `DVM_CODE_ROOT`: default parent for VM code directories.
+- `DVM_CODE_DIR`: guest code directory for this VM.
+- `DVM_PORTS`: space-separated `host_port:guest_port` or
+  `host_ip:host_port:guest_port` entries.
+- `DVM_HOST_IP`: default bind IP for two-part ports, normally `127.0.0.1`.
+- `DVM_AI_AGENT_USER`: AI tool user, normally `dvm-agent`.
+- `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo.
+- `DVM_LLAMA_PORT`, `DVM_LLAMA_HOST`, `DVM_LLAMA_SERVICE`: llama service settings.
+- `DVM_LLAMA_MODELS_DIR`, `DVM_LLAMA_DEFAULT_MODEL`, `DVM_LLAMA_MODELS`,
+  `DVM_LLAMA_MODELS_SHA256`, `DVM_LLAMA_REFRESH`: llama model settings.
+- `DVM_CLOUDFLARED_SERVICE`, `DVM_CLOUDFLARED_TOKEN`: cloudflared service settings.
+- `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe.
 
-Append to global setup:
+`~` in DVM variables always means the guest user's home. The wrapper does not expand it
+on the host.
+
+## Ports
+
+Use localhost by default:
 
 ```bash
-DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS project.sh"
+DVM_PORTS="3000:3000"
 ```
 
-Enable hosted AI tools for one VM:
+Use an explicit bind address only when needed:
 
 ```bash
-DVM_SETUP_SCRIPTS="$DVM_SETUP_SCRIPTS ai.sh"
-DVM_AI_TOOLS="claude codex"
-DVM_AI_YOLO="1"
+DVM_PORTS="127.0.0.1:3000:3000"
 ```
 
-Add inline setup for one VM:
+Avoid `0.0.0.0` unless you want the service reachable from your LAN.
 
-```bash
-dvm_vm_setup() {
-	git clone git@github.com:you/app.git "$DVM_CODE_DIR"
-}
-```
-
-## Per-VM Overrides
-
-Replace global defaults:
-
-```bash
-DVM_SETUP_SCRIPTS="python.sh"
-```
-
-Disable global setup for special VMs like `ai` or `cloudflared`:
-
-```bash
-DVM_SETUP_SCRIPTS="llama.sh"
-```
-
-## Generated Examples
-
-`dvm init <name>` creates a general per-VM template. Some common names get extra
-commented examples:
-
-- `dvm init ai`: llama VM hints
-- `dvm init cloudflared`: cloudflared connector VM hints
-
-These are examples only. Nothing is enabled until you uncomment or add values.
+Changing `DVM_PORTS` and running `dvm apply <name>` updates the existing Lima VM's port
+forwards. Lima may restart the VM when ports change.
