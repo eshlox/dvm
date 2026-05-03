@@ -9,9 +9,7 @@ examples set `DVM_NO_BASELINE=1`, so service applies install only the service re
 Create an active config:
 
 ```bash
-mkdir -p ~/.config/dvm/vms
-cp share/dvm/vms/llama.sh ~/.config/dvm/vms/llama.sh
-$EDITOR ~/.config/dvm/vms/llama.sh
+dvm init llama llama
 dvm apply llama
 ```
 
@@ -65,8 +63,7 @@ dvm logs llama
 Create an active config:
 
 ```bash
-mkdir -p ~/.config/dvm/vms
-cp share/dvm/vms/cloudflared.sh ~/.config/dvm/vms/cloudflared.sh
+dvm init cloudflared cloudflared
 CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 ```
 

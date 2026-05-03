@@ -14,13 +14,24 @@ use opencode
 use mistral
 ```
 
-`agent-user` creates `dvm-agent`, grants ACL access to `DVM_CODE_DIR`, creates
-`/home/dvm-agent/scratch`, and restricts common main-user secret paths such as `.ssh`,
-`.gnupg`, `.npmrc`, `.gitconfig`, shell histories, `.config/git`, `.config/gh`, and
-`.config/op`.
+`agent-user` creates `dvm-agent` as a system account with a home directory, installs
+Bubblewrap, grants ACL access to `DVM_CODE_DIR`, creates `/home/dvm-agent/scratch`, and
+installs the mandatory AI sandbox helper at `/usr/local/libexec/dvm-ai-bwrap`.
 
-This is a Unix-permissions guardrail, not a sandbox. Guest root or bad sudo policy can
-bypass it.
+AI tools do not run directly. The wrappers always run the tool as `dvm-agent` inside
+Bubblewrap. There is no non-Bubblewrap mode.
+
+The Bubblewrap filesystem view is intentionally small:
+
+- `/workspace`: the project code from `DVM_CODE_DIR`, read/write
+- `/home/dvm-agent`: the agent user's home, read/write for login state and tool config
+- `/usr`, `/etc`, `/proc`, `/dev`: runtime/system paths needed to execute tools
+- `/tmp` and `/var/tmp`: sandbox-local temporary directories
+
+The main user's home, such as `/home/eshlox`, is not mounted into the sandbox. The ACL
+rules remain as defense in depth and to let `dvm-agent` bind the project directory.
+Network access is retained because hosted AI tools need their provider APIs. Guest root
+or bad sudo policy can still bypass this; Bubblewrap is not a separate VM.
 
 ## Tools
 
@@ -30,8 +41,9 @@ bypass it.
 - `mistral`: installs `mistral-vibe` with uv under `dvm-agent` and exposes `vibe` and
   `mistral` wrappers.
 
-Wrappers are installed in `/usr/local/bin` and clamp the working directory to
-`DVM_CODE_DIR`.
+Wrappers are installed in `/usr/local/bin`, clamp the host-side working directory to
+`DVM_CODE_DIR`, and enter the sandbox at `/workspace` or the matching subdirectory under
+`/workspace`.
 
 ## Authentication
 
@@ -44,7 +56,8 @@ claude
 opencode
 ```
 
-Login state stays in the VM, normally under the agent user's home.
+Login state stays in the VM under the agent user's home, which is mounted into the
+sandbox.
 
 ## Security Practice
 

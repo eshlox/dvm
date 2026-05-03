@@ -43,7 +43,9 @@ provision:
       set -euo pipefail
       code_dir="${DVM_CODE_DIR}"
       case "$code_dir" in
+        ""|"/Users"|"/Users/"*) exit 0 ;;
         "~") code_dir="$HOME" ;;
-        "~/"*) code_dir="$HOME/${code_dir#~/}" ;;
+        "~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
       esac
+      [ -n "$code_dir" ] || exit 0
       mkdir -p "$code_dir" "$HOME/.local/bin" "$HOME/.config"

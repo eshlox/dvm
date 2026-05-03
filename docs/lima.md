@@ -30,6 +30,12 @@ Important defaults:
 - port forwards rendered from `DVM_PORTS`.
 - guest port `5355` ignored to avoid Fedora LLMNR forwarding noise.
 - minimal first-boot provision installs only bootstrap tools.
+- user first-boot provision ignores empty or host-looking `/Users/...` code dirs rather
+  than failing cloud-init.
+
+DVM sets the guest system hostname to the public VM name during `dvm apply`, so a VM
+configured as `eshlox-net` presents itself as `eshlox-net` inside the guest even though
+the internal Lima instance remains `dvm-eshlox-net`.
 
 ## No Host Mounts
 
@@ -80,3 +86,15 @@ created configuration for structural settings. For those changes, recreate:
 dvm rm app --yes
 dvm apply app
 ```
+
+If an older VM shows failed `cloud-final.service` or `cloud-init-main.service` because
+first boot tried to create an empty code directory or a host-looking `/Users/...` path,
+the VM can still be usable. Recreate it for the clean template, or clear the stale
+failed state after confirming the logs:
+
+```bash
+dvm ssh app -- sudo systemctl reset-failed cloud-final.service cloud-init-main.service
+```
+
+If Lima briefly reports `instance "dvm-..." already exists` during `dvm apply`, DVM
+treats that as a stale existence check and continues with start/apply.

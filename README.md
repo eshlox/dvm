@@ -24,14 +24,16 @@ Install the wrapper:
 ./install.sh --init
 ```
 
-This symlinks `bin/dvm` into `~/.local/bin` and copies defaults into
-`~/.config/dvm` without overwriting existing files. The Lima template and example VM
-configs stay in the repo under `share/dvm`; copy a VM example into `~/.config/dvm/vms`
-when you want it to be active.
+This installs a small launcher into `~/.local/bin` and copies defaults into
+`~/.config/dvm` without overwriting existing files. The launcher runs each invocation
+from a temporary snapshot of `bin/dvm`, so editing or pulling this repo cannot corrupt a
+long-running `dvm apply`. Bundled recipes, the Lima template, and example VM configs
+stay in the repo under `share/dvm`.
 
 ## Commands
 
 ```bash
+dvm init app
 dvm apply app
 dvm apply --all
 dvm enter app
@@ -65,11 +67,10 @@ Per-VM config:
 ~/.config/dvm/vms/app.sh
 ```
 
-Start from an example:
+Create a VM config from the bundled app example:
 
 ```bash
-cp share/dvm/vms/app.sh ~/.config/dvm/vms/app.sh
-$EDITOR ~/.config/dvm/vms/app.sh
+dvm init app
 ```
 
 Example:
@@ -92,16 +93,15 @@ use chezmoi
 
 `~` in DVM variables means the guest user's home. Host project directories are not
 mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting
-with a letter.
+with a letter. DVM commands use the public project name, for example `eshlox-net`; the
+internal Lima instance is named `dvm-eshlox-net`.
 
 ## Create VMs
 
 New app VM:
 
 ```bash
-mkdir -p ~/.config/dvm/vms
-cp share/dvm/vms/app.sh ~/.config/dvm/vms/myapp.sh
-$EDITOR ~/.config/dvm/vms/myapp.sh
+dvm init myapp
 dvm apply myapp
 dvm enter myapp
 ```
@@ -109,9 +109,7 @@ dvm enter myapp
 Dedicated llama VM:
 
 ```bash
-mkdir -p ~/.config/dvm/vms
-cp share/dvm/vms/llama.sh ~/.config/dvm/vms/llama.sh
-$EDITOR ~/.config/dvm/vms/llama.sh
+dvm init llama llama
 dvm apply llama
 dvm logs llama -f
 ```
@@ -123,8 +121,7 @@ baseline and installs only the llama recipe.
 Cloudflared tunnel VM:
 
 ```bash
-mkdir -p ~/.config/dvm/vms
-cp share/dvm/vms/cloudflared.sh ~/.config/dvm/vms/cloudflared.sh
+dvm init cloudflared cloudflared
 CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 dvm logs cloudflared -f
 ```
@@ -133,6 +130,9 @@ dvm logs cloudflared -f
 
 Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
 `~/.config/dvm/recipes`.
+
+Local recipes override bundled recipes. Keep only recipes you intentionally customize in
+`~/.config/dvm/recipes`; otherwise DVM will not see bundled recipe updates.
 
 Add your own tools with recipes. Use individual bundled tool recipes such as
 `use helix` and `use lazygit`, or define your own local helper in
@@ -143,7 +143,7 @@ First-pass recipes include:
 - `baseline`: required setup basics only
 - `zsh`, `git`, `helix`, `lazygit`, `starship`, `fzf`, `git-delta`, `just`,
   `tmux`, `yazi`: optional interactive tools
-- `agent-user`: `dvm-agent` with ACL access to project code
+- `agent-user`: `dvm-agent` plus mandatory Bubblewrap sandboxing for AI tools
 - `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM
 - `chezmoi`: public HTTPS dotfiles
 - `llama`: dedicated llama service VM

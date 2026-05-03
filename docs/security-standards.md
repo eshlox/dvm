@@ -8,7 +8,7 @@ small, but they are the bar for changes.
 - One project gets one VM.
 - Host project directories are not mounted into guests.
 - Code lives in the VM and is cloned from Git or created there.
-- `~` in DVM config means guest home, never host home.
+- `~` in DVM config means guest home, never host home; DVM expands it inside the VM.
 - Recreate by deleting the VM and applying recipes again.
 
 ## Secrets
@@ -28,10 +28,17 @@ small, but they are the bar for changes.
 ## AI
 
 - Run hosted AI tools through `dvm-agent`.
-- Grant AI tools access to project code, the agent home, and agent scratch only.
-- Treat ACLs as guardrails, not a sandbox. The recipe denies common secret paths
-  (`.ssh`, `.gnupg`, token files, shell histories, and common tool config), but it does
-  not make every known path in the main user's home unreadable.
+- Create `dvm-agent` as a system account with a home directory and no DVM-managed sudo
+  privileges.
+- Run AI tools through Bubblewrap. DVM does not support a non-Bubblewrap AI mode.
+- Mount only project code at `/workspace`, the agent home, and the runtime/system paths
+  needed to execute tools.
+- Do not mount the main user's home into the AI sandbox.
+- Keep network access enabled for hosted AI tools; use the separate VM boundary for
+  project isolation.
+- Treat ACLs as defense in depth and as the permission bridge that lets `dvm-agent`
+  bind the project directory. Bubblewrap is not a separate VM; guest root or bad sudo
+  policy can bypass it.
 - Review AI-generated changes before committing or running them.
 
 ## Networking

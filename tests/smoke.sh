@@ -10,6 +10,22 @@ cp -R "$ROOT/share/dvm/." "$TMP/config/"
 rm -rf "$TMP/config/vms"
 mkdir -p "$TMP/config/vms"
 
+cat >>"$TMP/config/config.sh" <<'CONFIG'
+
+use_app_tools() {
+	use zsh
+	use git
+	use helix
+	use lazygit
+	use starship
+	use fzf
+	use git-delta
+	use just
+	use tmux
+	use yazi
+}
+CONFIG
+
 cat >"$TMP/config/vms/app.sh" <<'VM'
 DVM_CPUS=2
 DVM_MEMORY=4GiB
@@ -19,7 +35,7 @@ DVM_PORTS="3000:3000"
 DVM_CHEZMOI_REPO="https://github.com/example/dotfiles.git"
 DVM_APP_ONLY="app"
 
-use lazygit
+use_app_tools
 use node
 use agent-user
 use codex
@@ -52,6 +68,10 @@ cmd="$1"
 shift
 case "$cmd" in
 list)
+	if [ -f "$state/list_empty_once" ]; then
+		rm -f "$state/list_empty_once"
+		exit 0
+	fi
 	if [ -f "$state/created" ]; then
 		case "${*:-}" in
 		*"{{.Name}}"*"{{.Status}}"*)
@@ -85,6 +105,10 @@ create)
 		esac
 		shift || true
 	done
+	if [ -f "$state/created" ] && grep -Fxq "$name" "$state/created"; then
+		printf 'FATA[0000] instance "%s" already exists\n' "$name" >&2
+		exit 1
+	fi
 	touch "$state/created"
 	grep -Fxq "$name" "$state/created" || printf '%s\n' "$name" >>"$state/created"
 	printf 'create %s\n' "$name" >>"$state/log"
@@ -123,12 +147,51 @@ chmod +x "$TMP/bin/limactl"
 export PATH="$TMP/bin:$PATH"
 export DVM_CONFIG="$TMP/config"
 export DVM_FAKE_STATE="$TMP/state"
+export EDITOR=:
 
-"$ROOT/bin/dvm" apply app
+mkdir -p "$TMP/install-bin"
+printf '%s\n' old-target >"$TMP/old-dvm"
+ln -s "$TMP/old-dvm" "$TMP/install-bin/dvm"
+PREFIX="$TMP/install-bin" DVM_CONFIG="$TMP/install-config" "$ROOT/install.sh" --init >"$TMP/install.out"
+grep -Fxq old-target "$TMP/old-dvm"
+[ -x "$TMP/install-bin/dvm" ]
+[ ! -L "$TMP/install-bin/dvm" ]
+grep -Fq 'dvm-run.' "$TMP/install-bin/dvm"
+"$TMP/install-bin/dvm" help >"$TMP/install-help.out"
+grep -Fq 'dvm init <name> [template]' "$TMP/install-help.out"
+
+"$ROOT/bin/dvm" init newapp
+[ -f "$TMP/config/vms/newapp.sh" ]
+grep -Fq 'DVM_CODE_DIR="~/code/$DVM_NAME"' "$TMP/config/vms/newapp.sh"
+"$ROOT/bin/dvm" init llama llama
+[ -f "$TMP/config/vms/llama.sh" ]
+grep -Fq 'use llama' "$TMP/config/vms/llama.sh"
+set +e
+"$ROOT/bin/dvm" init bad missing-template >/dev/null 2>"$TMP/init-bad.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'missing VM template: missing-template' "$TMP/init-bad.err"
+rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
+
+"$ROOT/bin/dvm" apply app 2>"$TMP/apply.err"
+grep -Fq 'dvm: applying recipes for app: baseline zsh git helix lazygit starship fzf git-delta just tmux yazi node agent-user codex chezmoi' "$TMP/apply.err"
 grep -Fq 'create dvm-app' "$TMP/state/log"
 grep -Fq 'start dvm-app' "$TMP/state/log"
 grep -Fq 'DVM_CODE_DIR=~/code/app' "$TMP/state/log"
+grep -Fq 'dvm hostname' "$TMP/state/guest.sh"
+grep -Fq 'hostnamectl set-hostname "$DVM_NAME"' "$TMP/state/guest.sh"
+grep -Fq 'dvm recipe: zsh' "$TMP/state/guest.sh"
+grep -Fq 'usermod --shell "$zsh_path" "$(id -un)"' "$TMP/state/guest.sh"
+grep -Fq 'dvm recipe: yazi' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: agent-user' "$TMP/state/guest.sh"
+grep -Fq 'dnf5 install -y acl bubblewrap shadow-utils sudo' "$TMP/state/guest.sh"
+grep -Fq 'useradd --system --create-home --user-group --shell /bin/bash "$DVM_AI_AGENT_USER"' "$TMP/state/guest.sh"
+grep -Fq '/usr/local/libexec/dvm-ai-bwrap' "$TMP/state/guest.sh"
+grep -Fq 'exec /usr/bin/bwrap \' "$TMP/state/guest.sh"
+grep -Fq -- '--bind "$DVM_AI_CODE_DIR" /workspace' "$TMP/state/guest.sh"
+grep -Fq -- '--setenv DVM_CODE_DIR /workspace' "$TMP/state/guest.sh"
+grep -Fq -- '-- "$DVM_AI_TARGET" "$@"' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: codex' "$TMP/state/guest.sh"
 grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
 grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
@@ -140,10 +203,50 @@ grep -Fq 'edit --tty=false --set .portForwards' "$TMP/state/log"
 bash -n "$TMP/state/guest.sh"
 
 "$ROOT/bin/dvm" list >"$TMP/list.out"
-grep -Fq 'dvm-app' "$TMP/list.out"
+grep -Eq '^NAME[[:space:]]+STATUS[[:space:]]+SSH' "$TMP/list.out"
+grep -Eq '^app[[:space:]]+Running[[:space:]]+127\.0\.0\.1:60022' "$TMP/list.out"
+if grep -Fq 'dvm-app' "$TMP/list.out"; then
+	printf 'dvm list leaked internal Lima prefix\n' >&2
+	exit 1
+fi
 
 "$ROOT/bin/dvm" ssh app -- pwd
-grep -Fq 'shell dvm-app bash -lc' "$TMP/state/log"
+grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
+grep -Fq ' bash -c ' "$TMP/state/log"
+grep -Fq '${code_dir#\~/}' "$TMP/state/log"
+grep -Fq 'export SHELL="$login_shell"' "$TMP/state/log"
+expanded_code_dir="$(
+	HOME=/home/example bash -c '
+		code_dir="~/code/app"
+		case "$code_dir" in
+			"~") code_dir="$HOME" ;;
+			"~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
+		esac
+		printf "%s\n" "$code_dir"
+	'
+)"
+[ "$expanded_code_dir" = "/home/example/code/app" ]
+
+"$ROOT/bin/dvm" ssh dvm-app -- pwd
+grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
+
+cat >"$TMP/config/vms/race.sh" <<'VM'
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=20GiB
+DVM_CODE_DIR="~/code/race"
+
+use python
+VM
+
+mkdir -p "$TMP/state/dvm-race"
+cp "$TMP/state/lima.yaml" "$TMP/state/dvm-race/lima.yaml"
+grep -Fxq dvm-race "$TMP/state/created" || printf '%s\n' dvm-race >>"$TMP/state/created"
+touch "$TMP/state/list_empty_once"
+"$ROOT/bin/dvm" apply race
+grep -Fq 'start dvm-race' "$TMP/state/log"
+grep -Fq 'shell dvm-race env ' "$TMP/state/log"
+rm -f "$TMP/config/vms/race.sh"
 
 "$ROOT/bin/dvm" ssh-key app
 grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"

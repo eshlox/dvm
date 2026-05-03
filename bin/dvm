@@ -15,13 +15,14 @@ dvm_script_dir() {
 	cd -P "$(dirname "$source")" && pwd
 }
 
-DVM_ROOT="$(cd "$(dvm_script_dir)/.." && pwd)"
+DVM_ROOT="${DVM_ROOT:-$(cd "$(dvm_script_dir)/.." && pwd)}"
 DVM_SHARE="${DVM_SHARE:-$DVM_ROOT/share/dvm}"
 DVM_CONFIG="${DVM_CONFIG:-$HOME/.config/dvm}"
 
 usage() {
 	cat <<'HELP'
 usage:
+  dvm init <name> [template]
   dvm apply <name>
   dvm apply --all
   dvm enter <name>
@@ -46,6 +47,50 @@ safe_name() {
 	[a-z]*) return 0 ;;
 	*) return 1 ;;
 	esac
+}
+
+public_vm_name() {
+	local name="$1"
+	case "$name" in
+	dvm-*) name="${name#dvm-}" ;;
+	esac
+	safe_name "$name" || die "unsafe VM name: $1"
+	printf '%s\n' "$name"
+}
+
+guest_term() {
+	case "${TERM:-}" in
+	'' | xterm-ghostty | ghostty) printf '%s\n' xterm-256color ;;
+	*) printf '%s\n' "$TERM" ;;
+	esac
+}
+
+open_editor() {
+	local file="$1"
+	local editor="${EDITOR:-${VISUAL:-vi}}"
+	[ -n "$editor" ] || editor="vi"
+	# shellcheck disable=SC2086
+	$editor "$file"
+}
+
+init_vm() {
+	local name template src dst
+	name="${1:-}"
+	[ -n "$name" ] || die "init requires a VM name"
+	template="${2:-app}"
+	name="$(public_vm_name "$name")"
+	safe_name "$template" || die "unsafe template name: $template"
+	src="$DVM_SHARE/vms/$template.sh"
+	[ -f "$src" ] || die "missing VM template: $template"
+	dst="$DVM_CONFIG/vms/$name.sh"
+	if [ -e "$dst" ]; then
+		printf 'dvm: VM config already exists: %s\n' "$dst" >&2
+	else
+		mkdir -p "$(dirname "$dst")"
+		cp "$src" "$dst"
+		printf 'dvm: created VM config: %s\n' "$dst"
+	fi
+	open_editor "$dst"
 }
 
 recipe_file() {
@@ -74,7 +119,7 @@ use() {
 load_vm() {
 	local name="$1"
 	local vm_file
-	safe_name "$name" || die "unsafe VM name: $name"
+	name="$(public_vm_name "$name")"
 
 	reset_vm_vars
 
@@ -275,7 +320,7 @@ vm_exists() {
 }
 
 ensure_vm() {
-	local template tmp tmp_dir
+	local create_output template tmp tmp_dir
 	if ! vm_exists; then
 		template="$DVM_CONFIG/lima.yaml.in"
 		[ -f "$template" ] || template="$DVM_SHARE/lima.yaml.in"
@@ -286,8 +331,20 @@ ensure_vm() {
 		export DVM_NAME DVM_LIMA_NAME DVM_ARCH DVM_CPUS DVM_MEMORY DVM_DISK
 		export DVM_USER DVM_CODE_DIR DVM_PORT_FORWARDS_YAML
 		render_template "$template" >"$tmp"
-		limactl create --name "$DVM_LIMA_NAME" --tty=false "$tmp"
-		rm -f "$tmp"
+		if ! create_output="$(limactl create --name "$DVM_LIMA_NAME" --tty=false "$tmp" 2>&1)"; then
+			rm -f "$tmp"
+			case "$create_output" in
+			*"already exists"*)
+				update_port_forwards
+				;;
+			*)
+				printf '%s\n' "$create_output" >&2
+				return 1
+				;;
+			esac
+		else
+			rm -f "$tmp"
+		fi
 	else
 		update_port_forwards
 	fi
@@ -307,7 +364,28 @@ run_guest_apply() {
 	# These env values are visible to host ps while limactl runs; use only short-lived apply-time secrets.
 	[ -z "${CLOUDFLARED_TOKEN:-}" ] || args+=("CLOUDFLARED_TOKEN=$CLOUDFLARED_TOKEN")
 
+	printf 'dvm: applying recipes for %s:' "$DVM_NAME" >&2
+	if [ "${DVM_NO_BASELINE:-0}" != "1" ]; then
+		printf ' baseline' >&2
+	fi
+	if [ "${#DVM_RECIPES[@]}" -gt 0 ]; then
+		for recipe in "${DVM_RECIPES[@]}"; do
+			printf ' %s' "$recipe" >&2
+		done
+	fi
+	printf '\n' >&2
+
 	{
+		cat <<'DVM_HOSTNAME'
+# dvm hostname
+if [ -n "${DVM_NAME:-}" ] && command -v hostnamectl >/dev/null 2>&1; then
+	current_hostname="$(hostname 2>/dev/null || true)"
+	if [ "$current_hostname" != "$DVM_NAME" ]; then
+		sudo hostnamectl set-hostname "$DVM_NAME"
+	fi
+fi
+
+DVM_HOSTNAME
 		helper="$DVM_SHARE/recipes/_helpers.sh"
 		if [ -f "$helper" ]; then
 			printf '# dvm recipe helpers\n'
@@ -329,7 +407,7 @@ run_guest_apply() {
 dvm_code_dir="${DVM_CODE_DIR%/}"
 case "$dvm_code_dir" in
 	"~") dvm_code_dir="$HOME" ;;
-	"~/"*) dvm_code_dir="$HOME/${dvm_code_dir#~/}" ;;
+	"~/"*) dvm_code_dir="$HOME/${dvm_code_dir#\~/}" ;;
 esac
 if [ -f "$dvm_code_dir/.dvm/apply.sh" ]; then
 	bash "$dvm_code_dir/.dvm/apply.sh"
@@ -373,13 +451,23 @@ code_dir="$1"
 shift
 case "$code_dir" in
 	"~") code_dir="$HOME" ;;
-	"~/"*) code_dir="$HOME/${code_dir#~/}" ;;
+	"~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
+esac
+case "${TERM:-}" in
+	xterm-ghostty|ghostty) export TERM=xterm-256color ;;
+	""|dumb) ;;
+	*)
+		if command -v infocmp >/dev/null 2>&1 && ! infocmp "$TERM" >/dev/null 2>&1; then
+			export TERM=xterm-256color
+		fi
+		;;
 esac
 mkdir -p "$code_dir"
 cd "$code_dir"
 if [ "$#" -eq 0 ]; then
 	login_shell="$(getent passwd "$(id -un)" | cut -d: -f7 || true)"
 	[ -n "$login_shell" ] || login_shell="${SHELL:-/bin/bash}"
+	export SHELL="$login_shell"
 	exec "$login_shell" -l
 fi
 exec "$@"
@@ -391,12 +479,14 @@ enter_vm() {
 
 ssh_vm() {
 	local name="$1"
+	local term
 	shift || true
 	[ "${1:-}" != "--" ] || shift
 	load_vm "$name"
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
 	limactl start "$DVM_LIMA_NAME"
-	limactl shell "$DVM_LIMA_NAME" bash -lc "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
+	term="$(guest_term)"
+	limactl shell "$DVM_LIMA_NAME" env "TERM=$term" bash -c "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
 }
 
 default_log_unit() {
@@ -516,7 +606,7 @@ set -euo pipefail
 code_dir="$1"
 case "$code_dir" in
 	"~") code_dir="$HOME" ;;
-	"~/"*) code_dir="$HOME/${code_dir#~/}" ;;
+	"~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
 esac
 [ -d "$code_dir" ] || exit 0
 command -v git >/dev/null 2>&1 || exit 0
@@ -539,7 +629,16 @@ DVM_DIRTY_CHECK
 }
 
 list_vms() {
-	limactl list | awk 'NR == 1 || $1 ~ /^dvm-/'
+	limactl list | awk '
+		NR == 1 {
+			printf "%-16s %-10s %-18s %-7s %-9s %-9s %s\n", $1, $2, $3, $4, $5, $6, $7
+			next
+		}
+		$1 ~ /^dvm-/ {
+			sub(/^dvm-/, "", $1)
+			printf "%-16s %-10s %-18s %-7s %-9s %-9s %s\n", $1, $2, $3, $4, $5, $6, $7
+		}
+	'
 }
 
 stop_vm() {
@@ -567,7 +666,7 @@ rm_vm() {
 		shift
 	done
 	[ "$yes" = "1" ] || die "rm requires --yes"
-	safe_name "$name" || die "unsafe VM name: $name"
+	name="$(public_vm_name "$name")"
 	vm_file="$DVM_CONFIG/vms/$name.sh"
 	if [ -f "$vm_file" ]; then
 		load_vm "$name"
@@ -585,6 +684,7 @@ main() {
 	local cmd="${1:-help}"
 	[ "$#" -eq 0 ] || shift
 	case "$cmd" in
+	init) init_vm "$@" ;;
 	apply)
 		case "${1:-}" in
 		--all) apply_all ;;

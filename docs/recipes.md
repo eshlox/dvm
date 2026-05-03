@@ -29,6 +29,11 @@ Recipes run inside the VM through:
 limactl shell dvm-app env ... bash -s
 ```
 
+Bundled recipes live in `share/dvm/recipes`. Local recipes in
+`~/.config/dvm/recipes` override bundled recipes with the same name. Keep that directory
+for your own custom recipes or intentional overrides; copied bundled recipes will go
+stale and block future recipe updates.
+
 Rules:
 
 - Recipes should be idempotent enough to rerun.
@@ -45,8 +50,9 @@ jq. Editors, shells, terminal tools, Git UIs, and language runtimes belong in us
 recipes or project-specific VM configs.
 
 Interactive tools are split into one recipe per tool: `zsh`, `git`, `helix`,
-`lazygit`, `starship`, `fzf`, `git-delta`, `just`, `tmux`, and `yazi`. `zsh` sets zsh
-as the guest user's default login shell. The DNF-backed recipes install from Fedora.
+`lazygit`, `starship`, `fzf`, `git-delta`, `just`, `tmux`, and `yazi`. `zsh` installs
+zsh and sets it as the guest user's default login shell with `usermod --shell`. The
+DNF-backed recipes install from Fedora.
 The upstream-backed recipes try Fedora first and otherwise use pinned official release
 assets with sha256 verification.
 
@@ -54,15 +60,29 @@ assets with sha256 verification.
 the shared verified-download functions used by pinned upstream recipes; do not select
 it with `use`.
 
-`agent-user` creates `dvm-agent`, grants ACL access to `DVM_CODE_DIR`, creates an agent
-scratch directory, and restricts common main-user secret paths. This is a
-Unix-permissions guardrail, not a complete sandbox.
+`agent-user` creates `dvm-agent` as a system account with a home directory, installs
+Bubblewrap, grants ACL access to `DVM_CODE_DIR`, creates an agent scratch directory, and
+installs the mandatory AI sandbox helper. AI tool wrappers run inside Bubblewrap with
+project code mounted at `/workspace`, the agent home mounted read/write, and the main
+user home left out of the sandbox.
 
 `codex`, `claude`, `opencode`, and `mistral` install hosted AI tools for `dvm-agent`
 and expose wrappers in `/usr/local/bin`. Put `use agent-user` before these recipes.
 
-`node` installs Node.js/npm and enables Corepack when available. `python` installs
-Python, pip, and uv.
+`node` installs Node.js/npm, installs the standalone Corepack npm package when Fedora's
+Node package does not provide `corepack`, and enables Corepack shims for pnpm/yarn.
+`python` installs Python, pip, and uv.
+
+After applying `use node`, pin pnpm in each project rather than installing a global
+pnpm:
+
+```bash
+corepack use pnpm@latest
+pnpm install
+```
+
+Commit the resulting `packageManager` field in `package.json` so every VM uses the same
+package manager version.
 
 ## Adding Packages
 
@@ -85,7 +105,7 @@ use yazi
 If you want a personal bundle, define it in `~/.config/dvm/config.sh`:
 
 ```bash
-use_my_tools() {
+use_app_tools() {
 	use zsh
 	use git
 	use helix
@@ -102,7 +122,7 @@ use_my_tools() {
 Then call it from VM configs that should get that bundle:
 
 ```bash
-use_my_tools
+use_app_tools
 ```
 
 For a DNF package in one VM, prefer a small recipe:

@@ -36,7 +36,8 @@ Active VMs live in:
 ```
 
 Names must start with a lowercase letter and contain only lowercase letters, numbers,
-and hyphens.
+and hyphens. Do not include the internal `dvm-` prefix in VM config filenames or DVM
+commands.
 
 Example VM configs live in the repo:
 
@@ -44,14 +45,13 @@ Example VM configs live in the repo:
 share/dvm/vms
 ```
 
-Copy one into `~/.config/dvm/vms` when you want it to become active.
+Run `dvm init <name> [template]` to copy one into `~/.config/dvm/vms` and open it in
+your editor. The template defaults to `app`.
 
 Create a new app VM:
 
 ```bash
-mkdir -p ~/.config/dvm/vms
-cp share/dvm/vms/app.sh ~/.config/dvm/vms/myapp.sh
-$EDITOR ~/.config/dvm/vms/myapp.sh
+dvm init myapp
 dvm apply myapp
 ```
 
@@ -84,7 +84,11 @@ use chezmoi
   `host_ip:host_port:guest_port` entries.
 - `DVM_HOST_IP`: default bind IP for two-part ports, normally `127.0.0.1`.
 - `DVM_AI_AGENT_USER`: AI tool user, normally `dvm-agent`.
+- `DVM_COREPACK_VERSION`: Corepack npm package version for the `node` recipe, normally
+  `0.34.0`.
 - `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo.
+- `DVM_CHEZMOI_CONFIG_TOML`: optional full chezmoi config written to
+  `~/.config/chezmoi/chezmoi.toml`.
 - `DVM_LLAMA_PORT`, `DVM_LLAMA_HOST`, `DVM_LLAMA_SERVICE`: llama service settings.
 - `DVM_LLAMA_MODELS_DIR`, `DVM_LLAMA_DEFAULT_MODEL`, `DVM_LLAMA_MODELS`,
   `DVM_LLAMA_MODELS_SHA256`, `DVM_LLAMA_REFRESH`: llama model settings.
@@ -92,10 +96,38 @@ use chezmoi
 - `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe.
 
 You can define host-side helper functions in `~/.config/dvm/config.sh` if you want a
-personal bundle of recipes.
+personal bundle of recipes:
+
+```bash
+use_app_tools() {
+	use zsh
+	use git
+	use helix
+	use lazygit
+	use starship
+	use fzf
+	use git-delta
+	use just
+	use tmux
+	use yazi
+}
+```
+
+Then call the helper from each app VM that should get those tools:
+
+```bash
+use_app_tools
+```
+
+`dvm apply <name>` prints the expanded recipe list before running guest scripts. If the
+summary does not include the helper's recipes, check that you are running the current
+wrapper with `type dvm` and that `DVM_CONFIG` points at the config directory you edited.
+
+Bundled recipes are not copied into `~/.config/dvm`. Put only your custom recipe
+overrides in `~/.config/dvm/recipes`.
 
 `~` in DVM variables always means the guest user's home. The wrapper does not expand it
-on the host.
+on the host; guest-side scripts expand it to paths such as `/home/eshlox/code/app`.
 
 ## Ports
 
