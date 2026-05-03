@@ -161,7 +161,6 @@ when you want that VM to be active.
 
 ## Docs
 
-- [Plan](docs/plan.md): the design boundary and non-goals
 - [Commands](docs/commands.md): command reference
 - [Config](docs/config.md): global and per-VM Bash variables
 - [Lima](docs/lima.md): template and networking decisions

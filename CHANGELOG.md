@@ -32,6 +32,7 @@
 - Documented how to add DNF and non-DNF tools globally or per VM.
 - Added explicit docs for creating app, llama, and cloudflared VMs from repo examples.
 - Documented that the bundled llama VM opens port 8080 for host and VM-to-VM access.
+- Removed `docs/plan.md` so implemented behavior lives only in maintained user docs.
 - Set bundled llama and cloudflared service VM examples to skip the setup baseline.
 - Removed an unused Lima template param that current Lima rejects during VM creation.
 - Removed Lima `param` usage from the template because current Lima rejects values that

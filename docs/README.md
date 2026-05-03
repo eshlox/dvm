@@ -3,7 +3,6 @@
 DVM is intentionally small. The docs are larger than the wrapper because they carry
 the decisions, examples, and recipe behavior.
 
-- [Plan](plan.md): design, scope, command surface, and non-goals
 - [Commands](commands.md): command reference
 - [Config](config.md): global and per-VM Bash variables
 - [Lima](lima.md): template, networking, and no-host-mount decisions
