@@ -3,7 +3,7 @@
 Keep your friends close, your supply chain in a VM.
 
 DVM is a tiny Bash wrapper around Lima. It creates one Fedora VM per project, runs the
-same baseline tools in every VM, lets each project opt into plain shell recipes, and
+small setup baseline in every VM, lets each project opt into plain shell recipes, and
 keeps dev tools, AI CLIs, service credentials, and project code inside the VM.
 
 The core rule:
@@ -25,8 +25,9 @@ Install the wrapper:
 ```
 
 This symlinks `bin/dvm` into `~/.local/bin` and copies defaults into
-`~/.config/dvm` without overwriting existing files. Example VM configs stay in the repo
-under `share/dvm/vms`; copy one into `~/.config/dvm/vms` when you want it to be active.
+`~/.config/dvm` without overwriting existing files. The Lima template and example VM
+configs stay in the repo under `share/dvm`; copy a VM example into `~/.config/dvm/vms`
+when you want it to be active.
 
 ## Commands
 
@@ -39,6 +40,7 @@ dvm logs cloudflared
 dvm ssh-key app
 dvm gpg-key app
 dvm list
+dvm stop app
 dvm rm app --yes
 ```
 
@@ -92,18 +94,53 @@ use chezmoi
 mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting
 with a letter.
 
+## Create VMs
+
+New app VM:
+
+```bash
+mkdir -p ~/.config/dvm/vms
+cp share/dvm/vms/app.sh ~/.config/dvm/vms/myapp.sh
+$EDITOR ~/.config/dvm/vms/myapp.sh
+dvm apply myapp
+dvm enter myapp
+```
+
+Dedicated llama VM:
+
+```bash
+mkdir -p ~/.config/dvm/vms
+cp share/dvm/vms/llama.sh ~/.config/dvm/vms/llama.sh
+$EDITOR ~/.config/dvm/vms/llama.sh
+dvm apply llama
+dvm logs llama -f
+```
+
+The bundled llama VM opens port `8080` for host access at `http://127.0.0.1:8080` and
+VM-to-VM access at `http://lima-dvm-llama.internal:8080`. It skips the dev-tool
+baseline and installs only the llama recipe.
+
+Cloudflared tunnel VM:
+
+```bash
+mkdir -p ~/.config/dvm/vms
+cp share/dvm/vms/cloudflared.sh ~/.config/dvm/vms/cloudflared.sh
+CLOUDFLARED_TOKEN="..." dvm apply cloudflared
+dvm logs cloudflared -f
+```
+
 ## Recipes
 
 Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
 `~/.config/dvm/recipes`.
 
-Add tools for every VM in `~/.config/dvm/recipes/baseline.sh`. Add tools for one VM by
-creating `~/.config/dvm/recipes/<name>.sh` and selecting it with `use <name>` in that
-VM config.
+Add your own tools for every VM in `~/.config/dvm/recipes/baseline.sh`. Add tools for
+one VM by creating `~/.config/dvm/recipes/<name>.sh` and selecting it with `use <name>`
+in that VM config.
 
 First-pass recipes include:
 
-- `baseline`: common shell/dev tools
+- `baseline`: required setup basics only
 - `agent-user`: `dvm-agent` with ACL access to project code
 - `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM
 - `chezmoi`: public HTTPS dotfiles

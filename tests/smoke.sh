@@ -74,10 +74,12 @@ create)
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
 		--name) name="$2"; shift ;;
-		*.yaml)
-			mkdir -p "$state/$name"
-			cp "$1" "$state/$name/lima.yaml"
-			cp "$1" "$state/lima.yaml"
+		*)
+			if [ -f "$1" ]; then
+				mkdir -p "$state/$name"
+				cp "$1" "$state/$name/lima.yaml"
+				cp "$1" "$state/lima.yaml"
+			fi
 			;;
 		esac
 		shift || true
@@ -148,8 +150,12 @@ grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
 "$ROOT/bin/dvm" gpg-key app
 grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
 
+"$ROOT/bin/dvm" stop app
+grep -Fq 'stop dvm-app' "$TMP/state/log"
+
 "$ROOT/bin/dvm" rm app --yes
 grep -Fq 'shell dvm-app bash -s -- ~/code/app' "$TMP/state/log"
+grep -Fq 'stop dvm-app' "$TMP/state/log"
 grep -Fq 'delete dvm-app' "$TMP/state/log"
 
 : >"$TMP/state/log"

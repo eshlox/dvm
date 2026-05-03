@@ -46,6 +46,15 @@ share/dvm/vms
 
 Copy one into `~/.config/dvm/vms` when you want it to become active.
 
+Create a new app VM:
+
+```bash
+mkdir -p ~/.config/dvm/vms
+cp share/dvm/vms/app.sh ~/.config/dvm/vms/myapp.sh
+$EDITOR ~/.config/dvm/vms/myapp.sh
+dvm apply myapp
+```
+
 Example:
 
 ```bash

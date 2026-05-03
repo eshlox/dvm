@@ -1,7 +1,7 @@
 # DVM Plan: Minimal Lima Wrapper
 
 This plan defines DVM as a personal, minimal Lima wrapper. The goal is one VM per
-project, the same baseline tools in every VM, optional per-project setup, AI and
+project, the same setup baseline in every VM, optional per-project setup, AI and
 services inside VMs, and easy updates.
 
 The test sentence for every design decision:
@@ -16,7 +16,7 @@ If a feature does not fit that sentence, it is probably out of scope.
 - Keep host setup small: Lima, DVM wrapper, config, and docs.
 - Keep development tools inside project VMs: editors, Git helpers, language tools, AI
   CLIs, services, and credentials should run from the guest.
-- Make every VM consistent through one implicit baseline recipe.
+- Make every VM consistent through one small implicit setup baseline.
 - Allow per-project differences through small host config files.
 - Make reusable setup plain guest shell recipes.
 - Keep code lines low; documentation can be larger than code.
@@ -42,7 +42,6 @@ bin/dvm
 
 ~/.config/dvm/
   config.sh
-  lima.yaml.in
   recipes/
     baseline.sh
     node.sh
@@ -112,6 +111,7 @@ without changing the design:
 dvm logs cloudflared
 dvm ssh-key app
 dvm gpg-key app
+dvm stop app
 ```
 
 Command behavior:
@@ -130,6 +130,7 @@ Command behavior:
 - `dvm ssh-key app`: create or reuse a VM-local SSH key and print the public key.
 - `dvm gpg-key app`: create or reuse a VM-local GPG signing key and print the public
   key plus fingerprint.
+- `dvm stop app`: stop the Lima VM.
 - `dvm rm app --yes`: delete the Lima VM after a nested Git dirty check. The flag is
   required; `--force` skips the dirty check.
 
@@ -271,9 +272,10 @@ calls.
 
 ## Lima Template
 
-`~/.config/dvm/lima.yaml.in` uses simple placeholder substitution. No `jq`, `yq`, or
-generated schema is needed. The real template file is the source of truth; the plan
-only pins the decisions:
+`share/dvm/lima.yaml.in` uses simple placeholder substitution. No `jq`, `yq`, or
+generated schema is needed. A user can create `~/.config/dvm/lima.yaml.in` to override
+the bundled template when structural Lima changes are needed. The real template file is
+the source of truth; the plan only pins the decisions:
 
 - Fedora image template.
 - `vmType: vz`.
@@ -281,8 +283,7 @@ only pins the decisions:
 - `cpus`, `memory`, and `disk` from host config.
 - `mounts: []` so code and credentials live inside the VM.
 - containerd disabled by default.
-- user starts as `/bin/bash`; if `baseline.sh` installs zsh and changes the login
-  shell, later `dvm enter` sessions can use zsh.
+- user starts as `/bin/bash`; users can install and configure another shell in recipes.
 - `user-v2` networking for VM-to-VM names.
 - `portForwards` rendered from normalized `DVM_PORTS`.
 - guest port `5355` ignored to avoid Fedora LLMNR forwarding noise.
@@ -303,10 +304,11 @@ and use `limactl edit --set` to update only when the set changed.
 
 ## Baseline Recipe
 
-`recipes/baseline.sh` installs the shell tools that every VM should have, such as Git,
-Helix, lazygit, zsh, fzf, ripgrep, fd, tmux, just, curl, wget, tar, gzip, unzip, and
-jq. The actual recipe file is the source of truth. Keep it practical: if a tool is
-truly used in every VM, put it here; if it is project-specific, make a separate recipe.
+`recipes/baseline.sh` installs required setup basics only, such as Git, curl, wget,
+tar, gzip, unzip, and jq. Editors, shells, terminal tools, Git UIs, and language
+runtimes belong in user recipes or project-specific VM configs. The actual recipe file
+is the source of truth. Keep it practical: if a tool is truly used in every VM, put it
+here; if it is project-specific, make a separate recipe.
 
 Baseline re-runs on every `dvm apply`. Package managers are fast when packages are
 already installed, but a broad baseline can still add a few seconds to each apply.
@@ -450,7 +452,7 @@ dvm apply app
 Expected recovery:
 
 - code comes from Git remotes
-- baseline tools come from `baseline.sh`
+- setup basics come from `baseline.sh`
 - project tools come from recipes and `.dvm/apply.sh`
 - AI auth can be repeated in the VM as `dvm-agent`
 - Cloudflare token can be passed again or read through the optional Keychain pattern

@@ -26,8 +26,9 @@ after failures, and exits non-zero if any VM failed.
 dvm enter app
 ```
 
-Starts the VM and opens an interactive shell in `DVM_CODE_DIR`. The first login shell is
-Bash; after `baseline` changes the guest shell to zsh, later sessions use zsh.
+Starts the VM and opens an interactive shell in `DVM_CODE_DIR`. The default login shell
+comes from the Lima template, normally Bash. Install and configure another shell in a
+recipe if you want one.
 
 ## SSH
 
@@ -76,6 +77,14 @@ dvm list
 ```
 
 Shows Lima VMs whose names start with `dvm-`.
+
+## Stop
+
+```bash
+dvm stop app
+```
+
+Stops the Lima VM.
 
 ## Remove
 

@@ -24,10 +24,6 @@ user:
 networks:
   - lima: user-v2
 
-param:
-  Project: "${DVM_NAME}"
-  CodeDir: "${DVM_CODE_DIR}"
-
 portForwards:
 ${DVM_PORT_FORWARDS_YAML}
   - guestPort: 5355
@@ -45,7 +41,7 @@ provision:
     script: |
       #!/usr/bin/env bash
       set -euo pipefail
-      code_dir="$PARAM_CodeDir"
+      code_dir="${DVM_CODE_DIR}"
       case "$code_dir" in
         "~") code_dir="$HOME" ;;
         "~/"*) code_dir="$HOME/${code_dir#~/}" ;;

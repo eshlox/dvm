@@ -1,13 +1,15 @@
 # Services
 
 Long-running services should usually get dedicated VMs. That keeps project VMs small
-and lets other VMs reach services through Lima's internal names.
+and lets other VMs reach services through Lima's internal names. Bundled service VM
+examples set `DVM_NO_BASELINE=1`, so service applies install only the service recipe.
 
 ## Llama
 
 Create an active config:
 
 ```bash
+mkdir -p ~/.config/dvm/vms
 cp share/dvm/vms/llama.sh ~/.config/dvm/vms/llama.sh
 $EDITOR ~/.config/dvm/vms/llama.sh
 dvm apply llama
@@ -43,6 +45,15 @@ Other VMs can call:
 curl http://lima-dvm-llama.internal:8080
 ```
 
+The bundled `share/dvm/vms/llama.sh` opens `DVM_PORTS="8080:8080"` and sets
+`DVM_LLAMA_HOST="0.0.0.0"`, so the service is reachable from the host and from other
+VMs by default:
+
+```bash
+curl http://127.0.0.1:8080
+curl http://lima-dvm-llama.internal:8080
+```
+
 Logs:
 
 ```bash
@@ -54,6 +65,7 @@ dvm logs llama
 Create an active config:
 
 ```bash
+mkdir -p ~/.config/dvm/vms
 cp share/dvm/vms/cloudflared.sh ~/.config/dvm/vms/cloudflared.sh
 CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 ```

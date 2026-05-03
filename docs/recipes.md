@@ -40,9 +40,9 @@ Rules:
 
 ## Built-In Recipes
 
-`baseline` installs common shell tools: Git, Helix, lazygit, zsh, fzf, ripgrep, fd,
-tmux, just, curl, wget, tar, gzip, unzip, and jq. Language runtimes live in their own
-recipes.
+`baseline` installs required setup basics only: Git, curl, wget, tar, gzip, unzip, and
+jq. Editors, shells, terminal tools, Git UIs, and language runtimes belong in user
+recipes or project-specific VM configs.
 
 `agent-user` creates `dvm-agent`, grants ACL access to `DVM_CODE_DIR`, creates an agent
 scratch directory, and restricts common main-user secret paths. This is a

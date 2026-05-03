@@ -12,8 +12,8 @@ usage:
   ./install.sh [--name dvm] [--prefix ~/.local/bin] [--init]
 
 Installs the tiny Bash DVM wrapper by symlink. With --init, copies default config,
-Lima template, and recipes into ~/.config/dvm without overwriting existing files.
-Example VM configs stay in the repo under share/dvm/vms.
+and recipes into ~/.config/dvm without overwriting existing files. The Lima template
+and example VM configs stay in the repo under share/dvm.
 HELP
 }
 
@@ -40,6 +40,7 @@ init_config() {
 	while IFS= read -r -d '' file; do
 		rel="${file#"$src"/}"
 		case "$rel" in
+		lima.yaml.in) ;;
 		vms/*) ;;
 		*) install_file "$file" "$DVM_CONFIG/$rel" ;;
 		esac

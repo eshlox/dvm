@@ -30,6 +30,7 @@ usage:
   dvm ssh-key <name>
   dvm gpg-key <name>
   dvm list
+  dvm stop <name>
   dvm rm <name> --yes [--force]
 HELP
 }
@@ -270,16 +271,17 @@ render_template() {
 }
 
 vm_exists() {
-	limactl list --format '{{.Name}}' | grep -Fxq "$DVM_LIMA_NAME"
+	limactl list --format '{{.Name}}' 2>/dev/null | grep -Fxq "$DVM_LIMA_NAME"
 }
 
 ensure_vm() {
-	local template tmp
+	local template tmp tmp_dir
 	if ! vm_exists; then
 		template="$DVM_CONFIG/lima.yaml.in"
 		[ -f "$template" ] || template="$DVM_SHARE/lima.yaml.in"
 		[ -f "$template" ] || die "missing Lima template"
-		tmp="$(mktemp "${TMPDIR:-/tmp}/dvm-lima.XXXXXX.yaml")"
+		tmp_dir="${TMPDIR:-/tmp}"
+		tmp="$(mktemp "${tmp_dir%/}/dvm-lima.XXXXXX")"
 		DVM_PORT_FORWARDS_YAML="$(render_ports)"
 		export DVM_NAME DVM_LIMA_NAME DVM_ARCH DVM_CPUS DVM_MEMORY DVM_DISK
 		export DVM_USER DVM_CODE_DIR DVM_PORT_FORWARDS_YAML
@@ -533,6 +535,15 @@ list_vms() {
 	limactl list | awk 'NR == 1 || $1 ~ /^dvm-/'
 }
 
+stop_vm() {
+	local name
+	name="${1:-}"
+	[ -n "$name" ] || die "stop requires a VM name"
+	load_vm "$name"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME"
+	limactl stop "$DVM_LIMA_NAME"
+}
+
 rm_vm() {
 	local force name vm_file yes
 	name="${1:-}"
@@ -559,6 +570,7 @@ rm_vm() {
 	if [ "$force" != "1" ] && vm_exists && [ -f "$vm_file" ]; then
 		dirty_check_vm || die "refusing to delete $DVM_LIMA_NAME; commit/stash changes or pass --force"
 	fi
+	limactl stop "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
 	limactl delete "$DVM_LIMA_NAME"
 }
 
@@ -579,6 +591,7 @@ main() {
 	ssh-key) ssh_key_vm "$@" ;;
 	gpg-key) gpg_key_vm "$@" ;;
 	list) list_vms ;;
+	stop) stop_vm "$@" ;;
 	rm) rm_vm "$@" ;;
 	help | -h | --help) usage ;;
 	*) usage >&2; die "unknown command: $cmd" ;;

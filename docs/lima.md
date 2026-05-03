@@ -4,13 +4,21 @@ DVM's job is to render one Lima YAML and then get out of the way.
 
 ## Template
 
-The template lives at:
+The default template lives in the repo:
 
 ```text
-~/.config/dvm/lima.yaml.in
+share/dvm/lima.yaml.in
 ```
 
-If that file is missing, DVM falls back to the bundled `share/dvm/lima.yaml.in`.
+If you need structural Lima changes, create a user override:
+
+```bash
+cp share/dvm/lima.yaml.in ~/.config/dvm/lima.yaml.in
+```
+
+When `~/.config/dvm/lima.yaml.in` exists, DVM uses it. Otherwise DVM uses the bundled
+template from `share/dvm/lima.yaml.in`. `install.sh --init` does not copy the Lima
+template into user config, so normal installs do not get stale local templates.
 
 Important defaults:
 
@@ -34,8 +42,8 @@ Use:
 dvm enter app
 ```
 
-Then edit with guest tools such as Helix, lazygit, Codex, Claude, or project-local
-tooling.
+Then edit with guest tools installed by your recipes, such as an editor, AI CLI, or
+project-local tooling.
 
 ## VM To VM
 
@@ -64,9 +72,9 @@ Editing `DVM_PORTS` in a VM config and running `dvm apply <name>` updates the ex
 Lima VM's `portForwards` without recreating the VM. DVM compares the configured ports
 with the VM's Lima YAML and asks Lima to edit the VM when they differ.
 
-Editing other parts of `lima.yaml.in` affects newly created VMs. Existing Lima
-instances keep their created configuration for structural settings. For those changes,
-recreate:
+Editing the bundled template affects future VMs created from this checkout. Editing a
+user override affects future VMs for that user. Existing Lima instances keep their
+created configuration for structural settings. For those changes, recreate:
 
 ```bash
 dvm rm app --yes
