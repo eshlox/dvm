@@ -35,7 +35,9 @@ or bad sudo policy can still bypass this; Bubblewrap is not a separate VM.
 
 ## Tools
 
-- `codex`: installs `@openai/codex` with npm under `dvm-agent`.
+- `codex`: installs `@openai/codex` with npm under `dvm-agent`. By default it starts
+  with `--dangerously-bypass-approvals-and-sandbox`; set `DVM_CODEX_YOLO=0` in a VM
+  config to leave Codex approval prompts and its own sandbox enabled.
 - `claude`: installs Claude Code from Anthropic's signed `latest` RPM repo. By default
   it sets `defaultMode` to `bypassPermissions` for the `dvm-agent` user; set
   `DVM_CLAUDE_BYPASS=0` in a VM config to leave Claude permission prompts enabled.
@@ -61,15 +63,16 @@ opencode
 Login state stays in the VM under the agent user's home, which is mounted into the
 sandbox.
 
-Claude starts in bypass-permissions mode by default because DVM's intended boundary is
-the VM plus the `dvm-agent` Bubblewrap sandbox. In that mode Claude can edit project
-code, run project commands, use the network, and write its own login/tool state under
+Codex and Claude start in unattended modes by default because DVM's intended boundary is
+the VM plus the `dvm-agent` Bubblewrap sandbox. In that mode they can edit project
+code, run project commands, use the network, and write their own login/tool state under
 the agent user's home without asking for each action. The main user's home, SSH keys,
 GPG keys, and common token/config paths are not mounted into the sandbox.
 
-Set this in a VM config when you want Claude permission prompts instead:
+Set these in a VM config when you want tool-native approval prompts and sandboxing:
 
 ```bash
+DVM_CODEX_YOLO=0
 DVM_CLAUDE_BYPASS=0
 ```
 
