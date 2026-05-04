@@ -169,6 +169,8 @@ grep -Fxq old-target "$TMP/old-dvm"
 [ -x "$TMP/install-bin/dvm" ]
 [ ! -L "$TMP/install-bin/dvm" ]
 grep -Fq 'dvm-run.' "$TMP/install-bin/dvm"
+grep -Fq 'DVM_LIB_DIR="$tmp_parent/lib"' "$TMP/install-bin/dvm"
+[ ! -e "$TMP/install-config/lib" ]
 "$TMP/install-bin/dvm" help >"$TMP/install-help.out"
 grep -Fq 'dvm init <name> [template]' "$TMP/install-help.out"
 

@@ -12,8 +12,8 @@ usage:
   ./install.sh [--name dvm] [--prefix ~/.local/bin] [--init]
 
 Installs a tiny DVM launcher. With --init, copies default config into ~/.config/dvm
-without overwriting existing files. Bundled recipes, the Lima template, and example VM
-configs stay in the repo under share/dvm.
+without overwriting existing files. Bundled recipes, shell libraries, the Lima template,
+and example VM configs stay in the repo under share/dvm.
 HELP
 }
 
@@ -54,17 +54,24 @@ src="$DVM_ROOT/bin/dvm"
 	printf 'dvm launcher: missing %s\n' "$src" >&2
 	exit 1
 }
+lib_src="$DVM_ROOT/share/dvm/lib"
+[ -d "$lib_src" ] || {
+	printf 'dvm launcher: missing %s\n' "$lib_src" >&2
+	exit 1
+}
 
 tmp_dir="${TMPDIR:-/tmp}"
-tmp="$(mktemp "${tmp_dir%/}/dvm-run.XXXXXX")"
+tmp_parent="$(mktemp -d "${tmp_dir%/}/dvm-run.XXXXXX")"
 cleanup() {
-	rm -f "$tmp"
+	rm -rf "$tmp_parent"
 }
 trap cleanup EXIT INT TERM
 
-cp "$src" "$tmp"
-chmod 0700 "$tmp"
-DVM_ROOT="$DVM_ROOT" bash "$tmp" "$@"
+mkdir -p "$tmp_parent/bin" "$tmp_parent/lib"
+cp "$src" "$tmp_parent/bin/dvm"
+cp -R "$lib_src/." "$tmp_parent/lib/"
+chmod 0700 "$tmp_parent/bin/dvm"
+DVM_ROOT="$DVM_ROOT" DVM_LIB_DIR="$tmp_parent/lib" bash "$tmp_parent/bin/dvm" "$@"
 LAUNCHER
 	} >"$dst"
 	chmod 0755 "$dst"
@@ -81,6 +88,7 @@ init_config() {
 		rel="${file#"$src"/}"
 		case "$rel" in
 		lima.yaml.in) ;;
+		lib/*) ;;
 		recipes/*) ;;
 		vms/*) ;;
 		*) install_file "$file" "$DVM_CONFIG/$rel" ;;
