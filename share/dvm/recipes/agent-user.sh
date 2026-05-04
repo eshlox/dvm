@@ -164,7 +164,9 @@ if [ -d "$(dirname "$code_dir")" ]; then
 	sudo setfacl -m "u:$DVM_AI_AGENT_USER:--x" "$(dirname "$code_dir")" || true
 fi
 sudo setfacl -R -m "u:$DVM_AI_AGENT_USER:rwx" "$code_dir" || true
-sudo setfacl -d -m "u:$DVM_AI_AGENT_USER:rwx" "$code_dir" || true
+sudo setfacl -R -m "u:$DVM_USER:rwx" "$code_dir" || true
+sudo find "$code_dir" -type d -exec setfacl -d -m "u:$DVM_AI_AGENT_USER:rwx" {} + || true
+sudo find "$code_dir" -type d -exec setfacl -d -m "u:$DVM_USER:rwx" {} + || true
 
 for path in \
 	"$HOME/.ssh" \

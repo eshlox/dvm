@@ -15,8 +15,9 @@ use mistral
 ```
 
 `agent-user` creates `dvm-agent` as a system account with a home directory, installs
-Bubblewrap, grants ACL access to `DVM_CODE_DIR`, creates `/home/dvm-agent/scratch`, and
-installs the mandatory AI sandbox helper at `/usr/local/libexec/dvm-ai-bwrap`.
+Bubblewrap, grants shared ACL access to `DVM_CODE_DIR` for both the VM user and
+`dvm-agent`, creates `/home/dvm-agent/scratch`, and installs the mandatory AI sandbox
+helper at `/usr/local/libexec/dvm-ai-bwrap`.
 
 AI tools do not run directly. The wrappers always run the tool as `dvm-agent` inside
 Bubblewrap. There is no non-Bubblewrap mode.
@@ -68,6 +69,11 @@ the VM plus the `dvm-agent` Bubblewrap sandbox. In that mode they can edit proje
 code, run project commands, use the network, and write their own login/tool state under
 the agent user's home without asking for each action. The main user's home, SSH keys,
 GPG keys, and common token/config paths are not mounted into the sandbox.
+
+Project ACLs are set recursively and as defaults on directories under `DVM_CODE_DIR`.
+Files created by the VM user or by AI tools should remain editable by both sides. Re-run
+`dvm apply <name>` if project permissions are changed manually or restored from an
+archive.
 
 Set these in a VM config when you want tool-native approval prompts and sandboxing:
 

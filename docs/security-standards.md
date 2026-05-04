@@ -46,8 +46,8 @@ small, but they are the bar for changes.
 - Keep network access enabled for hosted AI tools; use the separate VM boundary for
   project isolation.
 - Treat ACLs as defense in depth and as the permission bridge that lets `dvm-agent`
-  bind the project directory. Bubblewrap is not a separate VM; guest root or bad sudo
-  policy can bypass it.
+  and the VM user share `DVM_CODE_DIR`. Bubblewrap is not a separate VM; guest root or
+  bad sudo policy can bypass it.
 - Review AI-generated changes before committing or running them.
 
 ## Networking

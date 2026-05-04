@@ -9,6 +9,8 @@
 - Fixed `dvm cp` without copy options on macOS Bash 3.2.
 - Changed `dvm cp` to refresh `dvm-agent` ACLs for host files copied into
   `DVM_CODE_DIR`, so AI wrappers can edit those files.
+- Changed `agent-user` ACL setup so the VM user and `dvm-agent` both keep read/write
+  access to files created under `DVM_CODE_DIR`.
 - Changed cloudflared token handling so `CLOUDFLARED_TOKEN` and
   `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
   being passed as `limactl shell env` arguments.
