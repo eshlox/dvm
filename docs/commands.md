@@ -62,6 +62,23 @@ dvm ssh cloudflared -- journalctl -u dvm-cloudflared.service -f
 
 Runs one command inside the VM from `DVM_CODE_DIR`.
 
+## Copy
+
+```bash
+dvm cp ./plan.md app:.
+dvm cp -r ./docs app:docs
+dvm cp app:output/report.md ./report.md
+dvm cp app:/tmp/log.txt ./log.txt
+```
+
+Copies files between the host and a VM using Lima's `limactl copy`. Guest paths use the
+public DVM name followed by `:`. Relative guest paths resolve under `DVM_CODE_DIR`, so
+`app:.` means the app VM's code directory and `app:docs/plan.md` means
+`$DVM_CODE_DIR/docs/plan.md`. Absolute guest paths stay absolute.
+
+The command starts the VM first and creates `DVM_CODE_DIR` if needed. It supports
+`-r`/`--recursive`, `-v`/`--verbose`, and `--backend auto|scp|rsync`.
+
 ## Logs
 
 ```bash
