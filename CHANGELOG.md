@@ -4,6 +4,9 @@
 
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.
+- Added `dvm cp` to copy files between the host and a DVM VM through Lima, with
+  relative guest paths resolved under `DVM_CODE_DIR`.
+- Fixed `dvm cp` without copy options on macOS Bash 3.2.
 - Changed cloudflared token handling so `CLOUDFLARED_TOKEN` and
   `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
   being passed as `limactl shell env` arguments.

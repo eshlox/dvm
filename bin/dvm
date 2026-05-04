@@ -27,6 +27,7 @@ usage:
   dvm apply --all
   dvm enter <name>
   dvm ssh <name> -- <command...>
+  dvm cp [-r] [-v] [--backend auto|scp|rsync] <source...> <target>
   dvm logs <name> [unit] [journalctl-args...]
   dvm ssh-key <name>
   dvm gpg-key <name>
@@ -111,6 +112,15 @@ validate_cloudflared_token() {
 	case "$1" in
 	*[!A-Za-z0-9._=-]*) die "invalid cloudflared token characters" ;;
 	esac
+}
+
+dvm_endpoint_name() {
+	local name="$1"
+	case "$name" in
+	dvm-*) name="${name#dvm-}" ;;
+	esac
+	safe_name "$name" || return 1
+	printf '%s\n' "$name"
 }
 
 open_editor() {
@@ -607,6 +617,120 @@ ssh_vm() {
 	limactl shell "$DVM_LIMA_NAME" env "TERM=$term" bash -c "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
 }
 
+guest_home_dir() {
+	printf '/home/%s\n' "$DVM_USER"
+}
+
+guest_code_dir_abs() {
+	local code_dir home
+	home="$(guest_home_dir)"
+	code_dir="${DVM_CODE_DIR%/}"
+	case "$code_dir" in
+	'') printf '/\n' ;;
+	"~") printf '%s\n' "$home" ;;
+	"~/"*) printf '%s/%s\n' "$home" "${code_dir#\~/}" ;;
+	/*) printf '%s\n' "$code_dir" ;;
+	*) printf '%s/%s\n' "$home" "$code_dir" ;;
+	esac
+}
+
+guest_cp_path() {
+	local code_dir home path
+	path="$1"
+	home="$(guest_home_dir)"
+	code_dir="$(guest_code_dir_abs)"
+	case "$path" in
+	'' | '.') printf '%s\n' "$code_dir" ;;
+	"./"*) printf '%s/%s\n' "$code_dir" "${path#./}" ;;
+	/*) printf '%s\n' "$path" ;;
+	"~") printf '%s\n' "$home" ;;
+	"~/"*) printf '%s/%s\n' "$home" "${path#\~/}" ;;
+	*) printf '%s/%s\n' "$code_dir" "$path" ;;
+	esac
+}
+
+cp_vm() {
+	local arg endpoint_count endpoint_name name opts_count path vm_name
+	local -a operands opts rewritten
+	operands=()
+	opts=()
+	rewritten=()
+	opts_count=0
+	vm_name=""
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--)
+			shift
+			while [ "$#" -gt 0 ]; do
+				operands+=("$1")
+				shift
+			done
+			;;
+		-r | --recursive | -v | --verbose)
+			opts+=("$1")
+			opts_count=$((opts_count + 1))
+			;;
+		--backend=*)
+			opts+=("$1")
+			opts_count=$((opts_count + 1))
+			;;
+		--backend)
+			[ "$#" -gt 1 ] || die "cp --backend requires a value"
+			opts+=("$1" "$2")
+			opts_count=$((opts_count + 2))
+			shift
+			;;
+		-*) die "unknown cp option: $1" ;;
+		*) operands+=("$1") ;;
+		esac
+		shift || true
+	done
+	[ "${#operands[@]}" -ge 2 ] || die "cp requires a source and target"
+
+	endpoint_count=0
+	for arg in "${operands[@]}"; do
+		case "$arg" in
+		*:*)
+			name="${arg%%:*}"
+			if endpoint_name="$(dvm_endpoint_name "$name")"; then
+				endpoint_count=$((endpoint_count + 1))
+				if [ -n "$vm_name" ] && [ "$vm_name" != "$endpoint_name" ]; then
+					die "cp can only address one VM at a time"
+				fi
+				vm_name="$endpoint_name"
+			fi
+			;;
+		esac
+	done
+	[ "$endpoint_count" -gt 0 ] || die "cp requires one side to use name:path"
+	[ "$endpoint_count" -lt "${#operands[@]}" ] || die "cp requires one host path and one VM path"
+
+	load_vm "$vm_name"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $vm_name first"
+	start_vm
+	limactl shell "$DVM_LIMA_NAME" mkdir -p "$(guest_code_dir_abs)"
+
+	for arg in "${operands[@]}"; do
+		case "$arg" in
+		*:*)
+			name="${arg%%:*}"
+			if endpoint_name="$(dvm_endpoint_name "$name")"; then
+				path="${arg#*:}"
+				rewritten+=("$DVM_LIMA_NAME:$(guest_cp_path "$path")")
+			else
+				rewritten+=("$arg")
+			fi
+			;;
+		*) rewritten+=("$arg") ;;
+		esac
+	done
+	if [ "$opts_count" -gt 0 ]; then
+		limactl copy "${opts[@]}" "${rewritten[@]}"
+	else
+		limactl copy "${rewritten[@]}"
+	fi
+}
+
 default_log_unit() {
 	local recipe count unit
 	count=0
@@ -838,6 +962,7 @@ main() {
 		;;
 	enter) [ -n "${1:-}" ] || die "enter requires a VM name"; enter_vm "$1" ;;
 	ssh) [ -n "${1:-}" ] || die "ssh requires a VM name"; ssh_vm "$@" ;;
+	cp) cp_vm "$@" ;;
 	logs) logs_vm "$@" ;;
 	ssh-key) ssh_key_vm "$@" ;;
 	gpg-key) gpg_key_vm "$@" ;;

@@ -41,6 +41,7 @@ dvm apply app
 dvm apply --all
 dvm enter app
 dvm ssh app -- pwd
+dvm cp ./plan.md app:.
 dvm logs cloudflared
 dvm ssh-key app
 dvm gpg-key app

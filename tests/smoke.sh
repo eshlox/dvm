@@ -129,6 +129,9 @@ stop)
 edit)
 	printf 'edit %s\n' "$*" >>"$state/log"
 	;;
+copy)
+	printf 'copy %s\n' "$*" >>"$state/log"
+	;;
 shell)
 	vm="$1"
 	shift
@@ -270,6 +273,17 @@ expanded_code_dir="$(
 
 "$ROOT/bin/dvm" ssh dvm-app -- pwd
 grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
+
+guest_code_dir="/home/${USER:-developer}/code/app"
+printf 'plan\n' >"$TMP/plan.md"
+: >"$TMP/state/log"
+"$ROOT/bin/dvm" cp "$TMP/plan.md" app:.
+grep -Fq "shell dvm-app mkdir -p $guest_code_dir" "$TMP/state/log"
+grep -Fq "copy $TMP/plan.md dvm-app:$guest_code_dir" "$TMP/state/log"
+
+: >"$TMP/state/log"
+"$ROOT/bin/dvm" cp -r --backend=scp app:docs "$TMP/docs-out"
+grep -Fq "copy -r --backend=scp dvm-app:$guest_code_dir/docs $TMP/docs-out" "$TMP/state/log"
 
 touch "$TMP/state/list_empty_once"
 "$ROOT/bin/dvm" ssh app -- pwd
