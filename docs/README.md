@@ -1,34 +1,13 @@
 # Docs
 
-Find the task, open one file, copy the example, then modify it.
+DVM is intentionally small. The docs are larger than the wrapper because they carry
+the decisions, examples, and recipe behavior.
 
-## Start
-
-- [Install](install.md): install or update DVM
-- [Dependencies](dependencies.md): host and guest requirements
-- [Create VMs](create.md): create, enter, rerun setup
-- [Config](config.md): global defaults, per-VM overrides, local values
-
-## Daily Use
-
-- [Commands](commands.md): create, enter, run, update, list, delete
-- [Recipes](recipes.md): write setup scripts
-- [Updates](updates.md): rerun setup and upgrade packages
-- [Networking](networking.md): ports, host access, VM-to-VM access
-- [Releases](releases.md): GitHub Actions releases and attestations
-
-## Setup Examples
-
-- [Languages](languages/README.md): Node, Node supply-chain hardening, and Python
-- [Dotfiles](dotfiles/README.md): snapshot, bare repo, yadm, chezmoi
-- [SSH, GPG, and signing](keys.md): GitHub deploy keys and commit signing
-
-## Services
-
-- [AI](ai/README.md): llama.cpp, Codex, Claude, OpenCode, Mistral
-- [Services](services/README.md): cloudflared and HTTPS
-
-## Project
-
-- [Extending DVM](extending.md): when to add docs, recipes, or core code
-- [Uninstall](uninstall.md): remove VMs, config, state, and Lima cleanup
+- [Commands](commands.md): command reference
+- [Config](config.md): global and per-VM Bash variables
+- [Lima](lima.md): template, networking, and no-host-mount decisions
+- [Recipes](recipes.md): host/guest boundary, recipe rules, and bundled recipes
+- [AI](ai.md): `dvm-agent`, Codex, Claude, OpenCode, and Mistral
+- [Services](services.md): llama and cloudflared dedicated VMs
+- [Dotfiles](dotfiles.md): chezmoi over public HTTPS
+- [Security Standards](security-standards.md): operating rules and security defaults

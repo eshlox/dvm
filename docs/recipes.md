@@ -1,82 +1,242 @@
 # Recipes
 
-Recipes are shell scripts run inside the VM.
+Recipes are guest-side Bash scripts. VM config files are host-side Bash files. Keep
+that boundary clear.
 
-DVM resolves `DVM_SETUP_SCRIPTS` in this order:
+## Host Config
 
-1. `~/.config/dvm/recipes/<name>`
-2. `<repo>/recipes/<name>`
-3. the value as a path
-
-Example:
+Host config lives in `~/.config/dvm/vms/<name>.sh`:
 
 ```bash
-DVM_SETUP_SCRIPTS="common.sh ai.sh"
+DVM_CPUS=4
+DVM_MEMORY=8GiB
+DVM_DISK=80GiB
+DVM_CODE_DIR="~/code/app"
+DVM_PORTS="3000:3000"
+
+use node
+use agent-user
+use codex
 ```
 
-Built-in recipes:
+`use <name>` only selects `recipes/<name>.sh`; it does not run the recipe on the host.
 
-- `llama.sh`: install and run llama.cpp server
-- `ai.sh`: install hosted AI CLIs as `dvm-agent` and create wrapper commands
-- `agent.sh`: create only the separate `dvm-agent` user
-- `cloudflared.sh`: install Cloudflare's `cloudflared` connector and optionally run it as a service
+## Guest Recipes
 
-Keep custom recipes small. Use recipes for package installs, repositories, services,
-tools, dotfiles, and shell defaults.
-
-Use `dvm_vm_setup()` only for project-local final touches, not package installs:
+Recipes run inside the VM through:
 
 ```bash
-dvm_vm_setup() {
-	git clone git@github.com:you/app.git "$DVM_CODE_DIR"
+limactl shell dvm-app env ... bash -s
+```
+
+Bundled recipes live in `share/dvm/recipes`. Local recipes in
+`~/.config/dvm/recipes` override bundled recipes with the same name. Keep that directory
+for your own custom recipes or intentional overrides; copied bundled recipes will go
+stale and block future recipe updates.
+
+Rules:
+
+- Recipes should be idempotent enough to rerun.
+- Prefer package-manager installs, `mkdir -p`, and overwriting systemd units.
+- Do not read host paths.
+- Use `DVM_CODE_DIR` for project code.
+- Keep tool-specific config close to the recipe that uses it.
+- Do not add recipe metadata, dependency graphs, registries, or versioning.
+
+## Built-In Recipes
+
+`baseline` installs required setup basics only: Git, curl, wget, tar, gzip, unzip, and
+jq. Editors, shells, terminal tools, Git UIs, and language runtimes belong in user
+recipes or project-specific VM configs.
+
+`DVM_NO_BASELINE=1` skips that implicit baseline for a VM. Use it for dedicated service
+VMs only when the selected service recipes install every dependency they need.
+
+Interactive tools are split into one recipe per tool: `zsh`, `git`, `helix`,
+`lazygit`, `starship`, `fzf`, `git-delta`, `just`, `tmux`, and `yazi`. `zsh` installs
+zsh and sets it as the guest user's default login shell with `usermod --shell`. The
+DNF-backed recipes install from Fedora.
+The upstream-backed recipes try Fedora first and otherwise use pinned official release
+assets with sha256 verification.
+
+`_helpers.sh` is an internal helper that DVM prepends before guest recipes. It provides
+the shared verified-download functions used by pinned upstream recipes; do not select
+it with `use`.
+
+`agent-user` creates `dvm-agent` as a system account with a home directory, installs
+Bubblewrap, grants ACL access to `DVM_CODE_DIR`, creates an agent scratch directory, and
+installs the mandatory AI sandbox helper. AI tool wrappers run inside Bubblewrap with
+project code mounted at `/workspace`, the agent home mounted read/write, and the main
+user home left out of the sandbox.
+
+`codex`, `claude`, `opencode`, and `mistral` install hosted AI tools for `dvm-agent`
+and expose wrappers in `/usr/local/bin`. Put `use agent-user` before these recipes.
+
+`node` installs Node.js/npm, installs the standalone Corepack npm package when Fedora's
+Node package does not provide `corepack`, and enables Corepack shims for pnpm/yarn.
+`python` installs Python, pip, and uv.
+
+After applying `use node`, pin pnpm in each project rather than installing a global
+pnpm:
+
+```bash
+corepack use pnpm@latest
+pnpm install
+```
+
+Commit the resulting `packageManager` field in `package.json` so every VM uses the same
+package manager version.
+
+## Adding Packages
+
+Use `baseline` only for required setup basics that should be present in every VM,
+including service VMs. For app VMs, select the tools you want explicitly:
+
+```bash
+use zsh
+use git
+use helix
+use lazygit
+use starship
+use fzf
+use git-delta
+use just
+use tmux
+use yazi
+```
+
+If you want a personal bundle, define it in `~/.config/dvm/config.sh`:
+
+```bash
+use_app_tools() {
+	use zsh
+	use git
+	use helix
+	use lazygit
+	use starship
+	use fzf
+	use git-delta
+	use just
+	use tmux
+	use yazi
 }
 ```
 
-For shared setup used by most VMs, put a recipe such as `common.sh` in
-`~/.config/dvm/recipes/` and enable it from `~/.config/dvm/config.sh`:
+Then call it from VM configs that should get that bundle:
 
 ```bash
-DVM_SETUP_SCRIPTS="common.sh"
+use_app_tools
 ```
 
-Dotfiles managers such as yadm or chezmoi should also live in user recipes, not DVM
-core. See [Dotfiles](dotfiles/README.md).
-
-Use shared recipes for packages that need extra repository setup:
+For a DNF package in one VM, prefer a small recipe:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-sudo dnf5 install -y --nogpgcheck \
-	--repofrompath 'terra,https://repos.fyralabs.com/terra$releasever' \
-	terra-release
-sudo dnf5 install -y lazygit
+$EDITOR ~/.config/dvm/recipes/my-package.sh
 ```
-
-Set zsh as the default shell for most VMs:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-sudo dnf5 install -y zsh
-
-zsh_path="$(command -v zsh)"
-current_shell="$(getent passwd "$USER" | cut -d: -f7)"
-
-if [ "$current_shell" != "$zsh_path" ]; then
-	sudo chsh -s "$zsh_path" "$USER"
-fi
+sudo dnf5 install -y my-package
 ```
 
-Keep package installation in recipes so setup has one path.
-
-Special VMs can disable the shared setup:
+Then select it from one VM config:
 
 ```bash
-DVM_SETUP_SCRIPTS=""
+use my-package
 ```
 
-For rules on when to add a built-in recipe versus docs only, see
-[Extending DVM](extending.md).
+For a package or tool that does not exist in DNF, use the same split:
+
+- every app VM: create a named recipe in `~/.config/dvm/recipes/<name>.sh` and add
+  `use <name>` to those VM configs, or add it to your own helper function
+- one VM: put the install commands in `~/.config/dvm/recipes/<name>.sh` and add
+  `use <name>` to that VM config
+
+For non-DNF tools, prefer the pattern used by `lazygit`, `starship`, and `yazi`:
+download from an official HTTPS release URL, pin a version, verify sha256 before
+installing, and avoid `curl | sh` installers. To update, bump the version, URL, and
+sha256 in the recipe, then run `dvm apply <name>` or `dvm apply --all`.
+
+Project-only setup that belongs in the project repository can also live in:
+
+```text
+$DVM_CODE_DIR/.dvm/apply.sh
+```
+
+That hook runs after baseline and selected recipes, inside the guest.
+
+`chezmoi` applies public dotfiles over HTTPS:
+
+```bash
+DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
+use chezmoi
+```
+
+Shared chezmoi template data such as `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, and
+`DVM_CHEZMOI_EMAIL` usually belongs in `~/.config/dvm/config.sh`; generated key data
+uses the default paths from `dvm ssh-key <name>` unless overridden globally or per VM.
+
+`llama` installs the llama service. Configure a dedicated VM:
+
+```bash
+DVM_CPUS=8
+DVM_MEMORY=16GiB
+DVM_DISK=120GiB
+DVM_PORTS="8080:8080"
+DVM_LLAMA_DEFAULT_MODEL="small"
+DVM_LLAMA_MODELS="small=https://example.invalid/model.gguf"
+DVM_LLAMA_MODELS_SHA256="small=..."
+
+use llama
+```
+
+The recipe can manage several model URLs by alias, verifies checksums when provided,
+and points the active model at `~/models/current.gguf`.
+
+`cloudflared` installs Cloudflare Tunnel as a service. Configure a dedicated VM:
+
+```bash
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=20GiB
+
+use cloudflared
+```
+
+Apply with a token when configuring or recreating the VM:
+
+```bash
+CLOUDFLARED_TOKEN="..." dvm apply cloudflared
+```
+
+DVM does not pass `CLOUDFLARED_TOKEN` or `DVM_CLOUDFLARED_TOKEN` as `limactl shell env`
+arguments. For the bundled cloudflared recipe, it writes the token to a mode `0600`
+guest temp file during `apply`, the recipe copies it into `/etc/cloudflared/dvm.env`,
+and the temp file is removed.
+
+If you want host convenience, store the token in macOS Keychain yourself and pass it at
+apply time:
+
+```bash
+security add-generic-password -a dvm -s cloudflared -w "$TOKEN"
+CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
+  dvm apply cloudflared
+```
+
+DVM does not provide a secret store command.
+
+`dvm logs llama` and `dvm logs cloudflared` show the default service units for those
+dedicated VMs.
+
+## Project Hook
+
+After selected recipes run, DVM checks for this guest file:
+
+```text
+$DVM_CODE_DIR/.dvm/apply.sh
+```
+
+If it exists, DVM runs it inside the VM. Use it for project-local setup that belongs in
+the project repository.
