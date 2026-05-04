@@ -628,7 +628,7 @@ guest_code_dir_abs() {
 	case "$code_dir" in
 	'') printf '/\n' ;;
 	"~") printf '%s\n' "$home" ;;
-	"~/"*) printf '%s/%s\n' "$home" "${code_dir#\~/}" ;;
+	\~/*) printf '%s/%s\n' "$home" "${code_dir#\~/}" ;;
 	/*) printf '%s\n' "$code_dir" ;;
 	*) printf '%s/%s\n' "$home" "$code_dir" ;;
 	esac
@@ -644,7 +644,7 @@ guest_cp_path() {
 	"./"*) printf '%s/%s\n' "$code_dir" "${path#./}" ;;
 	/*) printf '%s\n' "$path" ;;
 	"~") printf '%s\n' "$home" ;;
-	"~/"*) printf '%s/%s\n' "$home" "${path#\~/}" ;;
+	\~/*) printf '%s/%s\n' "$home" "${path#\~/}" ;;
 	*) printf '%s/%s\n' "$code_dir" "$path" ;;
 	esac
 }
