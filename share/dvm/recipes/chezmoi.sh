@@ -38,14 +38,21 @@ dvm_chezmoi_write_data_config() {
 
 if [ -n "${DVM_CHEZMOI_CONFIG_TOML:-}" ] || dvm_chezmoi_has_data; then
 	mkdir -p "$HOME/.config/chezmoi"
-	(
+	config="$HOME/.config/chezmoi/chezmoi.toml"
+	tmp="$(mktemp "${config}.XXXXXX")"
+	if (
 		umask 077
 		if [ -n "${DVM_CHEZMOI_CONFIG_TOML:-}" ]; then
 			printf '%s\n' "$DVM_CHEZMOI_CONFIG_TOML"
 		else
 			dvm_chezmoi_write_data_config
-		fi >"$HOME/.config/chezmoi/chezmoi.toml"
-	)
+		fi >"$tmp"
+	) && chmod 600 "$tmp" && mv "$tmp" "$config"; then
+		:
+	else
+		rm -f "$tmp"
+		exit 1
+	fi
 fi
 
 if [ ! -d "$HOME/.local/share/chezmoi/.git" ]; then

@@ -65,6 +65,54 @@ guest_term() {
 	esac
 }
 
+validate_identifier() {
+	local label="$1"
+	local value="$2"
+	case "$value" in
+	'' | [.-]* | *[!A-Za-z0-9._-]*) die "invalid $label: $value" ;;
+	esac
+}
+
+validate_lima_name() {
+	case "$1" in
+	'' | *[!a-z0-9-]* | -*) die "invalid DVM_LIMA_NAME: $1" ;;
+	esac
+}
+
+validate_positive_int() {
+	local label="$1"
+	local value="$2"
+	case "$value" in
+	'' | *[!0-9]*) die "invalid $label: $value" ;;
+	esac
+	[ "$value" -gt 0 ] || die "invalid $label: $value"
+}
+
+validate_lima_size() {
+	local label="$1"
+	local value="$2"
+	case "$value" in
+	'' | [!0-9]* | *[!A-Za-z0-9._+-]*) die "invalid $label: $value" ;;
+	esac
+}
+
+validate_guest_path() {
+	local label="$1"
+	local value="$2"
+	local newline carriage
+	newline=$'\n'
+	carriage=$'\r'
+	case "$value" in
+	'' | *"$newline"* | *"$carriage"* | *'"'* | *'`'* | *\\* | *'$'*) die "invalid $label: $value" ;;
+	esac
+}
+
+validate_cloudflared_token() {
+	case "$1" in
+	*[!A-Za-z0-9._=-]*) die "invalid cloudflared token characters" ;;
+	esac
+}
+
 open_editor() {
 	local file="$1"
 	local editor="${EDITOR:-${VISUAL:-vi}}"
@@ -116,6 +164,14 @@ use() {
 	DVM_RECIPES+=("$name")
 }
 
+uses_recipe() {
+	local recipe
+	for recipe in "${DVM_RECIPES[@]}"; do
+		[ "$recipe" = "$1" ] && return 0
+	done
+	return 1
+}
+
 load_vm() {
 	local name="$1"
 	local vm_file
@@ -147,6 +203,7 @@ load_vm() {
 	DVM_LLAMA_SERVICE="${DVM_LLAMA_SERVICE:-dvm-llama.service}"
 	DVM_CLOUDFLARED_SERVICE="${DVM_CLOUDFLARED_SERVICE:-dvm-cloudflared.service}"
 	resolve_arch
+	validate_vm_config
 }
 
 reset_vm_vars() {
@@ -169,6 +226,25 @@ resolve_arch() {
 	x86_64 | amd64) DVM_ARCH="x86_64" ;;
 	*) die "cannot resolve DVM_ARCH=default for $(uname -m)" ;;
 	esac
+}
+
+validate_vm_config() {
+	local item
+	validate_lima_name "$DVM_LIMA_NAME"
+	validate_identifier DVM_USER "$DVM_USER"
+	validate_identifier DVM_AI_AGENT_USER "$DVM_AI_AGENT_USER"
+	case "$DVM_ARCH" in
+	aarch64 | x86_64) ;;
+	*) die "invalid DVM_ARCH: $DVM_ARCH" ;;
+	esac
+	validate_positive_int DVM_CPUS "$DVM_CPUS"
+	validate_lima_size DVM_MEMORY "$DVM_MEMORY"
+	validate_lima_size DVM_DISK "$DVM_DISK"
+	validate_guest_path DVM_CODE_DIR "$DVM_CODE_DIR"
+	validate_host_ip "$DVM_HOST_IP"
+	for item in ${DVM_PORTS:-}; do
+		normalize_port "$item" >/dev/null
+	done
 }
 
 render_ports() {
@@ -316,10 +392,25 @@ render_template() {
 }
 
 vm_exists() {
-	if limactl list --format '{{.Name}}' 2>/dev/null | grep -Fxq "$DVM_LIMA_NAME"; then
+	vm_listed || vm_local_config_exists
+}
+
+vm_listed() {
+	limactl list --format '{{.Name}}' 2>/dev/null | grep -Fxq "$DVM_LIMA_NAME"
+}
+
+vm_local_config_exists() {
+	[ -f "${LIMA_HOME:-$HOME/.lima}/$DVM_LIMA_NAME/lima.yaml" ]
+}
+
+start_vm() {
+	if limactl start "$DVM_LIMA_NAME"; then
 		return 0
 	fi
-	[ -f "${LIMA_HOME:-$HOME/.lima}/$DVM_LIMA_NAME/lima.yaml" ]
+	if ! vm_listed && vm_local_config_exists; then
+		die "Lima instance directory exists but limactl cannot start $DVM_LIMA_NAME; inspect or remove ${LIMA_HOME:-$HOME/.lima}/$DVM_LIMA_NAME"
+	fi
+	return 1
 }
 
 ensure_vm() {
@@ -351,21 +442,25 @@ ensure_vm() {
 	else
 		update_port_forwards
 	fi
-	limactl start "$DVM_LIMA_NAME"
+	start_vm
 }
 
 run_guest_apply() {
-	local helper recipe path var
+	local cloudflared_token helper recipe path var
 	local -a args
 	args=()
+	cloudflared_token=""
+	if uses_recipe cloudflared; then
+		cloudflared_token="${DVM_CLOUDFLARED_TOKEN:-${CLOUDFLARED_TOKEN:-}}"
+		[ -z "$cloudflared_token" ] || validate_cloudflared_token "$cloudflared_token"
+	fi
 	while IFS= read -r var; do
 		case "$var" in
 		DVM_ROOT | DVM_SHARE | DVM_CONFIG | DVM_FAKE_STATE | DVM_LIMA_NAME | DVM_RECIPES | DVM_NO_BASELINE | DVM_PORT_FORWARDS_YAML) continue ;;
+		DVM_CLOUDFLARED_TOKEN | DVM_CLOUDFLARED_TOKEN_FILE) continue ;;
 		DVM_*) args+=("$var=${!var}") ;;
 		esac
 	done < <(compgen -A variable | sort)
-	# These env values are visible to host ps while limactl runs; use only short-lived apply-time secrets.
-	[ -z "${CLOUDFLARED_TOKEN:-}" ] || args+=("CLOUDFLARED_TOKEN=$CLOUDFLARED_TOKEN")
 
 	printf 'dvm: applying recipes for %s:' "$DVM_NAME" >&2
 	if [ "${DVM_NO_BASELINE:-0}" != "1" ]; then
@@ -400,6 +495,9 @@ DVM_HOSTNAME
 		if [ "${#DVM_RECIPES[@]}" -gt 0 ]; then
 			for recipe in "${DVM_RECIPES[@]}"; do
 				path="$(recipe_file "$recipe")"
+				if [ "$recipe" = "cloudflared" ]; then
+					emit_cloudflared_token_file "$cloudflared_token"
+				fi
 				printf '\n# dvm recipe: %s\n' "$recipe"
 				cat "$path"
 			done
@@ -417,6 +515,23 @@ if [ -f "$dvm_code_dir/.dvm/apply.sh" ]; then
 fi
 DVM_PROJECT_HOOK
 	} | limactl shell "$DVM_LIMA_NAME" env "${args[@]}" bash -s
+}
+
+emit_cloudflared_token_file() {
+	local token="$1"
+	[ -n "$token" ] || return 0
+	cat <<'DVM_CLOUDFLARED_TOKEN_SETUP'
+# dvm cloudflared token file
+dvm_cloudflared_token_file="$(mktemp "${TMPDIR:-/tmp}/dvm-cloudflared-token.XXXXXX")"
+chmod 600 "$dvm_cloudflared_token_file"
+cat >"$dvm_cloudflared_token_file" <<'DVM_CLOUDFLARED_TOKEN'
+DVM_CLOUDFLARED_TOKEN_SETUP
+	printf '%s\n' "$token"
+	cat <<'DVM_CLOUDFLARED_TOKEN_SETUP'
+DVM_CLOUDFLARED_TOKEN
+export DVM_CLOUDFLARED_TOKEN_FILE="$dvm_cloudflared_token_file"
+
+DVM_CLOUDFLARED_TOKEN_SETUP
 }
 
 apply_one() {
@@ -487,7 +602,7 @@ ssh_vm() {
 	[ "${1:-}" != "--" ] || shift
 	load_vm "$name"
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
-	limactl start "$DVM_LIMA_NAME"
+	start_vm
 	term="$(guest_term)"
 	limactl shell "$DVM_LIMA_NAME" env "TERM=$term" bash -c "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
 }
@@ -521,7 +636,7 @@ logs_vm() {
 	shift || true
 	load_vm "$name"
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
-	limactl start "$DVM_LIMA_NAME"
+	start_vm
 	if [ "$#" -gt 0 ]; then
 		case "$1" in
 		-*) unit="$(default_log_unit)" || die "logs requires a unit when the VM has zero or multiple known service recipes" ;;
@@ -545,7 +660,7 @@ ssh_key_vm() {
 	[ -n "$name" ] || die "ssh-key requires a VM name"
 	load_vm "$name"
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
-	limactl start "$DVM_LIMA_NAME"
+	start_vm
 	limactl shell "$DVM_LIMA_NAME" env "DVM_NAME=$DVM_NAME" bash -s <<'DVM_SSH_KEY'
 set -euo pipefail
 if command -v dnf5 >/dev/null 2>&1; then
@@ -562,8 +677,18 @@ fi
 if [ ! -f "$signing_key" ]; then
 	ssh-keygen -t ed25519 -C "$DVM_NAME-dvm-git-signing" -f "$signing_key" -N ""
 fi
-[ -f "$key.pub" ] || ssh-keygen -y -f "$key" >"$key.pub"
-[ -f "$signing_key.pub" ] || ssh-keygen -y -f "$signing_key" >"$signing_key.pub"
+write_public_key() {
+	private_key="$1"
+	public_key="$private_key.pub"
+	tmp="$(mktemp "${public_key}.XXXXXX")"
+	if ssh-keygen -y -f "$private_key" >"$tmp" && mv "$tmp" "$public_key"; then
+		return 0
+	fi
+	rm -f "$tmp"
+	return 1
+}
+[ -s "$key.pub" ] || write_public_key "$key"
+[ -s "$signing_key.pub" ] || write_public_key "$signing_key"
 touch "$config"
 chmod 600 "$config"
 if ! grep -Eq "^[[:space:]]*IdentityFile[[:space:]]+$key([[:space:]]|$)" "$config"; then
@@ -596,7 +721,7 @@ gpg_key_vm() {
 	[ -n "$name" ] || die "gpg-key requires a VM name"
 	load_vm "$name"
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
-	limactl start "$DVM_LIMA_NAME"
+	start_vm
 	limactl shell "$DVM_LIMA_NAME" env "DVM_NAME=$DVM_NAME" bash -s <<'DVM_GPG_KEY'
 set -euo pipefail
 if command -v dnf5 >/dev/null 2>&1; then
@@ -612,7 +737,7 @@ DVM_GPG_KEY
 }
 
 dirty_check_vm() {
-	limactl start "$DVM_LIMA_NAME" >/dev/null
+	start_vm >/dev/null
 	limactl shell "$DVM_LIMA_NAME" bash -s -- "$DVM_CODE_DIR" <<'DVM_DIRTY_CHECK'
 set -euo pipefail
 code_dir="$1"
@@ -663,11 +788,12 @@ stop_vm() {
 }
 
 rm_vm() {
-	local force name vm_file yes
+	local force name orphan vm_file yes
 	name="${1:-}"
 	[ -n "$name" ] || die "rm requires a VM name"
 	shift || true
 	force=0
+	orphan=0
 	yes=0
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
@@ -684,9 +810,15 @@ rm_vm() {
 		load_vm "$name"
 	else
 		DVM_LIMA_NAME="dvm-$name"
+		if vm_exists; then
+			orphan=1
+			printf 'dvm: warning: deleting Lima VM without DVM config: %s (missing %s)\n' "$DVM_LIMA_NAME" "$vm_file" >&2
+		fi
 	fi
 	if [ "$force" != "1" ] && vm_exists && [ -f "$vm_file" ]; then
 		dirty_check_vm || die "refusing to delete $DVM_LIMA_NAME; commit/stash changes or pass --force"
+	elif [ "$force" != "1" ] && [ "$orphan" = "1" ]; then
+		printf 'dvm: warning: dirty check skipped because DVM config is missing: %s\n' "$vm_file" >&2
 	fi
 	limactl stop "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
 	limactl delete "$DVM_LIMA_NAME"

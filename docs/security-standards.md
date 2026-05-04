@@ -24,8 +24,11 @@ small, but they are the bar for changes.
 - Prefer repo-scoped deploy keys and service-scoped tokens.
 - Pass Cloudflare tokens only when applying the cloudflared VM, or fetch them from
   macOS Keychain in your shell before apply.
-- Apply-time environment values are visible to host process listings while `limactl`
-  runs; use them for short-lived setup tokens only.
+- Do not put secrets in general `DVM_*` config. Most apply-time DVM values are visible
+  to host process listings while `limactl` runs.
+- The bundled cloudflared token handoff is special-cased: `CLOUDFLARED_TOKEN` and
+  `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
+  being passed as `limactl shell env` arguments.
 
 ## AI
 
@@ -33,8 +36,9 @@ small, but they are the bar for changes.
 - Create `dvm-agent` as a system account with a home directory and no DVM-managed sudo
   privileges.
 - Run AI tools through Bubblewrap. DVM does not support a non-Bubblewrap AI mode.
-- Start Claude in bypass-permissions mode only inside the mandatory Bubblewrap wrapper;
-  the VM and sandbox are the security boundary, not Claude's prompt approvals.
+- Claude defaults to bypass-permissions mode only inside the mandatory Bubblewrap
+  wrapper; the VM and sandbox are the security boundary, not Claude's prompt approvals.
+  Set `DVM_CLAUDE_BYPASS=0` when you want Claude prompts for a VM.
 - Mount only project code at `/workspace`, the agent home, and the runtime/system paths
   needed to execute tools.
 - Do not mount the main user's home into the AI sandbox.

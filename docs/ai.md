@@ -36,8 +36,9 @@ or bad sudo policy can still bypass this; Bubblewrap is not a separate VM.
 ## Tools
 
 - `codex`: installs `@openai/codex` with npm under `dvm-agent`.
-- `claude`: installs Claude Code from Anthropic's signed `latest` RPM repo and sets
-  `defaultMode` to `bypassPermissions` for the `dvm-agent` user.
+- `claude`: installs Claude Code from Anthropic's signed `latest` RPM repo. By default
+  it sets `defaultMode` to `bypassPermissions` for the `dvm-agent` user; set
+  `DVM_CLAUDE_BYPASS=0` in a VM config to leave Claude permission prompts enabled.
 - `opencode`: installs `opencode-ai` with npm under `dvm-agent`.
 - `mistral`: installs `mistral-vibe` with uv under `dvm-agent` and exposes `vibe` and
   `mistral` wrappers.
@@ -60,9 +61,20 @@ opencode
 Login state stays in the VM under the agent user's home, which is mounted into the
 sandbox.
 
-Claude starts in bypass-permissions mode by default because the wrapper already confines
-it to the Bubblewrap sandbox. To temporarily avoid unattended edits or commands, start a
-session with an explicit mode such as:
+Claude starts in bypass-permissions mode by default because DVM's intended boundary is
+the VM plus the `dvm-agent` Bubblewrap sandbox. In that mode Claude can edit project
+code, run project commands, use the network, and write its own login/tool state under
+the agent user's home without asking for each action. The main user's home, SSH keys,
+GPG keys, and common token/config paths are not mounted into the sandbox.
+
+Set this in a VM config when you want Claude permission prompts instead:
+
+```bash
+DVM_CLAUDE_BYPASS=0
+```
+
+To temporarily avoid unattended edits or commands for one session, start Claude with an
+explicit mode such as:
 
 ```bash
 claude --permission-mode plan

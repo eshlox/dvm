@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Added VM config validation before Lima template rendering for VM names, users, sizing,
+  code directories, host IPs, and port forwards.
+- Changed cloudflared token handling so `CLOUDFLARED_TOKEN` and
+  `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
+  being passed as `limactl shell env` arguments.
+- Changed cloudflared token leak checks to scan logs since the service start time when
+  systemd reports it.
+- Added `DVM_CLAUDE_BYPASS`; Claude still defaults to unattended
+  `bypassPermissions` mode inside the `dvm-agent` Bubblewrap sandbox, and setting
+  `DVM_CLAUDE_BYPASS=0` leaves Claude permission prompts enabled.
+- Changed `dvm ssh-key` to regenerate missing or empty public key files through a
+  temporary file before moving them into place.
+- Changed the chezmoi recipe to write `chezmoi.toml` through a temporary file before
+  moving it into place.
+- Added clearer warnings when `dvm rm` deletes a Lima VM whose DVM config is missing,
+  and clearer diagnostics when a stale Lima instance directory cannot be started.
+- Clarified host requirements, Linux template support, security support status,
+  `DVM_NO_BASELINE`, `dvm logs` journal argument passthrough, and cloudflared/Claude
+  security behavior in the docs.
 - Added the minimal Bash/Lima wrapper.
 - Added the small `dvm` shell wrapper: `apply`, `apply --all`, `enter`, `ssh`,
   `logs`, `ssh-key`, `gpg-key`, `list`, `stop`, and `rm`.

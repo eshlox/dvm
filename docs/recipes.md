@@ -49,6 +49,9 @@ Rules:
 jq. Editors, shells, terminal tools, Git UIs, and language runtimes belong in user
 recipes or project-specific VM configs.
 
+`DVM_NO_BASELINE=1` skips that implicit baseline for a VM. Use it for dedicated service
+VMs only when the selected service recipes install every dependency they need.
+
 Interactive tools are split into one recipe per tool: `zsh`, `git`, `helix`,
 `lazygit`, `starship`, `fzf`, `git-delta`, `just`, `tmux`, and `yazi`. `zsh` installs
 zsh and sets it as the guest user's default login shell with `usermod --shell`. The
@@ -207,6 +210,11 @@ Apply with a token when configuring or recreating the VM:
 ```bash
 CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 ```
+
+DVM does not pass `CLOUDFLARED_TOKEN` or `DVM_CLOUDFLARED_TOKEN` as `limactl shell env`
+arguments. For the bundled cloudflared recipe, it writes the token to a mode `0600`
+guest temp file during `apply`, the recipe copies it into `/etc/cloudflared/dvm.env`,
+and the temp file is removed.
 
 If you want host convenience, store the token in macOS Keychain yourself and pass it at
 apply time:

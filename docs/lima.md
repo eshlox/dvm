@@ -10,6 +10,8 @@ The default template lives in the repo:
 share/dvm/lima.yaml.in
 ```
 
+It requires Lima 2.0.0 or newer.
+
 If you need structural Lima changes, create a user override:
 
 ```bash
@@ -23,7 +25,8 @@ template into user config, so normal installs do not get stale local templates.
 Important defaults:
 
 - Fedora image template.
-- `vmType: vz` for macOS virtualization.
+- `vmType: vz` for macOS virtualization. Linux hosts are not supported by the bundled
+  template; use a custom QEMU Lima template if you want to experiment on Linux.
 - `mounts: []` so host code is not mounted into the guest.
 - containerd disabled by default.
 - `user-v2` networking for VM-to-VM names.
@@ -36,6 +39,10 @@ Important defaults:
 DVM sets the guest system hostname to the public VM name during `dvm apply`, so a VM
 configured as `eshlox-net` presents itself as `eshlox-net` inside the guest even though
 the internal Lima instance remains `dvm-eshlox-net`.
+
+Before rendering this template, DVM validates VM sizing, user names, code directory
+characters, host IPs, and port forwards so custom config cannot inject YAML or guest
+setup script lines.
 
 ## No Host Mounts
 
@@ -98,4 +105,5 @@ dvm ssh app -- sudo systemctl reset-failed cloud-final.service cloud-init-main.s
 
 If Lima briefly misses an existing instance during `apply`, `ssh`, `enter`, or other DVM
 commands, DVM also checks the local Lima instance directory before deciding the VM is
-missing.
+missing. If that local directory exists but `limactl start` cannot start it, DVM reports
+the likely stale instance directory path so you can inspect or remove it.

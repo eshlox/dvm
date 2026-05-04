@@ -15,9 +15,9 @@ DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 use chezmoi
 ```
 
-The recipe installs `chezmoi`, writes `~/.config/chezmoi/chezmoi.toml` when configured,
-initializes `~/.local/share/chezmoi` when missing, pulls updates when already
-initialized, and runs `chezmoi apply`.
+The recipe installs `chezmoi`, writes `~/.config/chezmoi/chezmoi.toml` through a
+temporary file when configured, initializes `~/.local/share/chezmoi` when missing,
+pulls updates when already initialized, and runs `chezmoi apply`.
 
 For common dotfiles template data, put shared identity values in global DVM config:
 

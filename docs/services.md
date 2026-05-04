@@ -69,7 +69,9 @@ CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 
 The example config maps `CLOUDFLARED_TOKEN` to `DVM_CLOUDFLARED_TOKEN`. The recipe
 writes `/etc/cloudflared/dvm.env` with mode `0600` when a token is present and starts
-`dvm-cloudflared.service`.
+`dvm-cloudflared.service`. DVM stages that token through a mode `0600` guest temp file
+during `apply`, so the token is not passed as a `limactl shell env` argument on the
+host.
 
 For host convenience, use macOS Keychain yourself:
 
@@ -94,3 +96,5 @@ dvm logs llama
 ```
 
 If a VM has no known service recipe or more than one, pass the systemd unit explicitly.
+All arguments after the inferred or explicit unit are passed to `journalctl`, including
+filters such as `--since` and `--until`.

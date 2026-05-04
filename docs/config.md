@@ -22,6 +22,9 @@ DVM_USER="${USER:-developer}"
 DVM_CODE_ROOT="~/code"
 DVM_HOST_IP="127.0.0.1"
 DVM_AI_AGENT_USER="dvm-agent"
+# Claude defaults to unattended bypass mode inside the dvm-agent Bubblewrap sandbox.
+# Set to 0 in a VM config when you want Claude permission prompts.
+# DVM_CLAUDE_BYPASS=1
 # Optional for VMs that use the chezmoi recipe:
 # DVM_CHEZMOI_ROLE="vm"
 # DVM_CHEZMOI_NAME="Your Name"
@@ -88,6 +91,9 @@ use chezmoi
   `host_ip:host_port:guest_port` entries.
 - `DVM_HOST_IP`: default bind IP for two-part ports, normally `127.0.0.1`.
 - `DVM_AI_AGENT_USER`: AI tool user, normally `dvm-agent`.
+- `DVM_CLAUDE_BYPASS`: `1` by default. The `claude` recipe configures Claude Code
+  `bypassPermissions` for unattended work inside the `dvm-agent` Bubblewrap sandbox.
+  Set `DVM_CLAUDE_BYPASS=0` to leave Claude permission prompts enabled.
 - `DVM_COREPACK_VERSION`: Corepack npm package version for the `node` recipe, normally
   `0.34.0`.
 - `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo.
@@ -103,7 +109,17 @@ use chezmoi
 - `DVM_LLAMA_MODELS_DIR`, `DVM_LLAMA_DEFAULT_MODEL`, `DVM_LLAMA_MODELS`,
   `DVM_LLAMA_MODELS_SHA256`, `DVM_LLAMA_REFRESH`: llama model settings.
 - `DVM_CLOUDFLARED_SERVICE`, `DVM_CLOUDFLARED_TOKEN`: cloudflared service settings.
-- `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe.
+  The bundled cloudflared recipe receives the token through a mode `0600` guest temp
+  file during `apply`, so it is not passed as a `limactl shell env` argument.
+- `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe. Service VMs use this to
+  avoid dev-tool setup; recipes selected by that VM must install their own dependencies
+  such as `git`, `curl`, `jq`, `tar`, or `unzip`.
+
+DVM validates VM config before rendering Lima YAML. `DVM_CPUS` must be a positive
+integer; `DVM_MEMORY` and `DVM_DISK` must start with a number and contain only simple
+size characters; `DVM_USER`, `DVM_AI_AGENT_USER`, `DVM_LIMA_NAME`, `DVM_HOST_IP`, and
+ports must use safe characters. `DVM_CODE_DIR` cannot contain newlines, quotes,
+backticks, dollar signs, or backslashes because it is rendered into guest setup scripts.
 
 You can define host-side helper functions in `~/.config/dvm/config.sh` if you want a
 personal bundle of recipes:

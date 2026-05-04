@@ -62,6 +62,7 @@ DVM_CPUS=2
 DVM_MEMORY=2GiB
 DVM_DISK=20GiB
 DVM_CODE_DIR="~/code/cloudflared"
+DVM_CLOUDFLARED_TOKEN="${CLOUDFLARED_TOKEN:-}"
 
 use cloudflared
 VM
@@ -206,6 +207,7 @@ grep -Fq 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' "$TMP/stat
 grep -Fq 'dnf5 --refresh upgrade -y claude-code' "$TMP/state/guest.sh"
 grep -Fq 'defaultMode = "bypassPermissions"' "$TMP/state/guest.sh"
 grep -Fq 'skipDangerousModePermissionPrompt = true' "$TMP/state/guest.sh"
+grep -Fq 'DVM_CLAUDE_BYPASS:-1' "$TMP/state/guest.sh"
 grep -Fq 'DVM_CHEZMOI_ROLE=vm' "$TMP/state/log"
 grep -Fq 'DVM_CHEZMOI_NAME=Example User' "$TMP/state/log"
 if grep -Fq 'DVM_CHEZMOI_SIGNING_KEY=' "$TMP/state/log"; then
@@ -216,9 +218,25 @@ grep -Fq 'signing_key="${DVM_CHEZMOI_SIGNING_KEY:-~/.ssh/id_ed25519_dvm_signing.
 grep -Fq 'deploy_key="${DVM_CHEZMOI_DEPLOY_KEY:-~/.ssh/id_ed25519_dvm.pub}"' "$TMP/state/guest.sh"
 grep -Fq 'signingKey = %s' "$TMP/state/guest.sh"
 grep -Fq 'deployKey = %s' "$TMP/state/guest.sh"
+grep -Fq 'tmp="$(mktemp "${config}.XXXXXX")"' "$TMP/state/guest.sh"
+grep -Fq 'mv "$tmp" "$config"' "$TMP/state/guest.sh"
 grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
 grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
 bash -n "$TMP/state/guest.sh"
+
+: >"$TMP/state/log"
+CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" apply cloudflared
+grep -Fq 'dvm-cloudflared-token.' "$TMP/state/guest.sh"
+grep -Fq 'token_file="${DVM_CLOUDFLARED_TOKEN_FILE:-}"' "$TMP/state/guest.sh"
+grep -Fq 'ActiveEnterTimestamp' "$TMP/state/guest.sh"
+if grep -Fq 'CLOUDFLARED_TOKEN=smoke.Token_123=-' "$TMP/state/log"; then
+	printf 'cloudflared token leaked into limactl argv log\n' >&2
+	exit 1
+fi
+if grep -Fq 'DVM_CLOUDFLARED_TOKEN=smoke.Token_123=-' "$TMP/state/log"; then
+	printf 'DVM cloudflared token leaked into limactl argv log\n' >&2
+	exit 1
+fi
 
 perl -0pi -e 's/DVM_PORTS="3000:3000"/DVM_PORTS="3000:3000 9000:9000"/' "$TMP/config/vms/app.sh"
 "$ROOT/bin/dvm" apply app
@@ -280,6 +298,9 @@ grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
 grep -Fq 'id_ed25519_dvm_signing' "$TMP/state/guest.sh"
 grep -Fq 'dvm-github-access' "$TMP/state/guest.sh"
 grep -Fq 'dvm-git-signing' "$TMP/state/guest.sh"
+grep -Fq 'write_public_key()' "$TMP/state/guest.sh"
+grep -Fq 'mktemp "${public_key}.XXXXXX"' "$TMP/state/guest.sh"
+grep -Fq 'mv "$tmp" "$public_key"' "$TMP/state/guest.sh"
 grep -Fq 'user.signingkey "$signing_key.pub"' "$TMP/state/guest.sh"
 grep -Fq 'GitHub access key public key' "$TMP/state/guest.sh"
 grep -Fq 'Git commit signing public key' "$TMP/state/guest.sh"
@@ -294,6 +315,14 @@ grep -Fq 'stop dvm-app' "$TMP/state/log"
 grep -Fq 'shell dvm-app bash -s -- ~/code/app' "$TMP/state/log"
 grep -Fq 'stop dvm-app' "$TMP/state/log"
 grep -Fq 'delete dvm-app' "$TMP/state/log"
+
+mkdir -p "$TMP/state/dvm-orphan"
+cp "$TMP/state/lima.yaml" "$TMP/state/dvm-orphan/lima.yaml"
+grep -Fxq dvm-orphan "$TMP/state/created" || printf '%s\n' dvm-orphan >>"$TMP/state/created"
+"$ROOT/bin/dvm" rm orphan --yes 2>"$TMP/rm-orphan.err"
+grep -Fq 'deleting Lima VM without DVM config: dvm-orphan' "$TMP/rm-orphan.err"
+grep -Fq 'dirty check skipped because DVM config is missing' "$TMP/rm-orphan.err"
+grep -Fq 'delete dvm-orphan' "$TMP/state/log"
 
 : >"$TMP/state/log"
 rm -f "$TMP/state/created"
@@ -311,6 +340,24 @@ grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service --no-
 
 "$ROOT/bin/dvm" logs cloudflared -f
 grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service -f' "$TMP/state/log"
+
+cat >"$TMP/config/vms/invalid.sh" <<'VM'
+DVM_USER="root:bad"
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=20GiB
+DVM_CODE_DIR="~/code/invalid"
+
+use python
+VM
+
+set +e
+"$ROOT/bin/dvm" apply invalid >/dev/null 2>"$TMP/invalid.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'invalid DVM_USER: root:bad' "$TMP/invalid.err"
+rm -f "$TMP/config/vms/invalid.sh"
 
 cat >"$TMP/config/vms/bad.sh" <<'VM'
 DVM_CPUS=2

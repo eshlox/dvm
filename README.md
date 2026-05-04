@@ -15,8 +15,11 @@ The core rule:
 
 Requirements:
 
-- macOS with Lima installed: `brew install lima`
+- macOS with Lima 2.0.0 or newer installed: `brew install lima`
 - Bash 3.2+; the macOS system Bash works
+
+The bundled Lima template uses `vmType: vz`, so Linux hosts are not supported by the
+default template. Linux may work with a custom QEMU Lima template, but it is not tested.
 
 Install the wrapper:
 
@@ -132,6 +135,9 @@ CLOUDFLARED_TOKEN="..." dvm apply cloudflared
 dvm logs cloudflared -f
 ```
 
+The cloudflared token is staged through a mode `0600` guest temp file during `apply`
+instead of being passed as a `limactl shell env` argument.
+
 ## Recipes
 
 Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
@@ -155,6 +161,10 @@ First-pass recipes include:
 - `llama`: dedicated llama service VM
 - `cloudflared`: dedicated Cloudflare Tunnel VM
 - `node`, `python`: language basics
+
+Claude defaults to unattended `bypassPermissions` mode inside the `dvm-agent`
+Bubblewrap sandbox so it can edit code and run project commands without prompting. Set
+`DVM_CLAUDE_BYPASS=0` in a VM config when you want Claude's own permission prompts.
 
 ## Dedicated Service VMs
 

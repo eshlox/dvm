@@ -78,7 +78,8 @@ service recipe, DVM picks the unit automatically:
 
 Otherwise pass the unit explicitly. With no journal arguments DVM uses
 `--no-pager -n 100`; when DVM can infer the unit, journal arguments can follow the VM
-name directly.
+name directly. All remaining arguments are passed to `journalctl`, including filters
+such as `--since` and `--until`.
 
 ## VM-Local Keys
 
@@ -96,7 +97,8 @@ dvm gpg-key app
 
 The same GitHub SSH key cannot be both a repo deploy key and an account signing key, so
 DVM keeps those identities separate. The command also adds a GitHub SSH config entry for
-the access key and configures Git SSH signing with the signing key.
+the access key and configures Git SSH signing with the signing key. Missing or empty
+public key files are regenerated through a temporary file and moved into place.
 
 `gpg-key` creates or reuses a one-year VM-local signing key and prints the public key
 plus fingerprint. Neither command copies host private keys into the VM.
@@ -127,4 +129,6 @@ dvm rm app --yes --force
 
 Deletes the Lima VM. `--yes` is required. Before deleting, DVM starts the VM and scans
 nested Git repos under `DVM_CODE_DIR`; dirty repos stop deletion. `--force` skips that
-scan. Recreate is intentionally `dvm rm app --yes` followed by `dvm apply app`.
+scan. If the Lima VM exists but the DVM config file is missing, DVM warns that it is
+deleting an orphan and skips the dirty check because it does not know `DVM_CODE_DIR`.
+Recreate is intentionally `dvm rm app --yes` followed by `dvm apply app`.
