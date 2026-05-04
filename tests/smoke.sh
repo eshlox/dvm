@@ -13,6 +13,10 @@ mkdir -p "$TMP/config/vms"
 
 cat >>"$TMP/config/config.sh" <<'CONFIG'
 
+DVM_CHEZMOI_ROLE="vm"
+DVM_CHEZMOI_NAME="Example User"
+DVM_CHEZMOI_EMAIL="example@example.com"
+
 use_app_tools() {
 	use zsh
 	use git
@@ -200,6 +204,18 @@ grep -Fq 'dvm recipe: codex' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: claude' "$TMP/state/guest.sh"
 grep -Fq 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' "$TMP/state/guest.sh"
 grep -Fq 'dnf5 --refresh upgrade -y claude-code' "$TMP/state/guest.sh"
+grep -Fq 'defaultMode = "bypassPermissions"' "$TMP/state/guest.sh"
+grep -Fq 'skipDangerousModePermissionPrompt = true' "$TMP/state/guest.sh"
+grep -Fq 'DVM_CHEZMOI_ROLE=vm' "$TMP/state/log"
+grep -Fq 'DVM_CHEZMOI_NAME=Example User' "$TMP/state/log"
+if grep -Fq 'DVM_CHEZMOI_SIGNING_KEY=' "$TMP/state/log"; then
+	printf 'default signing key should not require a VM config variable\n' >&2
+	exit 1
+fi
+grep -Fq 'signing_key="${DVM_CHEZMOI_SIGNING_KEY:-~/.ssh/id_ed25519_dvm_signing.pub}"' "$TMP/state/guest.sh"
+grep -Fq 'deploy_key="${DVM_CHEZMOI_DEPLOY_KEY:-~/.ssh/id_ed25519_dvm.pub}"' "$TMP/state/guest.sh"
+grep -Fq 'signingKey = %s' "$TMP/state/guest.sh"
+grep -Fq 'deployKey = %s' "$TMP/state/guest.sh"
 grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
 grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
 bash -n "$TMP/state/guest.sh"

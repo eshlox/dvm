@@ -59,6 +59,8 @@
   the current signed RPM repository.
 - Changed the Claude recipe to track Anthropic's `latest` RPM channel and use
   `dnf5 --refresh upgrade`; changed the Mistral recipe to run `uv tool upgrade`.
+- Changed the Claude recipe to configure `dvm-agent` with Claude Code
+  `bypassPermissions` mode by default inside the mandatory Bubblewrap sandbox.
 - Hardened cloudflared token-log checking and expanded the `dvm-agent` ACL deny list.
 - Changed `agent-user` to create `dvm-agent` as a system account to avoid Fedora
   subordinate UID allocation failures.
@@ -69,6 +71,11 @@
   shims when Fedora's Node package does not provide `corepack`.
 - Added generic `DVM_CHEZMOI_CONFIG_TOML` support for dotfiles that need chezmoi
   template data.
+- Added generated chezmoi `[data]` support from `DVM_CHEZMOI_ROLE`,
+  `DVM_CHEZMOI_NAME`, `DVM_CHEZMOI_EMAIL`, `DVM_CHEZMOI_SIGNING_KEY`, and
+  `DVM_CHEZMOI_DEPLOY_KEY`.
+- Changed generated chezmoi key data to default to the stable paths created by
+  `dvm ssh-key <name>`, while keeping key path variables as overrides.
 - Changed `install.sh --init` to leave VM examples in `share/dvm/vms` instead of
   copying inactive examples into `~/.config/dvm`.
 - Changed `install.sh --init` to leave bundled recipes in `share/dvm/recipes` instead

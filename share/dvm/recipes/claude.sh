@@ -7,7 +7,7 @@ command -v dvm_agent_write_wrapper >/dev/null 2>&1 || {
 	exit 1
 }
 
-sudo dnf5 install -y dnf5-plugins curl
+sudo dnf5 install -y dnf5-plugins curl jq
 # Verified 2026-05-03 from Anthropic's Claude Code package-manager instructions:
 # https://code.claude.com/docs/en/setup
 sudo tee /etc/yum.repos.d/claude-code.repo >/dev/null <<'CLAUDE_CODE_REPO'
@@ -24,4 +24,19 @@ if rpm -q claude-code >/dev/null 2>&1; then
 else
 	sudo dnf5 --refresh install -y claude-code
 fi
+
+sudo -H -u "$DVM_AI_AGENT_USER" bash -lc '
+set -euo pipefail
+settings="$HOME/.claude/settings.json"
+mkdir -p "$(dirname "$settings")"
+tmp="$(mktemp)"
+if [ -s "$settings" ]; then
+	jq '"'"'(.permissions //= {}) | .permissions.defaultMode = "bypassPermissions" | .permissions.skipDangerousModePermissionPrompt = true'"'"' "$settings" >"$tmp"
+else
+	jq -n '"'"'{permissions: {defaultMode: "bypassPermissions", skipDangerousModePermissionPrompt: true}}'"'"' >"$tmp"
+fi
+mv "$tmp" "$settings"
+chmod 600 "$settings"
+'
+
 dvm_agent_write_wrapper claude /usr/bin/claude

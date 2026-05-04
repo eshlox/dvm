@@ -22,6 +22,10 @@ DVM_USER="${USER:-developer}"
 DVM_CODE_ROOT="~/code"
 DVM_HOST_IP="127.0.0.1"
 DVM_AI_AGENT_USER="dvm-agent"
+# Optional for VMs that use the chezmoi recipe:
+# DVM_CHEZMOI_ROLE="vm"
+# DVM_CHEZMOI_NAME="Your Name"
+# DVM_CHEZMOI_EMAIL="you@example.com"
 ```
 
 `DVM_ARCH=default` resolves to `aarch64` on Apple Silicon and `x86_64` on Intel before
@@ -87,8 +91,14 @@ use chezmoi
 - `DVM_COREPACK_VERSION`: Corepack npm package version for the `node` recipe, normally
   `0.34.0`.
 - `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo.
+- `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, `DVM_CHEZMOI_EMAIL`: optional shared chezmoi
+  `[data]` values.
+- `DVM_CHEZMOI_SIGNING_KEY`, `DVM_CHEZMOI_DEPLOY_KEY`: optional per-VM chezmoi
+  `[data]` key path overrides. When unset, generated chezmoi data uses
+  `~/.ssh/id_ed25519_dvm_signing.pub` and `~/.ssh/id_ed25519_dvm.pub`.
 - `DVM_CHEZMOI_CONFIG_TOML`: optional full chezmoi config written to
-  `~/.config/chezmoi/chezmoi.toml`.
+  `~/.config/chezmoi/chezmoi.toml`; when set, it takes over the generated chezmoi data
+  config rather than merging with it.
 - `DVM_LLAMA_PORT`, `DVM_LLAMA_HOST`, `DVM_LLAMA_SERVICE`: llama service settings.
 - `DVM_LLAMA_MODELS_DIR`, `DVM_LLAMA_DEFAULT_MODEL`, `DVM_LLAMA_MODELS`,
   `DVM_LLAMA_MODELS_SHA256`, `DVM_LLAMA_REFRESH`: llama model settings.

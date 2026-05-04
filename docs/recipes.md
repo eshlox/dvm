@@ -171,6 +171,10 @@ DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 use chezmoi
 ```
 
+Shared chezmoi template data such as `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, and
+`DVM_CHEZMOI_EMAIL` usually belongs in `~/.config/dvm/config.sh`; generated key data
+uses the default paths from `dvm ssh-key <name>` unless overridden globally or per VM.
+
 `llama` installs the llama service. Configure a dedicated VM:
 
 ```bash

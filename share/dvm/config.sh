@@ -10,3 +10,8 @@ DVM_USER="${USER:-developer}"
 DVM_CODE_ROOT="~/code"
 DVM_HOST_IP="127.0.0.1"
 DVM_AI_AGENT_USER="dvm-agent"
+
+# Optional chezmoi [data] values for VMs that use the chezmoi recipe:
+# DVM_CHEZMOI_ROLE="vm"
+# DVM_CHEZMOI_NAME="Your Name"
+# DVM_CHEZMOI_EMAIL="you@example.com"

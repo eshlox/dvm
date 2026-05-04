@@ -33,6 +33,8 @@ small, but they are the bar for changes.
 - Create `dvm-agent` as a system account with a home directory and no DVM-managed sudo
   privileges.
 - Run AI tools through Bubblewrap. DVM does not support a non-Bubblewrap AI mode.
+- Start Claude in bypass-permissions mode only inside the mandatory Bubblewrap wrapper;
+  the VM and sandbox are the security boundary, not Claude's prompt approvals.
 - Mount only project code at `/workspace`, the agent home, and the runtime/system paths
   needed to execute tools.
 - Do not mount the main user's home into the AI sandbox.
