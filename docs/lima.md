@@ -96,5 +96,6 @@ failed state after confirming the logs:
 dvm ssh app -- sudo systemctl reset-failed cloud-final.service cloud-init-main.service
 ```
 
-If Lima briefly reports `instance "dvm-..." already exists` during `dvm apply`, DVM
-treats that as a stale existence check and continues with start/apply.
+If Lima briefly misses an existing instance during `apply`, `ssh`, `enter`, or other DVM
+commands, DVM also checks the local Lima instance directory before deciding the VM is
+missing.

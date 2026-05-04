@@ -39,6 +39,7 @@ use_app_tools
 use node
 use agent-user
 use codex
+use claude
 use chezmoi
 VM
 
@@ -131,6 +132,7 @@ shell)
 	;;
 delete)
 	printf 'delete %s\n' "$1" >>"$state/log"
+	rm -rf "$state/$1"
 	if [ -f "$state/created" ]; then
 		grep -Fxv "$1" "$state/created" >"$state/created.tmp" || true
 		mv "$state/created.tmp" "$state/created"
@@ -147,6 +149,7 @@ chmod +x "$TMP/bin/limactl"
 export PATH="$TMP/bin:$PATH"
 export DVM_CONFIG="$TMP/config"
 export DVM_FAKE_STATE="$TMP/state"
+export LIMA_HOME="$TMP/state"
 export EDITOR=:
 
 mkdir -p "$TMP/install-bin"
@@ -175,7 +178,7 @@ grep -Fq 'missing VM template: missing-template' "$TMP/init-bad.err"
 rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
 
 "$ROOT/bin/dvm" apply app 2>"$TMP/apply.err"
-grep -Fq 'dvm: applying recipes for app: baseline zsh git helix lazygit starship fzf git-delta just tmux yazi node agent-user codex chezmoi' "$TMP/apply.err"
+grep -Fq 'dvm: applying recipes for app: baseline zsh git helix lazygit starship fzf git-delta just tmux yazi node agent-user codex claude chezmoi' "$TMP/apply.err"
 grep -Fq 'create dvm-app' "$TMP/state/log"
 grep -Fq 'start dvm-app' "$TMP/state/log"
 grep -Fq 'DVM_CODE_DIR=~/code/app' "$TMP/state/log"
@@ -193,6 +196,9 @@ grep -Fq -- '--bind "$DVM_AI_CODE_DIR" /workspace' "$TMP/state/guest.sh"
 grep -Fq -- '--setenv DVM_CODE_DIR /workspace' "$TMP/state/guest.sh"
 grep -Fq -- '-- "$DVM_AI_TARGET" "$@"' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: codex' "$TMP/state/guest.sh"
+grep -Fq 'dvm recipe: claude' "$TMP/state/guest.sh"
+grep -Fq 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' "$TMP/state/guest.sh"
+grep -Fq 'dnf5 --refresh upgrade -y claude-code' "$TMP/state/guest.sh"
 grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
 grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
 bash -n "$TMP/state/guest.sh"
@@ -230,6 +236,10 @@ expanded_code_dir="$(
 "$ROOT/bin/dvm" ssh dvm-app -- pwd
 grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
 
+touch "$TMP/state/list_empty_once"
+"$ROOT/bin/dvm" ssh app -- pwd
+grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
+
 cat >"$TMP/config/vms/race.sh" <<'VM'
 DVM_CPUS=2
 DVM_MEMORY=2GiB
@@ -250,6 +260,12 @@ rm -f "$TMP/config/vms/race.sh"
 
 "$ROOT/bin/dvm" ssh-key app
 grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
+grep -Fq 'id_ed25519_dvm_signing' "$TMP/state/guest.sh"
+grep -Fq 'dvm-github-access' "$TMP/state/guest.sh"
+grep -Fq 'dvm-git-signing' "$TMP/state/guest.sh"
+grep -Fq 'user.signingkey "$signing_key.pub"' "$TMP/state/guest.sh"
+grep -Fq 'GitHub access key public key' "$TMP/state/guest.sh"
+grep -Fq 'Git commit signing public key' "$TMP/state/guest.sh"
 
 "$ROOT/bin/dvm" gpg-key app
 grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
@@ -264,6 +280,7 @@ grep -Fq 'delete dvm-app' "$TMP/state/log"
 
 : >"$TMP/state/log"
 rm -f "$TMP/state/created"
+rm -rf "$TMP/state"/dvm-*
 "$ROOT/bin/dvm" apply --all >"$TMP/apply-all.out"
 grep -Fq 'create dvm-app' "$TMP/state/log"
 grep -Fq 'create dvm-second' "$TMP/state/log"
@@ -289,6 +306,7 @@ VM
 
 : >"$TMP/state/log"
 rm -f "$TMP/state/created"
+rm -rf "$TMP/state"/dvm-*
 set +e
 "$ROOT/bin/dvm" apply --all >"$TMP/apply-all-fail.out" 2>"$TMP/apply-all-fail.err"
 status="$?"

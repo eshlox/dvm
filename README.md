@@ -49,9 +49,15 @@ dvm rm app --yes
 `dvm apply <name>` creates the Lima VM if missing, starts it, runs
 `recipes/baseline.sh`, runs recipes selected by `~/.config/dvm/vms/<name>.sh`, then
 runs `~/code/<name>/.dvm/apply.sh` inside the guest if that file exists.
+Use `dvm apply --all` after recipe changes or when you want to update recipe-managed
+tools such as AI CLIs across every active VM.
 
 `dvm rm` requires `--yes` and checks nested Git repos for dirty work before deleting.
 Use `--force` only when you intentionally want to skip that check.
+
+`dvm ssh-key <name>` creates separate VM-local SSH keys for GitHub access and Git commit
+signing. Use the access key as a deploy/authentication key and add the signing key to
+your GitHub account's SSH signing keys.
 
 ## Config
 

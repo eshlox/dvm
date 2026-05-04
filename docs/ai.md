@@ -36,7 +36,7 @@ or bad sudo policy can still bypass this; Bubblewrap is not a separate VM.
 ## Tools
 
 - `codex`: installs `@openai/codex` with npm under `dvm-agent`.
-- `claude`: installs Claude Code from the vendor RPM repo.
+- `claude`: installs Claude Code from Anthropic's signed `latest` RPM repo.
 - `opencode`: installs `opencode-ai` with npm under `dvm-agent`.
 - `mistral`: installs `mistral-vibe` with uv under `dvm-agent` and exposes `vibe` and
   `mistral` wrappers.
@@ -58,6 +58,20 @@ opencode
 
 Login state stays in the VM under the agent user's home, which is mounted into the
 sandbox.
+
+## Updates
+
+Re-run recipes to update AI tools:
+
+```bash
+dvm apply app
+dvm apply --all
+```
+
+`codex` and `opencode` install `@latest` from npm. `mistral` runs `uv tool upgrade`.
+`claude` uses Anthropic's `latest` RPM channel and runs `dnf5 --refresh upgrade
+claude-code`. If Claude reports a version before the RPM repository publishes it, wait
+and re-run `dvm apply`.
 
 ## Security Practice
 

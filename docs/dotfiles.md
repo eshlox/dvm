@@ -32,6 +32,15 @@ signingKey = ""
 Only VMs that select `use chezmoi` consume this value. Service VMs such as llama and
 cloudflared are unaffected unless you add `use chezmoi` to them.
 
+If your dotfiles manage Git SSH signing, use the DVM signing key path after running
+`dvm ssh-key <name>`:
+
+```toml
+signingKey = "~/.ssh/id_ed25519_dvm_signing.pub"
+```
+
+Do not use the deploy/access key path for account-level commit signing.
+
 ## Security Rules
 
 - Do not store secrets in public dotfiles.

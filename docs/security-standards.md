@@ -17,6 +17,8 @@ small, but they are the bar for changes.
 - Do not copy host SSH/GPG private keys into VMs.
 - Generate VM-local keys when a VM needs Git or signing access:
   `dvm ssh-key <name>` and `dvm gpg-key <name>`.
+- `dvm ssh-key` intentionally creates separate SSH keys for GitHub access and Git
+  commit signing. Do not reuse a repo deploy key as a GitHub account signing key.
 - The VM-local GPG helper creates an unencrypted, one-year signing key for disposable
   VM use; do not treat it as a long-lived identity key.
 - Prefer repo-scoped deploy keys and service-scoped tokens.

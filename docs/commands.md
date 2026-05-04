@@ -34,7 +34,8 @@ If the VM already exists, `apply` updates Lima port forwards from `DVM_PORTS` wi
 recreating the VM. Lima may restart the instance when ports change.
 
 `apply --all` applies every active VM config in `~/.config/dvm/vms/*.sh`, continues
-after failures, and exits non-zero if any VM failed.
+after failures, and exits non-zero if any VM failed. Use it after recipe changes or to
+update recipe-managed tools across all VMs.
 
 ## Enter
 
@@ -86,8 +87,16 @@ dvm ssh-key app
 dvm gpg-key app
 ```
 
-`ssh-key` creates or reuses `~/.ssh/id_ed25519_dvm` inside the VM, prints the public
-key, adds a GitHub SSH config entry, and configures Git SSH signing for that VM.
+`ssh-key` creates or reuses two VM-local SSH keys:
+
+- `~/.ssh/id_ed25519_dvm`: GitHub access key. Use this as a repo deploy key or an
+  account authentication key.
+- `~/.ssh/id_ed25519_dvm_signing`: Git commit signing key. Add this to your GitHub
+  account as an SSH signing key.
+
+The same GitHub SSH key cannot be both a repo deploy key and an account signing key, so
+DVM keeps those identities separate. The command also adds a GitHub SSH config entry for
+the access key and configures Git SSH signing with the signing key.
 
 `gpg-key` creates or reuses a one-year VM-local signing key and prints the public key
 plus fingerprint. Neither command copies host private keys into the VM.

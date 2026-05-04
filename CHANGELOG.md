@@ -15,6 +15,8 @@
 - Added existing-VM Lima port-forward updates during `dvm apply`.
 - Fixed `dvm apply` to continue when Lima's existence check is stale and
   `limactl create` reports that the instance already exists.
+- Fixed `dvm ssh`, `enter`, and other existing-VM commands to tolerate stale
+  `limactl list` output by checking the local Lima instance directory.
 - Changed `dvm list` to display public VM names without the internal `dvm-` Lima
   prefix and normalized accidental `dvm-` prefixes in command arguments.
 - Fixed `dvm list` column alignment after stripping the internal Lima prefix.
@@ -31,6 +33,8 @@
   `use_app_tools`.
 - Added nested Git dirty checks before `dvm rm`; `--force` skips the check.
 - Added VM-local SSH and GPG key helpers.
+- Changed `dvm ssh-key` to create separate VM-local GitHub access and Git commit
+  signing SSH keys, and to configure Git signing with the signing key.
 - Added bundled defaults under `share/dvm`: global config, Lima template, example VM
   configs, and reusable guest recipes.
 - Added first-pass recipes for setup basics, `dvm-agent`, Codex, Claude, OpenCode,
@@ -53,6 +57,8 @@
   Git UIs, and language runtimes are user-selected recipes.
 - Fixed the Mistral recipe's `mistral` wrapper target and updated the Claude recipe to
   the current signed RPM repository.
+- Changed the Claude recipe to track Anthropic's `latest` RPM channel and use
+  `dnf5 --refresh upgrade`; changed the Mistral recipe to run `uv tool upgrade`.
 - Hardened cloudflared token-log checking and expanded the `dvm-agent` ACL deny list.
 - Changed `agent-user` to create `dvm-agent` as a system account to avoid Fedora
   subordinate UID allocation failures.
