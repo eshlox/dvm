@@ -29,9 +29,9 @@ Install the wrapper:
 
 This installs a small launcher into `~/.local/bin` and copies defaults into
 `~/.config/dvm` without overwriting existing files. The launcher runs each invocation
-from a temporary snapshot of `bin/dvm`, so editing or pulling this repo cannot corrupt a
-long-running `dvm apply`. Bundled recipes, the Lima template, and example VM configs
-stay in the repo under `share/dvm`.
+from a temporary snapshot of `bin/dvm` and its shell libraries, so editing or pulling
+this repo cannot corrupt a long-running `dvm apply`. Bundled recipes, the Lima
+template, and example VM configs stay in the repo under `share/dvm`.
 
 ## Commands
 

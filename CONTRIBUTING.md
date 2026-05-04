@@ -1,7 +1,8 @@
 # Contributing
 
-DVM is intentionally small. Keep the wrapper boring and put setup behavior in recipes
-or docs unless the wrapper truly has to bridge host config to Lima.
+DVM is intentionally small. Keep `bin/dvm` as a small dispatcher, put host-side wrapper
+helpers in `share/dvm/lib`, and put setup behavior in recipes or docs unless the
+wrapper truly has to bridge host config to Lima.
 
 Good fits:
 

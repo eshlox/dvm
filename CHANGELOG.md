@@ -4,6 +4,8 @@
 
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.
+- Internal: split `bin/dvm` into a small dispatcher plus sourced shell libraries under
+  `share/dvm/lib`.
 - Added `dvm cp` to copy files between the host and a DVM VM through Lima, with
   relative guest paths resolved under `DVM_CODE_DIR`.
 - Fixed `dvm cp` without copy options on macOS Bash 3.2.
