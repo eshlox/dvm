@@ -175,6 +175,7 @@ load_vm() {
 	# shellcheck source=/dev/null
 	[ -f "$DVM_CONFIG/config.sh" ] && source "$DVM_CONFIG/config.sh"
 
+	# shellcheck disable=SC2034
 	DVM_NAME="$name"
 	DVM_LIMA_NAME="${DVM_LIMA_NAME:-dvm-$name}"
 	DVM_CODE_ROOT="${DVM_CODE_ROOT:-~/code}"
