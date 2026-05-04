@@ -22,6 +22,9 @@ DVM_USER="${USER:-developer}"
 DVM_CODE_ROOT="~/code"
 DVM_HOST_IP="127.0.0.1"
 DVM_AI_AGENT_USER="dvm-agent"
+# Codex defaults to unattended yolo mode inside the dvm-agent Bubblewrap sandbox.
+# Set to 0 in a VM config when you want Codex approval prompts and its own sandbox.
+# DVM_CODEX_YOLO=1
 # Claude defaults to unattended bypass mode inside the dvm-agent Bubblewrap sandbox.
 # Set to 0 in a VM config when you want Claude permission prompts.
 # DVM_CLAUDE_BYPASS=1
@@ -91,6 +94,10 @@ use chezmoi
   `host_ip:host_port:guest_port` entries.
 - `DVM_HOST_IP`: default bind IP for two-part ports, normally `127.0.0.1`.
 - `DVM_AI_AGENT_USER`: AI tool user, normally `dvm-agent`.
+- `DVM_CODEX_YOLO`: `1` by default. The `codex` recipe starts Codex with
+  `--dangerously-bypass-approvals-and-sandbox` for unattended work inside the
+  `dvm-agent` Bubblewrap sandbox. Set `DVM_CODEX_YOLO=0` to leave Codex approval
+  prompts and its own sandbox enabled.
 - `DVM_CLAUDE_BYPASS`: `1` by default. The `claude` recipe configures Claude Code
   `bypassPermissions` for unattended work inside the `dvm-agent` Bubblewrap sandbox.
   Set `DVM_CLAUDE_BYPASS=0` to leave Claude permission prompts enabled.

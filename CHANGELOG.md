@@ -7,6 +7,10 @@
 - Added `dvm cp` to copy files between the host and a DVM VM through Lima, with
   relative guest paths resolved under `DVM_CODE_DIR`.
 - Fixed `dvm cp` without copy options on macOS Bash 3.2.
+- Changed `dvm cp` to refresh `dvm-agent` ACLs for host files copied into
+  `DVM_CODE_DIR`, so AI wrappers can edit those files.
+- Changed `agent-user` ACL setup so the VM user and `dvm-agent` both keep read/write
+  access to files created under `DVM_CODE_DIR`.
 - Changed cloudflared token handling so `CLOUDFLARED_TOKEN` and
   `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
   being passed as `limactl shell env` arguments.
@@ -15,6 +19,10 @@
 - Added `DVM_CLAUDE_BYPASS`; Claude still defaults to unattended
   `bypassPermissions` mode inside the `dvm-agent` Bubblewrap sandbox, and setting
   `DVM_CLAUDE_BYPASS=0` leaves Claude permission prompts enabled.
+- Added `DVM_CODEX_YOLO`; Codex now defaults to
+  `--dangerously-bypass-approvals-and-sandbox` inside the `dvm-agent` Bubblewrap
+  sandbox, and setting `DVM_CODEX_YOLO=0` leaves Codex approval prompts and its own
+  sandbox enabled.
 - Changed `dvm ssh-key` to regenerate missing or empty public key files through a
   temporary file before moving them into place.
 - Changed the chezmoi recipe to write `chezmoi.toml` through a temporary file before

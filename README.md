@@ -163,9 +163,10 @@ First-pass recipes include:
 - `cloudflared`: dedicated Cloudflare Tunnel VM
 - `node`, `python`: language basics
 
-Claude defaults to unattended `bypassPermissions` mode inside the `dvm-agent`
-Bubblewrap sandbox so it can edit code and run project commands without prompting. Set
-`DVM_CLAUDE_BYPASS=0` in a VM config when you want Claude's own permission prompts.
+Codex and Claude default to unattended mode inside the `dvm-agent` Bubblewrap sandbox
+so they can edit code and run project commands without prompting. Set
+`DVM_CODEX_YOLO=0` or `DVM_CLAUDE_BYPASS=0` in a VM config when you want the tool's own
+approval prompts and sandboxing.
 
 ## Dedicated Service VMs
 

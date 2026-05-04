@@ -41,11 +41,11 @@ histories, and common tool config directories. This is a guardrail, not a comple
 sandbox. Guest root, sudo misconfiguration, broad filesystem permissions, known paths
 outside the deny list, or VM compromise can bypass it.
 
-The Claude recipe defaults to Claude Code `bypassPermissions` inside the mandatory
-`dvm-agent` Bubblewrap sandbox. This is intended for unattended project work, but it
-means Claude can write project code, run project commands, use the network, and access
-the agent user's own home. Set `DVM_CLAUDE_BYPASS=0` for a VM when you want Claude's
-permission prompts.
+The Codex and Claude recipes default to unattended modes inside the mandatory
+`dvm-agent` Bubblewrap sandbox. This is intended for project work without per-action
+prompts, but it means these tools can write project code, run project commands, use the
+network, and access the agent user's own home. Set `DVM_CODEX_YOLO=0` or
+`DVM_CLAUDE_BYPASS=0` for a VM when you want tool-native prompts and sandboxing.
 
 Do not put host private keys in recipes or VM configs. Generate VM-local keys with
 `dvm ssh-key <name>` or `dvm gpg-key <name>` when needed. The GPG helper creates an

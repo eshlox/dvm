@@ -199,12 +199,19 @@ grep -Fq 'dvm recipe: yazi' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: agent-user' "$TMP/state/guest.sh"
 grep -Fq 'dnf5 install -y acl bubblewrap shadow-utils sudo' "$TMP/state/guest.sh"
 grep -Fq 'useradd --system --create-home --user-group --shell /bin/bash "$DVM_AI_AGENT_USER"' "$TMP/state/guest.sh"
+grep -Fq 'sudo setfacl -R -m "u:$DVM_AI_AGENT_USER:rwx" "$code_dir"' "$TMP/state/guest.sh"
+grep -Fq 'sudo setfacl -R -m "u:$DVM_USER:rwx" "$code_dir"' "$TMP/state/guest.sh"
+grep -Fq 'sudo find "$code_dir" -type d -exec setfacl -d -m "u:$DVM_AI_AGENT_USER:rwx" {} +' "$TMP/state/guest.sh"
+grep -Fq 'sudo find "$code_dir" -type d -exec setfacl -d -m "u:$DVM_USER:rwx" {} +' "$TMP/state/guest.sh"
 grep -Fq '/usr/local/libexec/dvm-ai-bwrap' "$TMP/state/guest.sh"
 grep -Fq 'exec /usr/bin/bwrap \' "$TMP/state/guest.sh"
 grep -Fq -- '--bind "$DVM_AI_CODE_DIR" /workspace' "$TMP/state/guest.sh"
 grep -Fq -- '--setenv DVM_CODE_DIR /workspace' "$TMP/state/guest.sh"
 grep -Fq -- '-- "$DVM_AI_TARGET" "$@"' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: codex' "$TMP/state/guest.sh"
+grep -Fq 'DVM_CODEX_YOLO:-1' "$TMP/state/guest.sh"
+grep -Fq '/usr/local/libexec/dvm-codex' "$TMP/state/guest.sh"
+grep -Fq -- '--dangerously-bypass-approvals-and-sandbox "\$@"' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: claude' "$TMP/state/guest.sh"
 grep -Fq 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' "$TMP/state/guest.sh"
 grep -Fq 'dnf5 --refresh upgrade -y claude-code' "$TMP/state/guest.sh"
@@ -274,16 +281,24 @@ expanded_code_dir="$(
 "$ROOT/bin/dvm" ssh dvm-app -- pwd
 grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
 
-guest_code_dir="/home/${USER:-developer}/code/app"
+guest_home="/home/${USER:-developer}"
+guest_code_dir="$guest_home/code/app"
 printf 'plan\n' >"$TMP/plan.md"
 : >"$TMP/state/log"
 "$ROOT/bin/dvm" cp "$TMP/plan.md" app:.
 grep -Fq "shell dvm-app mkdir -p $guest_code_dir" "$TMP/state/log"
 grep -Fq "copy $TMP/plan.md dvm-app:$guest_code_dir" "$TMP/state/log"
+grep -Fq "shell dvm-app bash -s -- dvm-agent ${USER:-developer} $guest_home $guest_code_dir $guest_code_dir plan.md" "$TMP/state/log"
+grep -Fq 'setfacl -R -m "u:$agent_user:rwx" "$1"' "$TMP/state/guest.sh"
+grep -Fq 'setfacl -R -m "u:$vm_user:rwx" "$1"' "$TMP/state/guest.sh"
 
 : >"$TMP/state/log"
 "$ROOT/bin/dvm" cp -r --backend=scp app:docs "$TMP/docs-out"
 grep -Fq "copy -r --backend=scp dvm-app:$guest_code_dir/docs $TMP/docs-out" "$TMP/state/log"
+if grep -Fq 'bash -s -- dvm-agent' "$TMP/state/log"; then
+	printf 'dvm cp refreshed agent ACLs on VM-to-host copy\n' >&2
+	exit 1
+fi
 
 touch "$TMP/state/list_empty_once"
 "$ROOT/bin/dvm" ssh app -- pwd

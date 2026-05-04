@@ -76,8 +76,10 @@ public DVM name followed by `:`. Relative guest paths resolve under `DVM_CODE_DI
 `app:.` means the app VM's code directory and `app:docs/plan.md` means
 `$DVM_CODE_DIR/docs/plan.md`. Absolute guest paths stay absolute.
 
-The command starts the VM first and creates `DVM_CODE_DIR` if needed. It supports
-`-r`/`--recursive`, `-v`/`--verbose`, and `--backend auto|scp|rsync`.
+The command starts the VM first and creates `DVM_CODE_DIR` if needed. When copying
+host files into `DVM_CODE_DIR`, DVM refreshes `dvm-agent` ACLs on the copied paths so
+the AI wrappers can read and write them. It supports `-r`/`--recursive`,
+`-v`/`--verbose`, and `--backend auto|scp|rsync`.
 
 ## Logs
 
