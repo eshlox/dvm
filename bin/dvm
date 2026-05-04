@@ -25,19 +25,19 @@ DVM_LIB_DIR="${DVM_LIB_DIR:-$DVM_SHARE/lib}"
 	exit 1
 }
 
-# shellcheck source=../share/dvm/lib/core.sh
+# shellcheck source=share/dvm/lib/core.sh
 source "$DVM_LIB_DIR/core.sh"
-# shellcheck source=../share/dvm/lib/ports.sh
+# shellcheck source=share/dvm/lib/ports.sh
 source "$DVM_LIB_DIR/ports.sh"
-# shellcheck source=../share/dvm/lib/lima.sh
+# shellcheck source=share/dvm/lib/lima.sh
 source "$DVM_LIB_DIR/lima.sh"
-# shellcheck source=../share/dvm/lib/apply.sh
+# shellcheck source=share/dvm/lib/apply.sh
 source "$DVM_LIB_DIR/apply.sh"
-# shellcheck source=../share/dvm/lib/guest.sh
+# shellcheck source=share/dvm/lib/guest.sh
 source "$DVM_LIB_DIR/guest.sh"
-# shellcheck source=../share/dvm/lib/keys.sh
+# shellcheck source=share/dvm/lib/keys.sh
 source "$DVM_LIB_DIR/keys.sh"
-# shellcheck source=../share/dvm/lib/vm_admin.sh
+# shellcheck source=share/dvm/lib/vm_admin.sh
 source "$DVM_LIB_DIR/vm_admin.sh"
 
 main() {
