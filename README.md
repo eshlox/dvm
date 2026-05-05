@@ -154,7 +154,7 @@ Add your own tools with recipes. Use individual bundled tool recipes such as
 First-pass recipes include:
 
 - `baseline`: required setup basics only
-- `zsh`, `git`, `helix`, `lazygit`, `starship`, `fzf`, `git-delta`, `just`,
+- `zsh`, `git`, `helix`, `lazygit`, `starship`, `fzf`, `bat`, `git-delta`, `just`,
   `tmux`, `yazi`: optional interactive tools
 - `agent-user`: `dvm-agent` plus mandatory Bubblewrap sandboxing for AI tools
 - `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM

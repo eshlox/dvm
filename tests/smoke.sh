@@ -24,6 +24,7 @@ use_app_tools() {
 	use lazygit
 	use starship
 	use fzf
+	use bat
 	use git-delta
 	use just
 	use tmux
@@ -189,7 +190,7 @@ grep -Fq 'missing VM template: missing-template' "$TMP/init-bad.err"
 rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
 
 "$ROOT/bin/dvm" apply app 2>"$TMP/apply.err"
-grep -Fq 'dvm: applying recipes for app: baseline zsh git helix lazygit starship fzf git-delta just tmux yazi node agent-user codex claude chezmoi' "$TMP/apply.err"
+grep -Fq 'dvm: applying recipes for app: baseline zsh git helix lazygit starship fzf bat git-delta just tmux yazi node agent-user codex claude chezmoi' "$TMP/apply.err"
 grep -Fq 'create dvm-app' "$TMP/state/log"
 grep -Fq 'start dvm-app' "$TMP/state/log"
 grep -Fq 'DVM_CODE_DIR=~/code/app' "$TMP/state/log"
@@ -197,6 +198,8 @@ grep -Fq 'dvm hostname' "$TMP/state/guest.sh"
 grep -Fq 'hostnamectl set-hostname "$DVM_NAME"' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: zsh' "$TMP/state/guest.sh"
 grep -Fq 'usermod --shell "$zsh_path" "$(id -un)"' "$TMP/state/guest.sh"
+grep -Fq 'dvm recipe: bat' "$TMP/state/guest.sh"
+grep -Fq 'bat cache --build' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: yazi' "$TMP/state/guest.sh"
 grep -Fq 'dvm recipe: agent-user' "$TMP/state/guest.sh"
 grep -Fq 'dnf5 install -y acl bubblewrap shadow-utils sudo' "$TMP/state/guest.sh"
