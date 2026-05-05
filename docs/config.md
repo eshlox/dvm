@@ -139,6 +139,7 @@ use_app_tools() {
 	use lazygit
 	use starship
 	use fzf
+	use bat
 	use git-delta
 	use just
 	use tmux

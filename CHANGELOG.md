@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.
 - Internal: split `bin/dvm` into a small dispatcher plus sourced shell libraries under
