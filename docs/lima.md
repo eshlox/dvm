@@ -79,15 +79,17 @@ From a VM to macOS:
 curl http://host.lima.internal:3000
 ```
 
-## Updating Ports And Template
+## Updating Existing VMs
 
-Editing `DVM_PORTS` in a VM config and running `dvm apply <name>` updates the existing
-Lima VM's `portForwards` without recreating the VM. DVM compares the configured ports
-with the VM's Lima YAML and asks Lima to edit the VM when they differ.
+Editing `DVM_CPUS`, `DVM_MEMORY`, `DVM_DISK`, or `DVM_PORTS` in a VM config and running
+`dvm apply <name>` updates the existing Lima VM without recreating it. DVM compares the
+configured values with the VM's Lima YAML and asks Lima to edit the VM when they differ.
+Disk increases are applied in place. Disk shrinking is refused because it can lose data;
+make a backup and recreate the VM if you intentionally need a smaller disk.
 
 Editing the bundled template affects future VMs created from this checkout. Editing a
-user override affects future VMs for that user. Existing Lima instances keep their
-created configuration for structural settings. For those changes, recreate:
+user override affects future VMs for that user. Existing Lima instances still keep other
+created structural settings. For those changes, recreate:
 
 ```bash
 dvm rm app --yes

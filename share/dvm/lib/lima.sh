@@ -24,6 +24,101 @@ update_port_forwards() {
 	limactl edit --tty=false --set "$expr" --start "$DVM_LIMA_NAME" >/dev/null
 }
 
+lima_yaml_scalar() {
+	local file="$1"
+	local key="$2"
+	[ -f "$file" ] || return 0
+	awk -v key="$key" '
+		$0 ~ "^[[:space:]]*" key ":[[:space:]]*" {
+			value = $0
+			sub("^[[:space:]]*" key ":[[:space:]]*", "", value)
+			sub("[[:space:]]*#.*$", "", value)
+			gsub(/"/, "", value)
+			gsub(/\047/, "", value)
+			gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+			print value
+			exit
+		}
+	' "$file"
+}
+
+lima_size_gib() {
+	local converted label value
+	label="$1"
+	value="$2"
+	if ! converted="$(
+		awk -v value="$value" '
+			BEGIN {
+				gsub(/^"|"$/, "", value)
+				if (value !~ /^[0-9]+([.][0-9]+)?([A-Za-z]*)$/) exit 1
+				number = value + 0
+				unit = value
+				sub(/^[0-9]+([.][0-9]+)?/, "", unit)
+				unit = tolower(unit)
+				if (unit == "" || unit == "g" || unit == "gb" || unit == "gib") factor = 1
+				else if (unit == "m" || unit == "mb" || unit == "mib") factor = 1 / 1024
+				else if (unit == "k" || unit == "kb" || unit == "kib") factor = 1 / (1024 * 1024)
+				else if (unit == "t" || unit == "tb" || unit == "tib") factor = 1024
+				else if (unit == "b") factor = 1 / (1024 * 1024 * 1024)
+				else exit 1
+				printf "%.6g\n", number * factor
+			}
+		'
+	)"; then
+		die "invalid $label size for Lima edit: $value"
+	fi
+	printf '%s\n' "$converted"
+}
+
+lima_size_gib_or_empty() {
+	case "$2" in
+	'' | null) return 0 ;;
+	esac
+	lima_size_gib "$1" "$2"
+}
+
+lima_float_equal() {
+	awk -v a="$1" -v b="$2" 'BEGIN { d = a - b; if (d < 0) d = -d; exit(d <= 0.000001 ? 0 : 1) }'
+}
+
+lima_float_less() {
+	awk -v a="$1" -v b="$2" 'BEGIN { exit((a + 0) < (b + 0) - 0.000001 ? 0 : 1) }'
+}
+
+update_vm_resources() {
+	local changed current_cpus current_disk current_disk_gib current_memory
+	local current_memory_gib desired_disk_gib desired_memory_gib dir file
+	dir="$(vm_dir)"
+	file="$dir/lima.yaml"
+	[ -f "$file" ] || return 0
+
+	current_cpus="$(lima_yaml_scalar "$file" cpus)"
+	current_memory="$(lima_yaml_scalar "$file" memory)"
+	current_disk="$(lima_yaml_scalar "$file" disk)"
+	desired_memory_gib="$(lima_size_gib DVM_MEMORY "$DVM_MEMORY")"
+	desired_disk_gib="$(lima_size_gib DVM_DISK "$DVM_DISK")"
+	current_memory_gib="$(lima_size_gib_or_empty memory "$current_memory")"
+	current_disk_gib="$(lima_size_gib_or_empty disk "$current_disk")"
+
+	if [ -n "$current_disk_gib" ] && lima_float_less "$desired_disk_gib" "$current_disk_gib"; then
+		die "refusing to shrink DVM_DISK for $DVM_LIMA_NAME from $current_disk to $DVM_DISK; create a backup and recreate the VM instead"
+	fi
+
+	changed=0
+	[ "$current_cpus" = "$DVM_CPUS" ] || changed=1
+	if [ -z "$current_memory_gib" ] || ! lima_float_equal "$desired_memory_gib" "$current_memory_gib"; then
+		changed=1
+	fi
+	if [ -z "$current_disk_gib" ] || ! lima_float_equal "$desired_disk_gib" "$current_disk_gib"; then
+		changed=1
+	fi
+	[ "$changed" = "1" ] || return 0
+
+	printf 'dvm: updating VM resources for %s\n' "$DVM_LIMA_NAME" >&2
+	limactl stop "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
+	limactl edit --tty=false --cpus "$DVM_CPUS" --memory "$desired_memory_gib" --disk "$desired_disk_gib" "$DVM_LIMA_NAME" >/dev/null
+}
+
 render_template() {
 	local template="$1"
 	if command -v envsubst >/dev/null 2>&1; then
@@ -71,6 +166,7 @@ ensure_vm() {
 			rm -f "$tmp"
 			case "$create_output" in
 			*"already exists"*)
+				update_vm_resources
 				update_port_forwards
 				;;
 			*)
@@ -82,6 +178,7 @@ ensure_vm() {
 			rm -f "$tmp"
 		fi
 	else
+		update_vm_resources
 		update_port_forwards
 	fi
 	start_vm

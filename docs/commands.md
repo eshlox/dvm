@@ -30,8 +30,10 @@ dvm apply --all
 present. Before running guest scripts, DVM prints the expanded recipe list so helper
 functions such as `use_app_tools` are easy to verify.
 
-If the VM already exists, `apply` updates Lima port forwards from `DVM_PORTS` without
-recreating the VM. Lima may restart the instance when ports change.
+If the VM already exists, `apply` updates Lima CPU, memory, disk size, and port forwards
+from the VM config without recreating the VM. Lima may restart the instance when these
+values change. Disk increases are applied in place; disk shrinking is refused because it
+can lose data.
 
 `apply --all` applies every active VM config in `~/.config/dvm/vms/*.sh`, continues
 after failures, and exits non-zero if any VM failed. Use it after recipe changes or to

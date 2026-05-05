@@ -129,6 +129,38 @@ stop)
 	;;
 edit)
 	printf 'edit %s\n' "$*" >>"$state/log"
+	cpus=""
+	memory=""
+	disk=""
+	instance=""
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--cpus)
+			cpus="$2"
+			shift
+			;;
+		--memory)
+			memory="${2}GiB"
+			shift
+			;;
+		--disk)
+			disk="${2}GiB"
+			shift
+			;;
+		--set)
+			shift
+			;;
+		--*) ;;
+		*) instance="$1" ;;
+		esac
+		shift || true
+	done
+	yaml="$state/$instance/lima.yaml"
+	if [ -f "$yaml" ]; then
+		[ -z "$cpus" ] || perl -0pi -e "s/^[[:space:]]*cpus:.*\$/cpus: $cpus/m" "$yaml"
+		[ -z "$memory" ] || perl -0pi -e "s/^[[:space:]]*memory:.*\$/memory: \"$memory\"/m" "$yaml"
+		[ -z "$disk" ] || perl -0pi -e "s/^[[:space:]]*disk:.*\$/disk: \"$disk\"/m" "$yaml"
+	fi
 	;;
 copy)
 	printf 'copy %s\n' "$*" >>"$state/log"
@@ -238,6 +270,23 @@ grep -Fq 'mv "$tmp" "$config"' "$TMP/state/guest.sh"
 grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
 grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
 bash -n "$TMP/state/guest.sh"
+
+perl -0pi -e 's/DVM_CPUS=2/DVM_CPUS=3/; s/DVM_MEMORY=4GiB/DVM_MEMORY=6GiB/; s/DVM_DISK=20GiB/DVM_DISK=30GiB/' "$TMP/config/vms/app.sh"
+: >"$TMP/state/log"
+"$ROOT/bin/dvm" apply app 2>"$TMP/resize.err"
+grep -Fq 'dvm: updating VM resources for dvm-app' "$TMP/resize.err"
+grep -Fq 'stop dvm-app' "$TMP/state/log"
+grep -Fq 'edit --tty=false --cpus 3 --memory 6 --disk 30 dvm-app' "$TMP/state/log"
+grep -Fq 'start dvm-app' "$TMP/state/log"
+
+perl -0pi -e 's/DVM_DISK=30GiB/DVM_DISK=10GiB/' "$TMP/config/vms/app.sh"
+set +e
+"$ROOT/bin/dvm" apply app >/dev/null 2>"$TMP/shrink.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'refusing to shrink DVM_DISK for dvm-app' "$TMP/shrink.err"
+perl -0pi -e 's/DVM_DISK=10GiB/DVM_DISK=30GiB/' "$TMP/config/vms/app.sh"
 
 : >"$TMP/state/log"
 CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" apply cloudflared

@@ -85,7 +85,8 @@ use chezmoi
 
 ## Variables
 
-- `DVM_CPUS`, `DVM_MEMORY`, `DVM_DISK`: Lima VM sizing.
+- `DVM_CPUS`, `DVM_MEMORY`, `DVM_DISK`: Lima VM sizing. Existing VMs are updated in
+  place on `dvm apply` when these values change, except disk shrinking is refused.
 - `DVM_ARCH`: `default`, `aarch64`, or `x86_64`.
 - `DVM_USER`: primary guest user.
 - `DVM_CODE_ROOT`: default parent for VM code directories.

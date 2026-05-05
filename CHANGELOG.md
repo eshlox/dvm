@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Changed `dvm apply` to update existing VM CPU, memory, disk growth, and port forwards
+  in place, while refusing disk shrink requests.
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.
