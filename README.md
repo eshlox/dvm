@@ -83,23 +83,11 @@ Create a VM config from the bundled app example:
 dvm init app
 ```
 
-Example:
-
-```bash
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_CODE_DIR="~/code/app"
-DVM_PORTS="3000:3000 5173:5173"
-DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
-
-use node
-use python
-use agent-user
-use codex
-use claude
-use chezmoi
-```
+`dvm init` writes a fully commented template; uncomment what you need. Defaults are
+`DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`, `DVM_CODE_DIR=~/code/$DVM_NAME`,
+empty `DVM_PORTS`. The template also lists every available recipe (auto-detected from
+bundled and user recipes) with a one-line description, and shows the host's CPU and
+memory ceilings as inline comments.
 
 `~` in DVM variables means the guest user's home. Host project directories are not
 mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting

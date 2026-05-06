@@ -5,18 +5,19 @@ that boundary clear.
 
 ## Host Config
 
-Host config lives in `~/.config/dvm/vms/<name>.sh`:
+Host config lives in `~/.config/dvm/vms/<name>.sh`. `dvm init` writes a fully commented
+template (built-in defaults: `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`).
+Uncomment what you need:
 
 ```bash
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_CODE_DIR="~/code/app"
-DVM_PORTS="3000:3000"
+# DVM_CPUS=4          # default 2 (host max shown in template)
+# DVM_MEMORY=8GiB     # default 2GiB
+# DVM_CODE_DIR="~/code/$DVM_NAME"
+# DVM_PORTS="3000:3000"
 
-use node
-use agent-user
-use codex
+# use node         # Node.js, npm, corepack
+# use agent-user   # dvm-agent user with Bubblewrap sandbox for AI tools
+# use codex        # Codex CLI
 ```
 
 `use <name>` only selects `recipes/<name>.sh`; it does not run the recipe on the host.
@@ -42,6 +43,8 @@ Rules:
 - Use `DVM_CODE_DIR` for project code.
 - Keep tool-specific config close to the recipe that uses it.
 - Do not add recipe metadata, dependency graphs, registries, or versioning.
+- Add `# Description: <one line>` near the top of a recipe so `dvm init` shows it in
+  the auto-generated "available recipes" comment block.
 
 ## Built-In Recipes
 

@@ -5,6 +5,15 @@
 - Renamed commands for shorter typing: `apply` → `sync`, `enter` → `sh`, `logs` →
   `log`, `list` → `ls`. The per-project hook moved from `.dvm/apply.sh` to
   `.dvm/sync.sh`; rename the file in projects that use it.
+- Added built-in defaults for `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`,
+  `DVM_USER=${USER:-developer}`. Bundled `share/dvm/config.sh` is now fully
+  commented; uncomment values to override defaults.
+- Changed `dvm init` to render the bundled VM template, substituting host CPU/memory
+  ceilings into inline comments and listing every available recipe (auto-detected
+  from `share/dvm/recipes` and `~/.config/dvm/recipes`) commented out by default.
+- Rewrote `share/dvm/vms/app.sh` as a fully commented self-documenting template.
+- Added `# Description: <one line>` to bundled recipes so `dvm init` can show them in
+  the available-recipes block.
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.

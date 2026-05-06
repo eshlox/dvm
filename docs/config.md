@@ -11,28 +11,25 @@ Global config lives at:
 ~/.config/dvm/config.sh
 ```
 
-Defaults copied by `./install.sh --init`:
+Built-in defaults apply when a variable is unset:
 
-```bash
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_ARCH=default
-DVM_USER="${USER:-developer}"
-DVM_CODE_ROOT="~/code"
-DVM_HOST_IP="127.0.0.1"
-DVM_AI_AGENT_USER="dvm-agent"
-# Codex defaults to unattended yolo mode inside the dvm-agent Bubblewrap sandbox.
-# Set to 0 in a VM config when you want Codex approval prompts and its own sandbox.
-# DVM_CODEX_YOLO=1
-# Claude defaults to unattended bypass mode inside the dvm-agent Bubblewrap sandbox.
-# Set to 0 in a VM config when you want Claude permission prompts.
-# DVM_CLAUDE_BYPASS=1
-# Optional for VMs that use the chezmoi recipe:
-# DVM_CHEZMOI_ROLE="vm"
-# DVM_CHEZMOI_NAME="Your Name"
-# DVM_CHEZMOI_EMAIL="you@example.com"
-```
+| Variable             | Default                          |
+| -------------------- | -------------------------------- |
+| `DVM_CPUS`           | `2`                              |
+| `DVM_MEMORY`         | `2GiB`                           |
+| `DVM_DISK`           | `10GiB`                          |
+| `DVM_ARCH`           | `default` (resolves to host arch)|
+| `DVM_USER`           | `${USER:-developer}`             |
+| `DVM_CODE_ROOT`      | `~/code`                         |
+| `DVM_CODE_DIR`       | `${DVM_CODE_ROOT}/<name>`        |
+| `DVM_PORTS`          | empty                            |
+| `DVM_HOST_IP`        | `127.0.0.1`                      |
+| `DVM_AI_AGENT_USER`  | `dvm-agent`                      |
+
+`./install.sh --init` copies a fully commented `share/dvm/config.sh` to
+`~/.config/dvm/config.sh`. Uncomment lines there to override the built-in defaults
+globally. Per-VM config in `~/.config/dvm/vms/<name>.sh` overrides global config in
+turn.
 
 `DVM_ARCH=default` resolves to `aarch64` on Apple Silicon and `x86_64` on Intel before
 rendering the Lima YAML.
@@ -65,27 +62,29 @@ dvm init myapp
 dvm sync myapp
 ```
 
-Example:
+`dvm init` writes a fully commented template that lists every recipe (auto-detected
+from `share/dvm/recipes` and `~/.config/dvm/recipes`) and shows host CPU/memory limits.
+Uncomment what you need:
 
 ```bash
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_CODE_DIR="~/code/app"
-DVM_PORTS="3000:3000 5173:5173"
-DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
+# DVM_CPUS=4          # default 2 (host max: 14)
+# DVM_MEMORY=8GiB     # default 2GiB (host max: 64GiB)
+# DVM_DISK=80GiB      # default 10GiB
+# DVM_CODE_DIR="~/code/$DVM_NAME"
+# DVM_PORTS="3000:3000 5173:5173"
+# DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 
-use node
-use python
-use agent-user
-use codex
-use claude
-use chezmoi
+# use node         # Node.js, npm, corepack
+# use python       # Python and uv
+# use agent-user   # dvm-agent user with Bubblewrap sandbox for AI tools
+# use codex        # Codex CLI
+# use claude       # Claude Code CLI
+# use chezmoi      # public dotfiles via chezmoi over HTTPS
 ```
 
 ## Variables
 
-- `DVM_CPUS`, `DVM_MEMORY`, `DVM_DISK`: Lima VM sizing.
+- `DVM_CPUS`, `DVM_MEMORY`, `DVM_DISK`: Lima VM sizing. Default `2`, `2GiB`, `10GiB`.
 - `DVM_ARCH`: `default`, `aarch64`, or `x86_64`.
 - `DVM_USER`: primary guest user.
 - `DVM_CODE_ROOT`: default parent for VM code directories.

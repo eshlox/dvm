@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Description: starship prompt
 set -euo pipefail
 
 # Pinned fallback release checked 2026-05-03:

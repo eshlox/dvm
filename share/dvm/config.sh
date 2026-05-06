@@ -1,20 +1,25 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034,SC2088
-# Global DVM defaults. Copy to ~/.config/dvm/config.sh and edit there.
+# Global DVM defaults. Uncomment lines below to override built-in defaults.
+# Per-VM config in ~/.config/dvm/vms/<name>.sh overrides these in turn.
 
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_ARCH=default
-DVM_USER="${USER:-developer}"
-DVM_CODE_ROOT="~/code"
-DVM_HOST_IP="127.0.0.1"
-DVM_AI_AGENT_USER="dvm-agent"
+# VM resources (per-VM DVM_CPUS / DVM_MEMORY / DVM_DISK override these):
+# DVM_CPUS=2          # default 2
+# DVM_MEMORY=2GiB     # default 2GiB
+# DVM_DISK=10GiB      # default 10GiB
+
+# DVM_ARCH=default                   # default; resolves to host arch
+# DVM_USER="${USER:-developer}"      # default; primary guest user
+# DVM_CODE_ROOT="~/code"             # default; parent for DVM_CODE_DIR
+# DVM_HOST_IP="127.0.0.1"            # default; bind IP for two-part DVM_PORTS
+# DVM_AI_AGENT_USER="dvm-agent"      # default; user for AI tools
+
 # Codex defaults to unattended yolo mode inside the dvm-agent Bubblewrap sandbox.
-# Set to 0 in a VM config when you want Codex approval prompts and its own sandbox.
+# Set to 0 to enable Codex approval prompts and its own sandbox.
 # DVM_CODEX_YOLO=1
+
 # Claude defaults to unattended bypass mode inside the dvm-agent Bubblewrap sandbox.
-# Set to 0 in a VM config when you want Claude permission prompts.
+# Set to 0 to enable Claude permission prompts.
 # DVM_CLAUDE_BYPASS=1
 
 # Optional chezmoi [data] values for VMs that use the chezmoi recipe:

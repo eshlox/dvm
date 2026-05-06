@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Description: Cloudflare Tunnel service (dedicated VM)
 set -euo pipefail
 
 cloudflared_die() {

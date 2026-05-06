@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Description: llama.cpp service (dedicated VM)
 set -euo pipefail
 
 llama_die() {
