@@ -35,6 +35,15 @@
   deletion is refused unless `--force` is passed. Previously only dirty Git repos
   blocked deletion; loose data files (databases, notes, downloads) could be lost
   silently.
+- Added a `tailscale` recipe and a dedicated `tailscale` VM template aimed at
+  on-demand sharing of local VM services via Tailscale Funnel. The recipe
+  installs Tailscale on Fedora, joins the tailnet via an auth key, and toggles
+  Funnel based on `DVM_TAILSCALE_FUNNEL_TARGET`: every sync runs `tailscale
+  funnel reset` first, so passing the env var enables Funnel for that target
+  and omitting it turns Funnel off. The auth key is staged through a mode
+  `0600` guest temp file, the same way as the cloudflared token, and is never
+  passed as a `limactl shell env` argument. `dvm log tailscale` defaults to
+  `tailscaled.service`. See [docs/services.md](docs/services.md#tailscale).
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.

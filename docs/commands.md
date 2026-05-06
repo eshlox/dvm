@@ -94,6 +94,7 @@ service recipe, DVM picks the unit automatically:
 
 - `use cloudflared`: `dvm-cloudflared.service`
 - `use llama`: `dvm-llama.service`
+- `use tailscale`: `tailscaled.service`
 
 Otherwise pass the unit explicitly. With no journal arguments DVM uses
 `--no-pager -n 100`; when DVM can infer the unit, journal arguments can follow the VM

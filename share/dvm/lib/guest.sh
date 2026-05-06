@@ -288,6 +288,10 @@ default_log_unit() {
 				unit="$DVM_LLAMA_SERVICE"
 				count=$((count + 1))
 				;;
+			tailscale)
+				unit="tailscaled.service"
+				count=$((count + 1))
+				;;
 			esac
 		done
 	fi

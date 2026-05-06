@@ -77,6 +77,18 @@ DVM_CLOUDFLARED_TOKEN="${CLOUDFLARED_TOKEN:-}"
 use cloudflared
 VM
 
+cat >"$TMP/config/vms/tailscale.sh" <<'VM'
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=20GiB
+DVM_CODE_DIR="~/code/tailscale"
+DVM_NO_BASELINE=1
+DVM_TAILSCALE_AUTH_KEY="${TAILSCALE_AUTH_KEY:-}"
+DVM_TAILSCALE_FUNNEL_TARGET="http://lima-dvm-app.internal:3000"
+
+use tailscale
+VM
+
 cat >"$TMP/bin/limactl" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -286,6 +298,30 @@ if grep -Fq 'DVM_CLOUDFLARED_TOKEN=smoke.Token_123=-' "$TMP/state/log"; then
 	exit 1
 fi
 
+: >"$TMP/state/log"
+TAILSCALE_AUTH_KEY="tskey-auth-smoke-Test_123" "$ROOT/bin/dvm" sync tailscale
+grep -Fq 'dvm recipe: tailscale' "$TMP/state/guest.sh"
+grep -Fq 'dvm-tailscale-auth-key.' "$TMP/state/guest.sh"
+grep -Fq 'auth_key_file="${DVM_TAILSCALE_AUTH_KEY_FILE:-}"' "$TMP/state/guest.sh"
+grep -Fq 'tailscale up --auth-key=' "$TMP/state/guest.sh"
+grep -Fq 'tailscale funnel --bg --https=443' "$TMP/state/guest.sh"
+grep -Fq 'DVM_TAILSCALE_FUNNEL_TARGET=http://lima-dvm-app.internal:3000' "$TMP/state/log"
+if grep -Fq 'TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' "$TMP/state/log"; then
+	printf 'tailscale auth key leaked into limactl argv log\n' >&2
+	exit 1
+fi
+if grep -Fq 'DVM_TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' "$TMP/state/log"; then
+	printf 'DVM tailscale auth key leaked into limactl argv log\n' >&2
+	exit 1
+fi
+
+set +e
+TAILSCALE_AUTH_KEY="not-a-tskey" "$ROOT/bin/dvm" sync tailscale 2>"$TMP/tailscale-bad.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'must start with tskey-' "$TMP/tailscale-bad.err"
+
 perl -0pi -e 's/DVM_PORTS="3000:3000"/DVM_PORTS="3000:3000 9000:9000"/' "$TMP/config/vms/app.sh"
 "$ROOT/bin/dvm" sync app
 grep -Fq 'edit --tty=false --set .portForwards' "$TMP/state/log"
@@ -407,6 +443,9 @@ grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service --no-
 
 "$ROOT/bin/dvm" log cloudflared -f
 grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service -f' "$TMP/state/log"
+
+"$ROOT/bin/dvm" log tailscale
+grep -Fq 'shell dvm-tailscale sudo journalctl -u tailscaled.service --no-pager -n 100' "$TMP/state/log"
 
 cat >"$TMP/config/vms/invalid.sh" <<'VM'
 DVM_USER="root:bad"

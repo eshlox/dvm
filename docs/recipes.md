@@ -232,8 +232,19 @@ CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
 
 DVM does not provide a secret store command.
 
+`tailscale` joins the tailnet (private mesh) and optionally publishes a single
+backend service via Tailscale Funnel. Configure either a dedicated proxy VM or
+add `use tailscale` to any VM that should be reachable from your tailnet. See
+[Services](services.md#tailscale) for tunnel-VM setup, the auth-key flow, and the
+Funnel ACL prerequisite. The auth key is passed in at sync time through the same
+secret-staging path as `CLOUDFLARED_TOKEN`:
+
+```bash
+TAILSCALE_AUTH_KEY="tskey-..." dvm sync tailscale
+```
+
 `dvm log llama` and `dvm log cloudflared` show the default service units for those
-dedicated VMs.
+dedicated VMs. For the tailscale VM use `dvm log tailscale tailscaled.service`.
 
 ## Project Hook
 

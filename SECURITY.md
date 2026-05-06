@@ -27,13 +27,17 @@ Defaults:
 - public dotfiles use HTTPS by default
 - Cloudflare tokens are passed to sync explicitly, staged through a mode `0600` guest
   temp file, and written inside the VM
+- Tailscale auth keys are handled the same way as Cloudflare tokens: passed to sync
+  explicitly, staged through a mode `0600` guest temp file, never passed as a
+  `limactl shell env` argument
 - forwarded ports bind to `127.0.0.1` unless config says otherwise
 - `dvm rm --yes` checks nested Git repos before deleting unless `--force` is used
 
 Most sync-time DVM environment values are visible to host process listings while
 `limactl` runs. Do not put secrets in general `DVM_*` config. The bundled cloudflared
-token handoff is special-cased so `CLOUDFLARED_TOKEN` and `DVM_CLOUDFLARED_TOKEN` are
-not passed as `limactl shell env` arguments.
+and tailscale handoffs are special-cased so `CLOUDFLARED_TOKEN`,
+`DVM_CLOUDFLARED_TOKEN`, `TAILSCALE_AUTH_KEY`, and `DVM_TAILSCALE_AUTH_KEY` are not
+passed as `limactl shell env` arguments.
 
 The `dvm-agent` recipe uses Unix ACLs to grant access to project code and restrict
 common main-user secret paths, including SSH/GPG directories, token files, shell

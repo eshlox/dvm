@@ -129,6 +129,26 @@ dvm log cloudflared -f
 The cloudflared token is staged through a mode `0600` guest temp file during `sync`
 instead of being passed as a `limactl shell env` argument.
 
+Tailscale Funnel VM (publish a local service at a public `*.ts.net` URL on demand):
+
+```bash
+# One-time: create the VM and join your tailnet
+dvm init tailscale tailscale
+TAILSCALE_AUTH_KEY="tskey-..." dvm sync tailscale
+
+# Turn Funnel ON, pointing at another VM's service
+DVM_TAILSCALE_FUNNEL_TARGET="http://lima-dvm-app.internal:3000" \
+  dvm sync tailscale
+
+# Turn Funnel OFF
+dvm sync tailscale
+```
+
+Funnel is OFF by default; the recipe resets it on every sync, so leaving the
+target unset turns it off. Auth keys get the same mode `0600` guest temp-file
+handling as Cloudflare tokens. See [docs/services.md](docs/services.md#tailscale)
+for the Funnel ACL prerequisite and full walkthrough.
+
 ## Recipes
 
 Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
@@ -151,6 +171,7 @@ First-pass recipes include:
 - `chezmoi`: public HTTPS dotfiles
 - `llama`: dedicated llama service VM
 - `cloudflared`: dedicated Cloudflare Tunnel VM
+- `tailscale`: tailnet membership and optional Funnel public ingress
 - `node`, `python`: language basics
 
 Codex and Claude default to unattended mode inside the `dvm-agent` Bubblewrap sandbox

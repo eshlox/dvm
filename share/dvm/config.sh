@@ -22,6 +22,10 @@
 # Set to 0 to enable Claude permission prompts.
 # DVM_CLAUDE_BYPASS=1
 
+# Tailscale auth key for VMs that use the `tailscale` recipe. Pass at sync time
+# instead so it does not sit in a config file: `TAILSCALE_AUTH_KEY=tskey-... dvm sync ...`.
+# DVM_TAILSCALE_AUTH_KEY="tskey-..."
+
 # Settings for the chezmoi recipe. DVM_CHEZMOI_REPO is required when any VM uses
 # `use chezmoi`. The signing/deploy key paths default to those created by
 # `dvm ssh-key <name>`; override only if you use custom key names.
