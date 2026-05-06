@@ -54,7 +54,7 @@ small, but they are the bar for changes.
 
 - Bind forwarded ports to `127.0.0.1` by default.
 - Use `0.0.0.0` only when you intentionally want LAN exposure.
-- Re-run `dvm apply <name>` after editing `DVM_PORTS`; DVM updates existing Lima port
+- Re-run `dvm sync <name>` after editing `DVM_PORTS`; DVM updates existing Lima port
   forwards without recreating the VM.
 - Put shared services such as llama and cloudflared in dedicated VMs.
 - Use Lima internal names for VM-to-VM traffic.

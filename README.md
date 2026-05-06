@@ -30,30 +30,30 @@ Install the wrapper:
 This installs a small launcher into `~/.local/bin` and copies defaults into
 `~/.config/dvm` without overwriting existing files. The launcher runs each invocation
 from a temporary snapshot of `bin/dvm` and its shell libraries, so editing or pulling
-this repo cannot corrupt a long-running `dvm apply`. Bundled recipes, the Lima
+this repo cannot corrupt a long-running `dvm sync`. Bundled recipes, the Lima
 template, and example VM configs stay in the repo under `share/dvm`.
 
 ## Commands
 
 ```bash
 dvm init app
-dvm apply app
-dvm apply --all
-dvm enter app
+dvm sync app
+dvm sync --all
+dvm sh app
 dvm ssh app -- pwd
 dvm cp ./plan.md app:.
-dvm logs cloudflared
+dvm log cloudflared
 dvm ssh-key app
 dvm gpg-key app
-dvm list
+dvm ls
 dvm stop app
 dvm rm app --yes
 ```
 
-`dvm apply <name>` creates the Lima VM if missing, starts it, runs
+`dvm sync <name>` creates the Lima VM if missing, starts it, runs
 `recipes/baseline.sh`, runs recipes selected by `~/.config/dvm/vms/<name>.sh`, then
-runs `~/code/<name>/.dvm/apply.sh` inside the guest if that file exists.
-Use `dvm apply --all` after recipe changes or when you want to update recipe-managed
+runs `~/code/<name>/.dvm/sync.sh` inside the guest if that file exists.
+Use `dvm sync --all` after recipe changes or when you want to update recipe-managed
 tools such as AI CLIs across every active VM.
 
 `dvm rm` requires `--yes` and checks nested Git repos for dirty work before deleting.
@@ -83,23 +83,11 @@ Create a VM config from the bundled app example:
 dvm init app
 ```
 
-Example:
-
-```bash
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_CODE_DIR="~/code/app"
-DVM_PORTS="3000:3000 5173:5173"
-DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
-
-use node
-use python
-use agent-user
-use codex
-use claude
-use chezmoi
-```
+`dvm init` writes a fully commented template; uncomment what you need. Defaults are
+`DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`, `DVM_CODE_DIR=~/code/$DVM_NAME`,
+empty `DVM_PORTS`. The template also lists every available recipe (auto-detected from
+bundled and user recipes) with a one-line description, and shows the host's CPU and
+memory ceilings as inline comments.
 
 `~` in DVM variables means the guest user's home. Host project directories are not
 mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting
@@ -112,16 +100,16 @@ New app VM:
 
 ```bash
 dvm init myapp
-dvm apply myapp
-dvm enter myapp
+dvm sync myapp
+dvm sh myapp
 ```
 
 Dedicated llama VM:
 
 ```bash
 dvm init llama llama
-dvm apply llama
-dvm logs llama -f
+dvm sync llama
+dvm log llama -f
 ```
 
 The bundled llama VM opens port `8080` for host access at `http://127.0.0.1:8080` and
@@ -132,11 +120,11 @@ Cloudflared tunnel VM:
 
 ```bash
 dvm init cloudflared cloudflared
-CLOUDFLARED_TOKEN="..." dvm apply cloudflared
-dvm logs cloudflared -f
+CLOUDFLARED_TOKEN="..." dvm sync cloudflared
+dvm log cloudflared -f
 ```
 
-The cloudflared token is staged through a mode `0600` guest temp file during `apply`
+The cloudflared token is staged through a mode `0600` guest temp file during `sync`
 instead of being passed as a `limactl shell env` argument.
 
 ## Recipes
@@ -171,9 +159,9 @@ approval prompts and sandboxing.
 ## Dedicated Service VMs
 
 ```bash
-dvm apply llama
-CLOUDFLARED_TOKEN="..." dvm apply cloudflared
-dvm logs cloudflared
+dvm sync llama
+CLOUDFLARED_TOKEN="..." dvm sync cloudflared
+dvm log cloudflared
 ```
 
 Example service configs live in `share/dvm/vms`. Copy one into `~/.config/dvm/vms`

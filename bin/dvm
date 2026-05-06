@@ -45,20 +45,20 @@ main() {
 	[ "$#" -eq 0 ] || shift
 	case "$cmd" in
 	init) init_vm "$@" ;;
-	apply)
+	sync)
 		case "${1:-}" in
 		--all) apply_all ;;
-		'') die "apply requires a VM name or --all" ;;
+		'') die "sync requires a VM name or --all" ;;
 		*) apply_one "$1" ;;
 		esac
 		;;
-	enter) [ -n "${1:-}" ] || die "enter requires a VM name"; enter_vm "$1" ;;
+	sh) [ -n "${1:-}" ] || die "sh requires a VM name"; enter_vm "$1" ;;
 	ssh) [ -n "${1:-}" ] || die "ssh requires a VM name"; ssh_vm "$@" ;;
 	cp) cp_vm "$@" ;;
-	logs) logs_vm "$@" ;;
+	log) logs_vm "$@" ;;
 	ssh-key) ssh_key_vm "$@" ;;
 	gpg-key) gpg_key_vm "$@" ;;
-	list) list_vms ;;
+	ls) list_vms ;;
 	stop) stop_vm "$@" ;;
 	rm) rm_vm "$@" ;;
 	help | -h | --help) usage ;;

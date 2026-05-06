@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Description: zsh shell (sets as login shell)
 set -euo pipefail
 
 sudo dnf5 install -y zsh shadow-utils

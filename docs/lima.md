@@ -36,7 +36,7 @@ Important defaults:
 - user first-boot provision ignores empty or host-looking `/Users/...` code dirs rather
   than failing cloud-init.
 
-DVM sets the guest system hostname to the public VM name during `dvm apply`, so a VM
+DVM sets the guest system hostname to the public VM name during `dvm sync`, so a VM
 configured as `eshlox-net` presents itself as `eshlox-net` inside the guest even though
 the internal Lima instance remains `dvm-eshlox-net`.
 
@@ -52,7 +52,7 @@ from Git remotes or created there. This is the central isolation choice.
 Use:
 
 ```bash
-dvm enter app
+dvm sh app
 ```
 
 Then edit with guest tools installed by your recipes, such as an editor, AI CLI, or
@@ -81,7 +81,7 @@ curl http://host.lima.internal:3000
 
 ## Updating Ports And Template
 
-Editing `DVM_PORTS` in a VM config and running `dvm apply <name>` updates the existing
+Editing `DVM_PORTS` in a VM config and running `dvm sync <name>` updates the existing
 Lima VM's `portForwards` without recreating the VM. DVM compares the configured ports
 with the VM's Lima YAML and asks Lima to edit the VM when they differ.
 
@@ -91,7 +91,7 @@ created configuration for structural settings. For those changes, recreate:
 
 ```bash
 dvm rm app --yes
-dvm apply app
+dvm sync app
 ```
 
 If an older VM shows failed `cloud-final.service` or `cloud-init-main.service` because

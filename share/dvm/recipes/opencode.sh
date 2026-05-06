@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Description: OpenCode CLI
 set -euo pipefail
 
 : "${DVM_AI_AGENT_USER:=dvm-agent}"

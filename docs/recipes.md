@@ -5,18 +5,19 @@ that boundary clear.
 
 ## Host Config
 
-Host config lives in `~/.config/dvm/vms/<name>.sh`:
+Host config lives in `~/.config/dvm/vms/<name>.sh`. `dvm init` writes a fully commented
+template (built-in defaults: `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`).
+Uncomment what you need:
 
 ```bash
-DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=80GiB
-DVM_CODE_DIR="~/code/app"
-DVM_PORTS="3000:3000"
+# DVM_CPUS=4          # default 2 (host max shown in template)
+# DVM_MEMORY=8GiB     # default 2GiB
+# DVM_CODE_DIR="~/code/$DVM_NAME"
+# DVM_PORTS="3000:3000"
 
-use node
-use agent-user
-use codex
+# use node         # Node.js, npm, corepack
+# use agent-user   # dvm-agent user with Bubblewrap sandbox for AI tools
+# use codex        # Codex CLI
 ```
 
 `use <name>` only selects `recipes/<name>.sh`; it does not run the recipe on the host.
@@ -42,6 +43,8 @@ Rules:
 - Use `DVM_CODE_DIR` for project code.
 - Keep tool-specific config close to the recipe that uses it.
 - Do not add recipe metadata, dependency graphs, registries, or versioning.
+- Add `# Description: <one line>` near the top of a recipe so `dvm init` shows it in
+  the auto-generated "available recipes" comment block.
 
 ## Built-In Recipes
 
@@ -159,12 +162,12 @@ For a package or tool that does not exist in DNF, use the same split:
 For non-DNF tools, prefer the pattern used by `lazygit`, `starship`, and `yazi`:
 download from an official HTTPS release URL, pin a version, verify sha256 before
 installing, and avoid `curl | sh` installers. To update, bump the version, URL, and
-sha256 in the recipe, then run `dvm apply <name>` or `dvm apply --all`.
+sha256 in the recipe, then run `dvm sync <name>` or `dvm sync --all`.
 
 Project-only setup that belongs in the project repository can also live in:
 
 ```text
-$DVM_CODE_DIR/.dvm/apply.sh
+$DVM_CODE_DIR/.dvm/sync.sh
 ```
 
 That hook runs after baseline and selected recipes, inside the guest.
@@ -207,29 +210,29 @@ DVM_DISK=20GiB
 use cloudflared
 ```
 
-Apply with a token when configuring or recreating the VM:
+Sync with a token when configuring or recreating the VM:
 
 ```bash
-CLOUDFLARED_TOKEN="..." dvm apply cloudflared
+CLOUDFLARED_TOKEN="..." dvm sync cloudflared
 ```
 
 DVM does not pass `CLOUDFLARED_TOKEN` or `DVM_CLOUDFLARED_TOKEN` as `limactl shell env`
 arguments. For the bundled cloudflared recipe, it writes the token to a mode `0600`
-guest temp file during `apply`, the recipe copies it into `/etc/cloudflared/dvm.env`,
+guest temp file during `sync`, the recipe copies it into `/etc/cloudflared/dvm.env`,
 and the temp file is removed.
 
 If you want host convenience, store the token in macOS Keychain yourself and pass it at
-apply time:
+sync time:
 
 ```bash
 security add-generic-password -a dvm -s cloudflared -w "$TOKEN"
 CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
-  dvm apply cloudflared
+  dvm sync cloudflared
 ```
 
 DVM does not provide a secret store command.
 
-`dvm logs llama` and `dvm logs cloudflared` show the default service units for those
+`dvm log llama` and `dvm log cloudflared` show the default service units for those
 dedicated VMs.
 
 ## Project Hook
@@ -237,7 +240,7 @@ dedicated VMs.
 After selected recipes run, DVM checks for this guest file:
 
 ```text
-$DVM_CODE_DIR/.dvm/apply.sh
+$DVM_CODE_DIR/.dvm/sync.sh
 ```
 
 If it exists, DVM runs it inside the VM. Use it for project-local setup that belongs in

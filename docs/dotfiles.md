@@ -69,5 +69,5 @@ the VM and reapply:
 
 ```bash
 dvm ssh app -- rm -rf ~/.local/share/chezmoi
-dvm apply app
+dvm sync app
 ```

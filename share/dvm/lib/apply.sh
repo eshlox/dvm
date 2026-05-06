@@ -17,7 +17,7 @@ run_guest_apply() {
 		esac
 	done < <(compgen -A variable | sort)
 
-	printf 'dvm: applying recipes for %s:' "$DVM_NAME" >&2
+	printf 'dvm: syncing recipes for %s:' "$DVM_NAME" >&2
 	if [ "${DVM_NO_BASELINE:-0}" != "1" ]; then
 		printf ' baseline' >&2
 	fi
@@ -65,8 +65,8 @@ case "$dvm_code_dir" in
 	"~") dvm_code_dir="$HOME" ;;
 	"~/"*) dvm_code_dir="$HOME/${dvm_code_dir#\~/}" ;;
 esac
-if [ -f "$dvm_code_dir/.dvm/apply.sh" ]; then
-	bash "$dvm_code_dir/.dvm/apply.sh"
+if [ -f "$dvm_code_dir/.dvm/sync.sh" ]; then
+	bash "$dvm_code_dir/.dvm/sync.sh"
 fi
 DVM_PROJECT_HOOK
 	} | limactl shell "$DVM_LIMA_NAME" env "${args[@]}" bash -s
@@ -109,10 +109,10 @@ apply_all() {
 		if (apply_one "$name"); then
 			ok=$((ok + 1))
 		else
-			printf 'dvm: apply failed: %s\n' "$name" >&2
+			printf 'dvm: sync failed: %s\n' "$name" >&2
 			failed=$((failed + 1))
 		fi
 	done
-	printf 'dvm apply --all: %s ok, %s failed\n' "$ok" "$failed"
+	printf 'dvm sync --all: %s ok, %s failed\n' "$ok" "$failed"
 	[ "$failed" -eq 0 ]
 }

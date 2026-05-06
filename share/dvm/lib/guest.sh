@@ -39,7 +39,7 @@ ssh_vm() {
 	shift || true
 	[ "${1:-}" != "--" ] || shift
 	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
 	start_vm
 	term="$(guest_term)"
 	limactl shell "$DVM_LIMA_NAME" env "TERM=$term" bash -c "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
@@ -218,7 +218,7 @@ cp_vm() {
 	[ "$endpoint_count" -lt "${#operands[@]}" ] || die "cp requires one host path and one VM path"
 
 	load_vm "$vm_name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $vm_name first"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $vm_name first"
 	start_vm
 	limactl shell "$DVM_LIMA_NAME" mkdir -p "$(guest_code_dir_abs)"
 
@@ -301,7 +301,7 @@ logs_vm() {
 	[ -n "$name" ] || die "logs requires a VM name"
 	shift || true
 	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
 	start_vm
 	if [ "$#" -gt 0 ]; then
 		case "$1" in

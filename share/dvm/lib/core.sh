@@ -4,15 +4,15 @@ usage() {
 	cat <<'HELP'
 usage:
   dvm init <name> [template]
-  dvm apply <name>
-  dvm apply --all
-  dvm enter <name>
+  dvm sync <name>
+  dvm sync --all
+  dvm sh <name>
   dvm ssh <name> -- <command...>
   dvm cp [-r] [-v] [--backend auto|scp|rsync] <source...> <target>
-  dvm logs <name> [unit] [journalctl-args...]
+  dvm log <name> [unit] [journalctl-args...]
   dvm ssh-key <name>
   dvm gpg-key <name>
-  dvm list
+  dvm ls
   dvm stop <name>
   dvm rm <name> --yes [--force]
 HELP
@@ -112,6 +112,82 @@ open_editor() {
 	$editor "$file"
 }
 
+host_max_cpus() {
+	if command -v nproc >/dev/null 2>&1; then
+		nproc 2>/dev/null && return 0
+	fi
+	if command -v sysctl >/dev/null 2>&1; then
+		sysctl -n hw.ncpu 2>/dev/null && return 0
+	fi
+	printf '?\n'
+}
+
+host_max_memory() {
+	local kb bytes
+	if [ -r /proc/meminfo ]; then
+		kb="$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)"
+		if [ -n "$kb" ]; then
+			printf '%dGiB\n' "$((kb / 1024 / 1024))"
+			return 0
+		fi
+	fi
+	if command -v sysctl >/dev/null 2>&1; then
+		bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
+		if [ -n "$bytes" ]; then
+			printf '%dGiB\n' "$((bytes / 1024 / 1024 / 1024))"
+			return 0
+		fi
+	fi
+	printf '?\n'
+}
+
+available_recipes_block() {
+	local file name desc dir
+	{
+		for dir in "$DVM_SHARE/recipes" "$DVM_CONFIG/recipes"; do
+			[ -d "$dir" ] || continue
+			for file in "$dir"/*.sh; do
+				[ -f "$file" ] || continue
+				name="$(basename "$file" .sh)"
+				case "$name" in
+				_* | baseline) continue ;;
+				esac
+				printf '%s\n' "$name"
+			done
+		done
+	} | sort -u | while IFS= read -r name; do
+		file="$DVM_CONFIG/recipes/$name.sh"
+		[ -f "$file" ] || file="$DVM_SHARE/recipes/$name.sh"
+		desc="$(awk '/^# Description:/ {sub(/^# Description: */, ""); print; exit}' "$file" 2>/dev/null || true)"
+		if [ -n "$desc" ]; then
+			printf '# use %-12s # %s\n' "$name" "$desc"
+		else
+			printf '# use %s\n' "$name"
+		fi
+	done
+}
+
+render_vm_template() {
+	local src="$1" dst="$2"
+	local max_cpus max_memory recipes_block line
+	max_cpus="$(host_max_cpus)"
+	max_memory="$(host_max_memory)"
+	recipes_block="$(available_recipes_block)"
+	while IFS= read -r line || [ -n "$line" ]; do
+		if [ "$line" = "__DVM_AVAILABLE_RECIPES__" ]; then
+			printf '%s\n' "$recipes_block"
+			continue
+		fi
+		case "$line" in
+		*__DVM_HOST_MAX_CPUS__*) line="${line//__DVM_HOST_MAX_CPUS__/$max_cpus}" ;;
+		esac
+		case "$line" in
+		*__DVM_HOST_MAX_MEMORY__*) line="${line//__DVM_HOST_MAX_MEMORY__/$max_memory}" ;;
+		esac
+		printf '%s\n' "$line"
+	done <"$src" >"$dst"
+}
+
 init_vm() {
 	local name template src dst
 	name="${1:-}"
@@ -126,7 +202,7 @@ init_vm() {
 		printf 'dvm: VM config already exists: %s\n' "$dst" >&2
 	else
 		mkdir -p "$(dirname "$dst")"
-		cp "$src" "$dst"
+		render_vm_template "$src" "$dst"
 		printf 'dvm: created VM config: %s\n' "$dst"
 	fi
 	open_editor "$dst"
@@ -191,6 +267,10 @@ load_vm() {
 
 	DVM_CODE_DIR="${DVM_CODE_DIR:-${DVM_CODE_ROOT%/}/$name}"
 	DVM_PORTS="${DVM_PORTS:-}"
+	DVM_CPUS="${DVM_CPUS:-2}"
+	DVM_MEMORY="${DVM_MEMORY:-2GiB}"
+	DVM_DISK="${DVM_DISK:-10GiB}"
+	DVM_USER="${DVM_USER:-${USER:-developer}}"
 	DVM_HOST_IP="${DVM_HOST_IP:-127.0.0.1}"
 	DVM_LLAMA_SERVICE="${DVM_LLAMA_SERVICE:-dvm-llama.service}"
 	DVM_CLOUDFLARED_SERVICE="${DVM_CLOUDFLARED_SERVICE:-dvm-cloudflared.service}"

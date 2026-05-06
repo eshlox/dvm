@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Description: dvm-agent user with Bubblewrap sandbox for AI tools
 set -euo pipefail
 
 : "${DVM_CODE_DIR:?DVM_CODE_DIR is required}"
