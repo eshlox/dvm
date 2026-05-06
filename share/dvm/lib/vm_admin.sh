@@ -28,6 +28,29 @@ while IFS= read -r git_entry; do
 		dirty=1
 	fi
 done < <(find "$code_dir" \( -type d -name .git -prune -print \) -o \( -type f -name .git -print \))
+
+orphan_count=0
+orphan_sample=()
+while IFS= read -r f; do
+	orphan_count=$((orphan_count + 1))
+	if [ "${#orphan_sample[@]}" -lt 5 ]; then
+		orphan_sample+=("$f")
+	fi
+done < <(find "$code_dir" \
+	\( -type d -exec test -e {}/.git \; -prune \) -o \
+	\( -type d -name .git -prune \) -o \
+	\( -type f -print \) 2>/dev/null)
+
+if [ "$orphan_count" -gt 0 ]; then
+	printf 'dvm: %d file(s) outside any git repository under %s:\n' "$orphan_count" "$code_dir" >&2
+	for f in "${orphan_sample[@]}"; do
+		printf '  %s\n' "$f" >&2
+	done
+	if [ "$orphan_count" -gt "${#orphan_sample[@]}" ]; then
+		printf '  ... (%d more)\n' "$((orphan_count - ${#orphan_sample[@]}))" >&2
+	fi
+	dirty=1
+fi
 exit "$dirty"
 DVM_DIRTY_CHECK
 }
@@ -87,7 +110,7 @@ rm_vm() {
 		dirty_check_vm || rc=$?
 		case "$rc" in
 		0) ;;
-		1) die "refusing to delete $DVM_LIMA_NAME; commit/stash changes or pass --force" ;;
+		1) die "refusing to delete $DVM_LIMA_NAME; commit/stash changes, move untracked files, or pass --force" ;;
 		2) die "refusing to delete $DVM_LIMA_NAME; dirty check incomplete (see warning above), pass --force to skip" ;;
 		*) die "refusing to delete $DVM_LIMA_NAME; dirty check failed with status $rc, pass --force to skip" ;;
 		esac

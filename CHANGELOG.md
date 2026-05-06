@@ -30,6 +30,11 @@
   check now exits with status 2 and refuses to delete the VM unless `--force` is
   passed. Previously the check exited cleanly when `git` was absent, allowing
   silent deletion of un-checked code directories.
+- Extended `dvm rm` dirty check to also count files under `DVM_CODE_DIR` that are
+  not enclosed by any `.git` tree; the count and a sample of paths are printed and
+  deletion is refused unless `--force` is passed. Previously only dirty Git repos
+  blocked deletion; loose data files (databases, notes, downloads) could be lost
+  silently.
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.
