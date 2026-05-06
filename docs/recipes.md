@@ -233,10 +233,12 @@ CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
 DVM does not provide a secret store command.
 
 `tailscale` joins the tailnet (private mesh) and optionally publishes a single
-backend service via Tailscale Funnel. Configure either a dedicated proxy VM or
-add `use tailscale` to any VM that should be reachable from your tailnet. See
-[Services](services.md#tailscale) for tunnel-VM setup, the auth-key flow, and the
-Funnel ACL prerequisite. The auth key is passed in at sync time through the same
+backend service via Tailscale Funnel. Two patterns: add `use tailscale` to any
+app VM for private hostname-based dev access from your tailnet, or use the
+dedicated `tailscale` VM template for on-demand public Funnel URLs. See
+[Services](services.md#tailscale) for both walkthroughs, the Funnel ACL
+prerequisite, and the three auth-key sourcing options (global config, env var,
+or macOS Keychain). The auth key is passed in at sync time through the same
 secret-staging path as `CLOUDFLARED_TOKEN`:
 
 ```bash
