@@ -10,7 +10,10 @@ case "$code_dir" in
 	"~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
 esac
 [ -d "$code_dir" ] || exit 0
-command -v git >/dev/null 2>&1 || exit 0
+if ! command -v git >/dev/null 2>&1; then
+	printf 'dvm: dirty check skipped: git not installed in VM\n' >&2
+	exit 2
+fi
 dirty=0
 while IFS= read -r git_entry; do
 	if [ -d "$git_entry" ]; then
@@ -25,6 +28,29 @@ while IFS= read -r git_entry; do
 		dirty=1
 	fi
 done < <(find "$code_dir" \( -type d -name .git -prune -print \) -o \( -type f -name .git -print \))
+
+orphan_count=0
+orphan_sample=()
+while IFS= read -r f; do
+	orphan_count=$((orphan_count + 1))
+	if [ "${#orphan_sample[@]}" -lt 5 ]; then
+		orphan_sample+=("$f")
+	fi
+done < <(find "$code_dir" \
+	\( -type d -exec test -e {}/.git \; -prune \) -o \
+	\( -type d -name .git -prune \) -o \
+	\( -type f -print \) 2>/dev/null)
+
+if [ "$orphan_count" -gt 0 ]; then
+	printf 'dvm: %d file(s) outside any git repository under %s:\n' "$orphan_count" "$code_dir" >&2
+	for f in "${orphan_sample[@]}"; do
+		printf '  %s\n' "$f" >&2
+	done
+	if [ "$orphan_count" -gt "${#orphan_sample[@]}" ]; then
+		printf '  ... (%d more)\n' "$((orphan_count - ${#orphan_sample[@]}))" >&2
+	fi
+	dirty=1
+fi
 exit "$dirty"
 DVM_DIRTY_CHECK
 }
@@ -80,7 +106,14 @@ rm_vm() {
 		fi
 	fi
 	if [ "$force" != "1" ] && vm_exists && [ -f "$vm_file" ]; then
-		dirty_check_vm || die "refusing to delete $DVM_LIMA_NAME; commit/stash changes or pass --force"
+		local rc=0
+		dirty_check_vm || rc=$?
+		case "$rc" in
+		0) ;;
+		1) die "refusing to delete $DVM_LIMA_NAME; commit/stash changes, move untracked files, or pass --force" ;;
+		2) die "refusing to delete $DVM_LIMA_NAME; dirty check incomplete (see warning above), pass --force to skip" ;;
+		*) die "refusing to delete $DVM_LIMA_NAME; dirty check failed with status $rc, pass --force to skip" ;;
+		esac
 	elif [ "$force" != "1" ] && [ "$orphan" = "1" ]; then
 		printf 'dvm: warning: dirty check skipped because DVM config is missing: %s\n' "$vm_file" >&2
 	fi

@@ -58,6 +58,15 @@ DVM_CODE_DIR="~/code/second"
 use python
 VM
 
+cat >"$TMP/config/vms/rooted.sh" <<'VM'
+DVM_CPUS=2
+DVM_MEMORY=4GiB
+DVM_DISK=20GiB
+DVM_CODE_ROOT="~/work"
+
+use python
+VM
+
 cat >"$TMP/config/vms/cloudflared.sh" <<'VM'
 DVM_CPUS=2
 DVM_MEMORY=2GiB
@@ -192,6 +201,21 @@ status="$?"
 set -e
 [ "$status" -ne 0 ]
 grep -Fq 'missing VM template: missing-template' "$TMP/init-bad.err"
+
+set +e
+"$ROOT/bin/dvm" sync app trailing-garbage >/dev/null 2>"$TMP/sync-extra.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'sync takes one VM name' "$TMP/sync-extra.err"
+
+set +e
+"$ROOT/bin/dvm" ls extra >/dev/null 2>"$TMP/ls-extra.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'ls takes no arguments' "$TMP/ls-extra.err"
+
 rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
 
 "$ROOT/bin/dvm" sync app 2>"$TMP/apply.err"
@@ -243,6 +267,10 @@ grep -Fq 'mv "$tmp" "$config"' "$TMP/state/guest.sh"
 grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
 grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
 bash -n "$TMP/state/guest.sh"
+
+: >"$TMP/state/log"
+"$ROOT/bin/dvm" sync rooted
+grep -Fq 'DVM_CODE_DIR=~/work/rooted' "$TMP/state/log"
 
 : >"$TMP/state/log"
 CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" sync cloudflared

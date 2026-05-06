@@ -25,12 +25,12 @@ Defaults:
 - `~` in DVM config means the guest user's home
 - AI tools run inside the VM through `dvm-agent` when the recipe is used
 - public dotfiles use HTTPS by default
-- Cloudflare tokens are passed to apply explicitly, staged through a mode `0600` guest
+- Cloudflare tokens are passed to sync explicitly, staged through a mode `0600` guest
   temp file, and written inside the VM
 - forwarded ports bind to `127.0.0.1` unless config says otherwise
 - `dvm rm --yes` checks nested Git repos before deleting unless `--force` is used
 
-Most apply-time DVM environment values are visible to host process listings while
+Most sync-time DVM environment values are visible to host process listings while
 `limactl` runs. Do not put secrets in general `DVM_*` config. The bundled cloudflared
 token handoff is special-cased so `CLOUDFLARED_TOKEN` and `DVM_CLOUDFLARED_TOKEN` are
 not passed as `limactl shell env` arguments.

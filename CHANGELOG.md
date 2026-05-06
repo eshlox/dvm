@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed per-VM `DVM_CODE_ROOT` overrides so the default `DVM_CODE_DIR` is computed
+  after VM config is sourced.
+- Fixed remaining user-facing docs and diagnostics that still used old command names
+  after the `sync` / `sh` / `log` rename.
 - Renamed commands for shorter typing: `apply` → `sync`, `enter` → `sh`, `logs` →
   `log`, `list` → `ls`. The per-project hook moved from `.dvm/apply.sh` to
   `.dvm/sync.sh`; rename the file in projects that use it.
@@ -19,6 +23,18 @@
 - Moved `DVM_CHEZMOI_REPO`, `DVM_CHEZMOI_SIGNING_KEY`, and `DVM_CHEZMOI_DEPLOY_KEY` to
   global config; per-VM config only opts in via `use chezmoi` (per-VM override still
   works through the source order).
+- Tightened CLI arg validation: `init`, `sync`, `sh`, `ssh-key`, `gpg-key`, `ls`, and
+  `stop` now reject unexpected extra arguments with a clear error rather than
+  silently ignoring them.
+- Tightened `dvm rm` dirty check: when `git` is not installed in the guest, the
+  check now exits with status 2 and refuses to delete the VM unless `--force` is
+  passed. Previously the check exited cleanly when `git` was absent, allowing
+  silent deletion of un-checked code directories.
+- Extended `dvm rm` dirty check to also count files under `DVM_CODE_DIR` that are
+  not enclosed by any `.git` tree; the count and a sample of paths are printed and
+  deletion is refused unless `--force` is passed. Previously only dirty Git repos
+  blocked deletion; loose data files (databases, notes, downloads) could be lost
+  silently.
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.

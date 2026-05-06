@@ -119,7 +119,7 @@ them from per-VM configs. Service recipes (`llama`, `cloudflared`) are not in
   `DVM_LLAMA_MODELS_SHA256`, `DVM_LLAMA_REFRESH`: llama model settings.
 - `DVM_CLOUDFLARED_SERVICE`, `DVM_CLOUDFLARED_TOKEN`: cloudflared service settings.
   The bundled cloudflared recipe receives the token through a mode `0600` guest temp
-  file during `apply`, so it is not passed as a `limactl shell env` argument.
+  file during `sync`, so it is not passed as a `limactl shell env` argument.
 - `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe. Service VMs use this to
   avoid dev-tool setup; recipes selected by that VM must install their own dependencies
   such as `git`, `curl`, `jq`, `tar`, or `unzip`.

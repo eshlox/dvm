@@ -22,9 +22,9 @@ small, but they are the bar for changes.
 - The VM-local GPG helper creates an unencrypted, one-year signing key for disposable
   VM use; do not treat it as a long-lived identity key.
 - Prefer repo-scoped deploy keys and service-scoped tokens.
-- Pass Cloudflare tokens only when applying the cloudflared VM, or fetch them from
-  macOS Keychain in your shell before apply.
-- Do not put secrets in general `DVM_*` config. Most apply-time DVM values are visible
+- Pass Cloudflare tokens only when syncing the cloudflared VM, or fetch them from
+  macOS Keychain in your shell before sync.
+- Do not put secrets in general `DVM_*` config. Most sync-time DVM values are visible
   to host process listings while `limactl` runs.
 - The bundled cloudflared token handoff is special-cased: `CLOUDFLARED_TOKEN` and
   `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
