@@ -172,16 +172,16 @@ $DVM_CODE_DIR/.dvm/sync.sh
 
 That hook runs after baseline and selected recipes, inside the guest.
 
-`chezmoi` applies public dotfiles over HTTPS:
+`chezmoi` applies public dotfiles over HTTPS. Put `DVM_CHEZMOI_REPO` and the optional
+identity values in `~/.config/dvm/config.sh` (they are the same across all VMs); the
+per-VM config only opts in:
 
 ```bash
-DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 use chezmoi
 ```
 
-Shared chezmoi template data such as `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, and
-`DVM_CHEZMOI_EMAIL` usually belongs in `~/.config/dvm/config.sh`; generated key data
-uses the default paths from `dvm ssh-key <name>` unless overridden globally or per VM.
+Generated key data uses the default paths from `dvm ssh-key <name>` unless
+`DVM_CHEZMOI_SIGNING_KEY` / `DVM_CHEZMOI_DEPLOY_KEY` are set in global config.
 
 `llama` installs the llama service. Configure a dedicated VM:
 

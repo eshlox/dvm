@@ -14,6 +14,8 @@
 - Rewrote `share/dvm/vms/app.sh` as a fully commented self-documenting template.
 - Added `# Description: <one line>` to bundled recipes so `dvm init` can show them in
   the available-recipes block.
+- Moved `DVM_CHEZMOI_REPO`, `DVM_CHEZMOI_SIGNING_KEY`, and `DVM_CHEZMOI_DEPLOY_KEY` to
+  global config; per-VM config only opts in via `use chezmoi`.
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.

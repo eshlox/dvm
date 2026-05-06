@@ -22,7 +22,12 @@
 # Set to 0 to enable Claude permission prompts.
 # DVM_CLAUDE_BYPASS=1
 
-# Optional chezmoi [data] values for VMs that use the chezmoi recipe:
+# Settings for the chezmoi recipe. DVM_CHEZMOI_REPO is required when any VM uses
+# `use chezmoi`. The signing/deploy key paths default to those created by
+# `dvm ssh-key <name>`; override only if you use custom key names.
+# DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 # DVM_CHEZMOI_ROLE="vm"
 # DVM_CHEZMOI_NAME="Your Name"
 # DVM_CHEZMOI_EMAIL="you@example.com"
+# DVM_CHEZMOI_SIGNING_KEY="~/.ssh/id_ed25519_dvm_signing.pub"
+# DVM_CHEZMOI_DEPLOY_KEY="~/.ssh/id_ed25519_dvm.pub"

@@ -13,12 +13,5 @@
 # Forwarded host:guest ports, space-separated. Empty by default.
 # DVM_PORTS="3000:3000 5173:5173"
 
-# Public dotfiles repo for the chezmoi recipe.
-# DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
-
-# Override SSH key paths only when ssh-key was created with custom names:
-# DVM_CHEZMOI_SIGNING_KEY="~/.ssh/id_ed25519_dvm_signing.pub"
-# DVM_CHEZMOI_DEPLOY_KEY="~/.ssh/id_ed25519_dvm.pub"
-
 # Available recipes. Uncomment to enable.
 __DVM_AVAILABLE_RECIPES__

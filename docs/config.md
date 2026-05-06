@@ -72,7 +72,6 @@ Uncomment what you need:
 # DVM_DISK=80GiB      # default 10GiB
 # DVM_CODE_DIR="~/code/$DVM_NAME"
 # DVM_PORTS="3000:3000 5173:5173"
-# DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 
 # use node         # Node.js, npm, corepack
 # use python       # Python and uv
@@ -102,12 +101,14 @@ Uncomment what you need:
   Set `DVM_CLAUDE_BYPASS=0` to leave Claude permission prompts enabled.
 - `DVM_COREPACK_VERSION`: Corepack npm package version for the `node` recipe, normally
   `0.34.0`.
-- `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo.
+- `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo. Required when any VM uses the
+  `chezmoi` recipe. Usually set in global config; per-VM config can override.
 - `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, `DVM_CHEZMOI_EMAIL`: optional shared chezmoi
-  `[data]` values.
-- `DVM_CHEZMOI_SIGNING_KEY`, `DVM_CHEZMOI_DEPLOY_KEY`: optional per-VM chezmoi
-  `[data]` key path overrides. When unset, generated chezmoi data uses
-  `~/.ssh/id_ed25519_dvm_signing.pub` and `~/.ssh/id_ed25519_dvm.pub`.
+  `[data]` values. Usually set in global config; per-VM config can override.
+- `DVM_CHEZMOI_SIGNING_KEY`, `DVM_CHEZMOI_DEPLOY_KEY`: optional chezmoi `[data]` key
+  path overrides. Usually set in global config when `dvm ssh-key` is configured with
+  custom key names; per-VM config can override. When unset, generated chezmoi data
+  uses `~/.ssh/id_ed25519_dvm_signing.pub` and `~/.ssh/id_ed25519_dvm.pub`.
 - `DVM_CHEZMOI_CONFIG_TOML`: optional full chezmoi config written to
   `~/.config/chezmoi/chezmoi.toml`; when set, it takes over the generated chezmoi data
   config rather than merging with it.
