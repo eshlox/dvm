@@ -95,6 +95,16 @@ validate_cloudflared_token() {
 	esac
 }
 
+validate_tailscale_auth_key() {
+	case "$1" in
+	tskey-*) ;;
+	*) die "invalid tailscale auth key: must start with tskey-" ;;
+	esac
+	case "$1" in
+	*[!A-Za-z0-9._=-]*) die "invalid tailscale auth key characters" ;;
+	esac
+}
+
 dvm_endpoint_name() {
 	local name="$1"
 	case "$name" in

@@ -120,6 +120,15 @@ them from per-VM configs. Service recipes (`llama`, `cloudflared`) are not in
 - `DVM_CLOUDFLARED_SERVICE`, `DVM_CLOUDFLARED_TOKEN`: cloudflared service settings.
   The bundled cloudflared recipe receives the token through a mode `0600` guest temp
   file during `sync`, so it is not passed as a `limactl shell env` argument.
+- `DVM_TAILSCALE_AUTH_KEY`: tailscale auth key (`tskey-...`). Passed in at sync time
+  via `TAILSCALE_AUTH_KEY=...` and staged through a mode `0600` guest temp file, the
+  same way as the cloudflared token. Required on first sync; subsequent syncs reuse
+  the persistent tailscaled state unless a new key is provided.
+- `DVM_TAILSCALE_HOSTNAME`: override the device name shown in the Tailscale admin
+  console. Defaults to `$DVM_NAME`.
+- `DVM_TAILSCALE_FUNNEL_TARGET`: backend URL for `tailscale funnel`, e.g.
+  `http://lima-dvm-app.internal:3000`. When set, the VM publishes the target on a
+  public `*.ts.net` URL; when unset the VM stays tailnet-private.
 - `DVM_NO_BASELINE=1`: skip the implicit `baseline` recipe. Service VMs use this to
   avoid dev-tool setup; recipes selected by that VM must install their own dependencies
   such as `git`, `curl`, `jq`, `tar`, or `unzip`.
