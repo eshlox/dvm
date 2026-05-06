@@ -62,7 +62,7 @@ Create a new app VM:
 
 ```bash
 dvm init myapp
-dvm apply myapp
+dvm sync myapp
 ```
 
 Example:
@@ -153,7 +153,7 @@ Then call the helper from each app VM that should get those tools:
 use_app_tools
 ```
 
-`dvm apply <name>` prints the expanded recipe list before running guest scripts. If the
+`dvm sync <name>` prints the expanded recipe list before running guest scripts. If the
 summary does not include the helper's recipes, check that you are running the current
 wrapper with `type dvm` and that `DVM_CONFIG` points at the config directory you edited.
 
@@ -179,5 +179,5 @@ DVM_PORTS="127.0.0.1:3000:3000"
 
 Avoid `0.0.0.0` unless you want the service reachable from your LAN.
 
-Changing `DVM_PORTS` and running `dvm apply <name>` updates the existing Lima VM's port
+Changing `DVM_PORTS` and running `dvm sync <name>` updates the existing Lima VM's port
 forwards. Lima may restart the VM when ports change.

@@ -203,5 +203,5 @@ if [ -f "$models_dir/current.gguf" ]; then
 	sudo systemctl restart "$service"
 	printf 'llama: http://127.0.0.1:%s (%s)\n' "$port" "$selected_alias"
 else
-	printf '%s\n' 'llama: place a model at ~/models/current.gguf or set DVM_LLAMA_MODELS, then run dvm apply llama'
+	printf '%s\n' 'llama: place a model at ~/models/current.gguf or set DVM_LLAMA_MODELS, then run dvm sync llama'
 fi

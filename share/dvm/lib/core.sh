@@ -4,15 +4,15 @@ usage() {
 	cat <<'HELP'
 usage:
   dvm init <name> [template]
-  dvm apply <name>
-  dvm apply --all
-  dvm enter <name>
+  dvm sync <name>
+  dvm sync --all
+  dvm sh <name>
   dvm ssh <name> -- <command...>
   dvm cp [-r] [-v] [--backend auto|scp|rsync] <source...> <target>
-  dvm logs <name> [unit] [journalctl-args...]
+  dvm log <name> [unit] [journalctl-args...]
   dvm ssh-key <name>
   dvm gpg-key <name>
-  dvm list
+  dvm ls
   dvm stop <name>
   dvm rm <name> --yes [--force]
 HELP

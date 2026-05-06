@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Renamed commands for shorter typing: `apply` → `sync`, `enter` → `sh`, `logs` →
+  `log`, `list` → `ls`. The per-project hook moved from `.dvm/apply.sh` to
+  `.dvm/sync.sh`; rename the file in projects that use it.
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.

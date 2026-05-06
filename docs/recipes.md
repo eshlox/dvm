@@ -159,12 +159,12 @@ For a package or tool that does not exist in DNF, use the same split:
 For non-DNF tools, prefer the pattern used by `lazygit`, `starship`, and `yazi`:
 download from an official HTTPS release URL, pin a version, verify sha256 before
 installing, and avoid `curl | sh` installers. To update, bump the version, URL, and
-sha256 in the recipe, then run `dvm apply <name>` or `dvm apply --all`.
+sha256 in the recipe, then run `dvm sync <name>` or `dvm sync --all`.
 
 Project-only setup that belongs in the project repository can also live in:
 
 ```text
-$DVM_CODE_DIR/.dvm/apply.sh
+$DVM_CODE_DIR/.dvm/sync.sh
 ```
 
 That hook runs after baseline and selected recipes, inside the guest.
@@ -207,29 +207,29 @@ DVM_DISK=20GiB
 use cloudflared
 ```
 
-Apply with a token when configuring or recreating the VM:
+Sync with a token when configuring or recreating the VM:
 
 ```bash
-CLOUDFLARED_TOKEN="..." dvm apply cloudflared
+CLOUDFLARED_TOKEN="..." dvm sync cloudflared
 ```
 
 DVM does not pass `CLOUDFLARED_TOKEN` or `DVM_CLOUDFLARED_TOKEN` as `limactl shell env`
 arguments. For the bundled cloudflared recipe, it writes the token to a mode `0600`
-guest temp file during `apply`, the recipe copies it into `/etc/cloudflared/dvm.env`,
+guest temp file during `sync`, the recipe copies it into `/etc/cloudflared/dvm.env`,
 and the temp file is removed.
 
 If you want host convenience, store the token in macOS Keychain yourself and pass it at
-apply time:
+sync time:
 
 ```bash
 security add-generic-password -a dvm -s cloudflared -w "$TOKEN"
 CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
-  dvm apply cloudflared
+  dvm sync cloudflared
 ```
 
 DVM does not provide a secret store command.
 
-`dvm logs llama` and `dvm logs cloudflared` show the default service units for those
+`dvm log llama` and `dvm log cloudflared` show the default service units for those
 dedicated VMs.
 
 ## Project Hook
@@ -237,7 +237,7 @@ dedicated VMs.
 After selected recipes run, DVM checks for this guest file:
 
 ```text
-$DVM_CODE_DIR/.dvm/apply.sh
+$DVM_CODE_DIR/.dvm/sync.sh
 ```
 
 If it exists, DVM runs it inside the VM. Use it for project-local setup that belongs in

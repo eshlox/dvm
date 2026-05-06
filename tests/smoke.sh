@@ -189,8 +189,8 @@ set -e
 grep -Fq 'missing VM template: missing-template' "$TMP/init-bad.err"
 rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
 
-"$ROOT/bin/dvm" apply app 2>"$TMP/apply.err"
-grep -Fq 'dvm: applying recipes for app: baseline zsh git helix lazygit starship fzf bat git-delta just tmux yazi node agent-user codex claude chezmoi' "$TMP/apply.err"
+"$ROOT/bin/dvm" sync app 2>"$TMP/apply.err"
+grep -Fq 'dvm: syncing recipes for app: baseline zsh git helix lazygit starship fzf bat git-delta just tmux yazi node agent-user codex claude chezmoi' "$TMP/apply.err"
 grep -Fq 'create dvm-app' "$TMP/state/log"
 grep -Fq 'start dvm-app' "$TMP/state/log"
 grep -Fq 'DVM_CODE_DIR=~/code/app' "$TMP/state/log"
@@ -240,7 +240,7 @@ grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
 bash -n "$TMP/state/guest.sh"
 
 : >"$TMP/state/log"
-CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" apply cloudflared
+CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" sync cloudflared
 grep -Fq 'dvm-cloudflared-token.' "$TMP/state/guest.sh"
 grep -Fq 'token_file="${DVM_CLOUDFLARED_TOKEN_FILE:-}"' "$TMP/state/guest.sh"
 grep -Fq 'ActiveEnterTimestamp' "$TMP/state/guest.sh"
@@ -254,15 +254,15 @@ if grep -Fq 'DVM_CLOUDFLARED_TOKEN=smoke.Token_123=-' "$TMP/state/log"; then
 fi
 
 perl -0pi -e 's/DVM_PORTS="3000:3000"/DVM_PORTS="3000:3000 9000:9000"/' "$TMP/config/vms/app.sh"
-"$ROOT/bin/dvm" apply app
+"$ROOT/bin/dvm" sync app
 grep -Fq 'edit --tty=false --set .portForwards' "$TMP/state/log"
 bash -n "$TMP/state/guest.sh"
 
-"$ROOT/bin/dvm" list >"$TMP/list.out"
+"$ROOT/bin/dvm" ls >"$TMP/list.out"
 grep -Eq '^NAME[[:space:]]+STATUS[[:space:]]+SSH' "$TMP/list.out"
 grep -Eq '^app[[:space:]]+Running[[:space:]]+127\.0\.0\.1:60022' "$TMP/list.out"
 if grep -Fq 'dvm-app' "$TMP/list.out"; then
-	printf 'dvm list leaked internal Lima prefix\n' >&2
+	printf 'dvm ls leaked internal Lima prefix\n' >&2
 	exit 1
 fi
 
@@ -322,7 +322,7 @@ mkdir -p "$TMP/state/dvm-race"
 cp "$TMP/state/lima.yaml" "$TMP/state/dvm-race/lima.yaml"
 grep -Fxq dvm-race "$TMP/state/created" || printf '%s\n' dvm-race >>"$TMP/state/created"
 touch "$TMP/state/list_empty_once"
-"$ROOT/bin/dvm" apply race
+"$ROOT/bin/dvm" sync race
 grep -Fq 'start dvm-race' "$TMP/state/log"
 grep -Fq 'shell dvm-race env ' "$TMP/state/log"
 rm -f "$TMP/config/vms/race.sh"
@@ -361,7 +361,7 @@ grep -Fq 'delete dvm-orphan' "$TMP/state/log"
 : >"$TMP/state/log"
 rm -f "$TMP/state/created"
 rm -rf "$TMP/state"/dvm-*
-"$ROOT/bin/dvm" apply --all >"$TMP/apply-all.out"
+"$ROOT/bin/dvm" sync --all >"$TMP/apply-all.out"
 grep -Fq 'create dvm-app' "$TMP/state/log"
 grep -Fq 'create dvm-second' "$TMP/state/log"
 if grep -F 'shell dvm-second ' "$TMP/state/log" | grep -Fq 'DVM_APP_ONLY='; then
@@ -369,10 +369,10 @@ if grep -F 'shell dvm-second ' "$TMP/state/log" | grep -Fq 'DVM_APP_ONLY='; then
 	exit 1
 fi
 
-"$ROOT/bin/dvm" logs cloudflared
+"$ROOT/bin/dvm" log cloudflared
 grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service --no-pager -n 100' "$TMP/state/log"
 
-"$ROOT/bin/dvm" logs cloudflared -f
+"$ROOT/bin/dvm" log cloudflared -f
 grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service -f' "$TMP/state/log"
 
 cat >"$TMP/config/vms/invalid.sh" <<'VM'
@@ -386,7 +386,7 @@ use python
 VM
 
 set +e
-"$ROOT/bin/dvm" apply invalid >/dev/null 2>"$TMP/invalid.err"
+"$ROOT/bin/dvm" sync invalid >/dev/null 2>"$TMP/invalid.err"
 status="$?"
 set -e
 [ "$status" -ne 0 ]
@@ -406,11 +406,11 @@ VM
 rm -f "$TMP/state/created"
 rm -rf "$TMP/state"/dvm-*
 set +e
-"$ROOT/bin/dvm" apply --all >"$TMP/apply-all-fail.out" 2>"$TMP/apply-all-fail.err"
+"$ROOT/bin/dvm" sync --all >"$TMP/apply-all-fail.out" 2>"$TMP/apply-all-fail.err"
 status="$?"
 set -e
 [ "$status" -ne 0 ]
-grep -Fq 'dvm: apply failed: bad' "$TMP/apply-all-fail.err"
-grep -Fq 'dvm apply --all:' "$TMP/apply-all-fail.out"
+grep -Fq 'dvm: sync failed: bad' "$TMP/apply-all-fail.err"
+grep -Fq 'dvm sync --all:' "$TMP/apply-all-fail.out"
 grep -Fq '1 failed' "$TMP/apply-all-fail.out"
 grep -Fq 'create dvm-second' "$TMP/state/log"

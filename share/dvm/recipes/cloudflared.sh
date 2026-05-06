@@ -56,8 +56,8 @@ if [ -z "$token" ]; then
 		cat <<HELP
 cloudflared installed.
 
-To configure the tunnel, pass a token at apply time:
-  CLOUDFLARED_TOKEN=... dvm apply "$DVM_NAME"
+To configure the tunnel, pass a token at sync time:
+  CLOUDFLARED_TOKEN=... dvm sync "$DVM_NAME"
 
 For a VM config, use:
   DVM_CLOUDFLARED_TOKEN="\${CLOUDFLARED_TOKEN:-}"

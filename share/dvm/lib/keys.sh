@@ -5,7 +5,7 @@ ssh_key_vm() {
 	name="${1:-}"
 	[ -n "$name" ] || die "ssh-key requires a VM name"
 	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
 	start_vm
 	limactl shell "$DVM_LIMA_NAME" env "DVM_NAME=$DVM_NAME" bash -s <<'DVM_SSH_KEY'
 set -euo pipefail
@@ -66,7 +66,7 @@ gpg_key_vm() {
 	name="${1:-}"
 	[ -n "$name" ] || die "gpg-key requires a VM name"
 	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm apply $name first"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
 	start_vm
 	limactl shell "$DVM_LIMA_NAME" env "DVM_NAME=$DVM_NAME" bash -s <<'DVM_GPG_KEY'
 set -euo pipefail

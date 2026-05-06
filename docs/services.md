@@ -2,7 +2,7 @@
 
 Long-running services should usually get dedicated VMs. That keeps project VMs small
 and lets other VMs reach services through Lima's internal names. Bundled service VM
-examples set `DVM_NO_BASELINE=1`, so service applies install only the service recipe.
+examples set `DVM_NO_BASELINE=1`, so service syncs install only the service recipe.
 
 ## Llama
 
@@ -10,7 +10,7 @@ Create an active config:
 
 ```bash
 dvm init llama llama
-dvm apply llama
+dvm sync llama
 ```
 
 Optional model download:
@@ -34,7 +34,7 @@ If no model URL is configured, place a model at:
 inside the llama VM, then run:
 
 ```bash
-dvm apply llama
+dvm sync llama
 ```
 
 Other VMs can call:
@@ -55,7 +55,7 @@ curl http://lima-dvm-llama.internal:8080
 Logs:
 
 ```bash
-dvm logs llama
+dvm log llama
 ```
 
 ## Cloudflared
@@ -64,13 +64,13 @@ Create an active config:
 
 ```bash
 dvm init cloudflared cloudflared
-CLOUDFLARED_TOKEN="..." dvm apply cloudflared
+CLOUDFLARED_TOKEN="..." dvm sync cloudflared
 ```
 
 The example config maps `CLOUDFLARED_TOKEN` to `DVM_CLOUDFLARED_TOKEN`. The recipe
 writes `/etc/cloudflared/dvm.env` with mode `0600` when a token is present and starts
 `dvm-cloudflared.service`. DVM stages that token through a mode `0600` guest temp file
-during `apply`, so the token is not passed as a `limactl shell env` argument on the
+during `sync`, so the token is not passed as a `limactl shell env` argument on the
 host.
 
 For host convenience, use macOS Keychain yourself:
@@ -78,7 +78,7 @@ For host convenience, use macOS Keychain yourself:
 ```bash
 security add-generic-password -a dvm -s cloudflared -w "$TOKEN"
 CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
-  dvm apply cloudflared
+  dvm sync cloudflared
 ```
 
 DVM does not have a secret command. Rotate the token in Cloudflare if the VM is
@@ -86,13 +86,13 @@ compromised.
 
 ## Logs
 
-DVM has a logs helper for service VMs:
+DVM has a log helper for service VMs:
 
 ```bash
-dvm logs cloudflared
-dvm logs cloudflared -f
-dvm logs cloudflared dvm-cloudflared.service -f
-dvm logs llama
+dvm log cloudflared
+dvm log cloudflared -f
+dvm log cloudflared dvm-cloudflared.service -f
+dvm log llama
 ```
 
 If a VM has no known service recipe or more than one, pass the systemd unit explicitly.

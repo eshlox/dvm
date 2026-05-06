@@ -55,7 +55,7 @@ Wrappers are installed in `/usr/local/bin`, clamp the host-side working director
 Authenticate inside the VM:
 
 ```bash
-dvm enter app
+dvm sh app
 codex
 claude
 opencode
@@ -72,7 +72,7 @@ GPG keys, and common token/config paths are not mounted into the sandbox.
 
 Project ACLs are set recursively and as defaults on directories under `DVM_CODE_DIR`.
 Files created by the VM user or by AI tools should remain editable by both sides. Re-run
-`dvm apply <name>` if project permissions are changed manually or restored from an
+`dvm sync <name>` if project permissions are changed manually or restored from an
 archive.
 
 Set these in a VM config when you want tool-native approval prompts and sandboxing:
@@ -94,14 +94,14 @@ claude --permission-mode plan
 Re-run recipes to update AI tools:
 
 ```bash
-dvm apply app
-dvm apply --all
+dvm sync app
+dvm sync --all
 ```
 
 `codex` and `opencode` install `@latest` from npm. `mistral` runs `uv tool upgrade`.
 `claude` uses Anthropic's `latest` RPM channel and runs `dnf5 --refresh upgrade
 claude-code`. If Claude reports a version before the RPM repository publishes it, wait
-and re-run `dvm apply`.
+and re-run `dvm sync`.
 
 ## Security Practice
 
@@ -109,4 +109,4 @@ and re-run `dvm apply`.
 - Keep project secrets out of dotfiles.
 - Prefer repo-scoped keys or service tokens over account-wide credentials.
 - Treat AI output as untrusted code until reviewed.
-- Re-run `dvm apply app` after recipe changes.
+- Re-run `dvm sync app` after recipe changes.
