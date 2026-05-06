@@ -224,7 +224,6 @@ load_vm() {
 	DVM_NAME="$name"
 	DVM_LIMA_NAME="${DVM_LIMA_NAME:-dvm-$name}"
 	DVM_CODE_ROOT="${DVM_CODE_ROOT:-~/code}"
-	DVM_CODE_DIR="${DVM_CODE_DIR:-${DVM_CODE_ROOT%/}/$name}"
 	DVM_PORTS="${DVM_PORTS:-}"
 	DVM_ARCH="${DVM_ARCH:-default}"
 	DVM_AI_AGENT_USER="${DVM_AI_AGENT_USER:-dvm-agent}"

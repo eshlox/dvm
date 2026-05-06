@@ -10,7 +10,10 @@ case "$code_dir" in
 	"~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
 esac
 [ -d "$code_dir" ] || exit 0
-command -v git >/dev/null 2>&1 || exit 0
+if ! command -v git >/dev/null 2>&1; then
+	printf 'dvm: dirty check skipped: git not installed in VM\n' >&2
+	exit 2
+fi
 dirty=0
 while IFS= read -r git_entry; do
 	if [ -d "$git_entry" ]; then
@@ -80,7 +83,14 @@ rm_vm() {
 		fi
 	fi
 	if [ "$force" != "1" ] && vm_exists && [ -f "$vm_file" ]; then
-		dirty_check_vm || die "refusing to delete $DVM_LIMA_NAME; commit/stash changes or pass --force"
+		local rc=0
+		dirty_check_vm || rc=$?
+		case "$rc" in
+		0) ;;
+		1) die "refusing to delete $DVM_LIMA_NAME; commit/stash changes or pass --force" ;;
+		2) die "refusing to delete $DVM_LIMA_NAME; dirty check incomplete (see warning above), pass --force to skip" ;;
+		*) die "refusing to delete $DVM_LIMA_NAME; dirty check failed with status $rc, pass --force to skip" ;;
+		esac
 	elif [ "$force" != "1" ] && [ "$orphan" = "1" ]; then
 		printf 'dvm: warning: dirty check skipped because DVM config is missing: %s\n' "$vm_file" >&2
 	fi

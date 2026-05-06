@@ -103,7 +103,7 @@ failed state after confirming the logs:
 dvm ssh app -- sudo systemctl reset-failed cloud-final.service cloud-init-main.service
 ```
 
-If Lima briefly misses an existing instance during `apply`, `ssh`, `enter`, or other DVM
+If Lima briefly misses an existing instance during `sync`, `ssh`, `sh`, or other DVM
 commands, DVM also checks the local Lima instance directory before deciding the VM is
 missing. If that local directory exists but `limactl start` cannot start it, DVM reports
 the likely stale instance directory path so you can inspect or remove it.

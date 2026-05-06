@@ -298,21 +298,21 @@ default_log_unit() {
 logs_vm() {
 	local name unit
 	name="${1:-}"
-	[ -n "$name" ] || die "logs requires a VM name"
+	[ -n "$name" ] || die "log requires a VM name"
 	shift || true
 	load_vm "$name"
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
 	start_vm
 	if [ "$#" -gt 0 ]; then
 		case "$1" in
-		-*) unit="$(default_log_unit)" || die "logs requires a unit when the VM has zero or multiple known service recipes" ;;
+		-*) unit="$(default_log_unit)" || die "log requires a unit when the VM has zero or multiple known service recipes" ;;
 		*)
 			unit="$1"
 			shift
 			;;
 		esac
 	else
-		unit="$(default_log_unit)" || die "logs requires a unit when the VM has zero or multiple known service recipes"
+		unit="$(default_log_unit)" || die "log requires a unit when the VM has zero or multiple known service recipes"
 	fi
 	if [ "$#" -eq 0 ]; then
 		set -- --no-pager -n 100

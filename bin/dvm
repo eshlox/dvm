@@ -44,23 +44,28 @@ main() {
 	local cmd="${1:-help}"
 	[ "$#" -eq 0 ] || shift
 	case "$cmd" in
-	init) init_vm "$@" ;;
-	sync)
-		case "${1:-}" in
-		--all) apply_all ;;
-		'') die "sync requires a VM name or --all" ;;
-		*) apply_one "$1" ;;
+	init)
+		case "$#" in
+		1 | 2) init_vm "$@" ;;
+		*) die "init takes <name> [template]" ;;
 		esac
 		;;
-	sh) [ -n "${1:-}" ] || die "sh requires a VM name"; enter_vm "$1" ;;
+	sync)
+		case "${1:-}" in
+		--all) [ "$#" -eq 1 ] || die "sync --all takes no other arguments"; apply_all ;;
+		'') die "sync requires a VM name or --all" ;;
+		*) [ "$#" -eq 1 ] || die "sync takes one VM name"; apply_one "$1" ;;
+		esac
+		;;
+	sh) [ "$#" -eq 1 ] || die "sh takes one VM name"; enter_vm "$1" ;;
 	ssh) [ -n "${1:-}" ] || die "ssh requires a VM name"; ssh_vm "$@" ;;
 	cp) cp_vm "$@" ;;
-	log) logs_vm "$@" ;;
-	ssh-key) ssh_key_vm "$@" ;;
-	gpg-key) gpg_key_vm "$@" ;;
-	ls) list_vms ;;
-	stop) stop_vm "$@" ;;
-	rm) rm_vm "$@" ;;
+	log) [ "$#" -ge 1 ] || die "log requires a VM name"; logs_vm "$@" ;;
+	ssh-key) [ "$#" -eq 1 ] || die "ssh-key takes one VM name"; ssh_key_vm "$@" ;;
+	gpg-key) [ "$#" -eq 1 ] || die "gpg-key takes one VM name"; gpg_key_vm "$@" ;;
+	ls) [ "$#" -eq 0 ] || die "ls takes no arguments"; list_vms ;;
+	stop) [ "$#" -eq 1 ] || die "stop takes one VM name"; stop_vm "$@" ;;
+	rm) [ "$#" -ge 1 ] || die "rm requires a VM name"; rm_vm "$@" ;;
 	help | -h | --help) usage ;;
 	*) usage >&2; die "unknown command: $cmd" ;;
 	esac
