@@ -129,7 +129,18 @@ dvm log cloudflared -f
 The cloudflared token is staged through a mode `0600` guest temp file during `sync`
 instead of being passed as a `limactl shell env` argument.
 
-Tailscale Funnel VM (publish a local service at a public `*.ts.net` URL on demand):
+Tailscale supports two patterns:
+
+**Private dev access** — reach app VMs by hostname from your Mac without
+juggling host ports. Add `use tailscale` to each app VM and sync:
+
+```bash
+TAILSCALE_AUTH_KEY="tskey-..." dvm sync fida
+# then from the host browser: http://fida:5173
+```
+
+**Public Funnel URLs** — publish a local service at a public `*.ts.net` URL
+on demand:
 
 ```bash
 # One-time: create the VM and join your tailnet
@@ -147,7 +158,8 @@ dvm sync tailscale
 Funnel is OFF by default; the recipe resets it on every sync, so leaving the
 target unset turns it off. Auth keys get the same mode `0600` guest temp-file
 handling as Cloudflare tokens. See [docs/services.md](docs/services.md#tailscale)
-for the Funnel ACL prerequisite and full walkthrough.
+for both patterns, the Funnel ACL prerequisite, and auth-key sourcing options
+(global config, env var, or macOS Keychain).
 
 ## Recipes
 
