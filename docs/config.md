@@ -62,9 +62,8 @@ dvm init myapp
 dvm sync myapp
 ```
 
-`dvm init` writes a fully commented template that lists every recipe (auto-detected
-from `share/dvm/recipes` and `~/.config/dvm/recipes`) and shows host CPU/memory limits.
-Uncomment what you need:
+`dvm init` writes a fully commented template that shows host CPU/memory limits and
+calls `use_tools` (the helper defined in global config). Uncomment what you need:
 
 ```bash
 # DVM_CPUS=4          # default 2 (host max: 14)
@@ -73,13 +72,16 @@ Uncomment what you need:
 # DVM_CODE_DIR="~/code/$DVM_NAME"
 # DVM_PORTS="3000:3000 5173:5173"
 
-# use node         # Node.js, npm, corepack
-# use python       # Python and uv
-# use agent-user   # dvm-agent user with Bubblewrap sandbox for AI tools
-# use codex        # Codex CLI
-# use claude       # Claude Code CLI
-# use chezmoi      # public dotfiles via chezmoi over HTTPS
+use_tools
 ```
+
+## Toolsets via Helpers
+
+`share/dvm/config.sh` ships a `use_tools` function with every general-purpose recipe
+listed and commented out. Uncomment the recipes you want every app VM to install.
+Define more helpers (`use_data_tools`, `use_ml_tools`, …) for groups of VMs and call
+them from per-VM configs. Service recipes (`llama`, `cloudflared`) are not in
+`use_tools`; they belong in their dedicated VM templates.
 
 ## Variables
 

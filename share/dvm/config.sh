@@ -31,3 +31,30 @@
 # DVM_CHEZMOI_EMAIL="you@example.com"
 # DVM_CHEZMOI_SIGNING_KEY="~/.ssh/id_ed25519_dvm_signing.pub"
 # DVM_CHEZMOI_DEPLOY_KEY="~/.ssh/id_ed25519_dvm.pub"
+
+# Default toolset shared across app VMs. The bundled VM template calls
+# `use_tools`, so any recipe uncommented here is installed in every VM that
+# keeps that call. Define more helpers (e.g. `use_data_tools`) and call them
+# from per-VM configs to mix and match.
+use_tools() {
+	: # placeholder; remove once at least one `use` line below is uncommented
+	# use zsh         # zsh shell (sets as login shell)
+	# use git         # git
+	# use helix       # Helix editor
+	# use lazygit     # lazygit TUI
+	# use starship    # starship prompt
+	# use fzf         # fzf fuzzy finder
+	# use bat         # bat (cat with syntax highlighting)
+	# use git-delta   # delta diff pager
+	# use just        # just task runner
+	# use tmux        # tmux terminal multiplexer
+	# use yazi        # yazi file manager
+	# use node        # Node.js, npm, corepack
+	# use python      # Python and uv
+	# use agent-user  # dvm-agent user with Bubblewrap sandbox for AI tools
+	# use codex       # Codex CLI
+	# use claude      # Claude Code CLI
+	# use opencode    # OpenCode CLI
+	# use mistral     # Mistral CLI
+	# use chezmoi     # public dotfiles via chezmoi over HTTPS
+}

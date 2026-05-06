@@ -85,9 +85,11 @@ dvm init app
 
 `dvm init` writes a fully commented template; uncomment what you need. Defaults are
 `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`, `DVM_CODE_DIR=~/code/$DVM_NAME`,
-empty `DVM_PORTS`. The template also lists every available recipe (auto-detected from
-bundled and user recipes) with a one-line description, and shows the host's CPU and
-memory ceilings as inline comments.
+empty `DVM_PORTS`. The template shows the host's CPU and memory ceilings as inline
+comments and calls `use_tools`, a helper defined in your global config that holds the
+recipes shared across every app VM. Edit `~/.config/dvm/config.sh` once to choose
+your toolset; new VMs pick it up automatically. Per-VM configs can add extra
+recipes, define more helpers, or comment the `use_tools` line for a minimal VM.
 
 `~` in DVM variables means the guest user's home. Host project directories are not
 mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting

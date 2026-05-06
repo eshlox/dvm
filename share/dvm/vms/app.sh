@@ -13,5 +13,8 @@
 # Forwarded host:guest ports, space-separated. Empty by default.
 # DVM_PORTS="3000:3000 5173:5173"
 
-# Available recipes. Uncomment to enable.
-__DVM_AVAILABLE_RECIPES__
+# Default toolset (defined in ~/.config/dvm/config.sh). Comment the line below
+# for a minimal VM, or define more helpers globally and call them here.
+use_tools
+
+# Per-VM additions go below.
