@@ -178,14 +178,9 @@ grep -Fq 'dvm init <name> [template]' "$TMP/install-help.out"
 "$ROOT/bin/dvm" init newapp
 [ -f "$TMP/config/vms/newapp.sh" ]
 grep -Fq 'DVM_CODE_DIR="~/code/$DVM_NAME"' "$TMP/config/vms/newapp.sh"
-grep -Fq '# use chezmoi' "$TMP/config/vms/newapp.sh"
-grep -Fq '# use node' "$TMP/config/vms/newapp.sh"
+grep -Eq '^use_tools$' "$TMP/config/vms/newapp.sh"
 if grep -Fq '__DVM_HOST_MAX_CPUS__' "$TMP/config/vms/newapp.sh"; then
 	printf 'init left __DVM_HOST_MAX_CPUS__ placeholder unsubstituted\n' >&2
-	exit 1
-fi
-if grep -Fq '__DVM_AVAILABLE_RECIPES__' "$TMP/config/vms/newapp.sh"; then
-	printf 'init left __DVM_AVAILABLE_RECIPES__ placeholder unsubstituted\n' >&2
 	exit 1
 fi
 "$ROOT/bin/dvm" init llama llama

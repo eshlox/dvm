@@ -62,9 +62,8 @@ dvm init myapp
 dvm sync myapp
 ```
 
-`dvm init` writes a fully commented template that lists every recipe (auto-detected
-from `share/dvm/recipes` and `~/.config/dvm/recipes`) and shows host CPU/memory limits.
-Uncomment what you need:
+`dvm init` writes a fully commented template that shows host CPU/memory limits and
+calls `use_tools` (the helper defined in global config). Uncomment what you need:
 
 ```bash
 # DVM_CPUS=4          # default 2 (host max: 14)
@@ -72,15 +71,17 @@ Uncomment what you need:
 # DVM_DISK=80GiB      # default 10GiB
 # DVM_CODE_DIR="~/code/$DVM_NAME"
 # DVM_PORTS="3000:3000 5173:5173"
-# DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 
-# use node         # Node.js, npm, corepack
-# use python       # Python and uv
-# use agent-user   # dvm-agent user with Bubblewrap sandbox for AI tools
-# use codex        # Codex CLI
-# use claude       # Claude Code CLI
-# use chezmoi      # public dotfiles via chezmoi over HTTPS
+use_tools
 ```
+
+## Toolsets via Helpers
+
+`share/dvm/config.sh` ships a `use_tools` function with every general-purpose recipe
+listed and commented out. Uncomment the recipes you want every app VM to install.
+Define more helpers (`use_data_tools`, `use_ml_tools`, …) for groups of VMs and call
+them from per-VM configs. Service recipes (`llama`, `cloudflared`) are not in
+`use_tools`; they belong in their dedicated VM templates.
 
 ## Variables
 
@@ -102,12 +103,14 @@ Uncomment what you need:
   Set `DVM_CLAUDE_BYPASS=0` to leave Claude permission prompts enabled.
 - `DVM_COREPACK_VERSION`: Corepack npm package version for the `node` recipe, normally
   `0.34.0`.
-- `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo.
+- `DVM_CHEZMOI_REPO`: public HTTPS dotfiles repo. Required when any VM uses the
+  `chezmoi` recipe. Usually set in global config; per-VM config can override.
 - `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, `DVM_CHEZMOI_EMAIL`: optional shared chezmoi
-  `[data]` values.
-- `DVM_CHEZMOI_SIGNING_KEY`, `DVM_CHEZMOI_DEPLOY_KEY`: optional per-VM chezmoi
-  `[data]` key path overrides. When unset, generated chezmoi data uses
-  `~/.ssh/id_ed25519_dvm_signing.pub` and `~/.ssh/id_ed25519_dvm.pub`.
+  `[data]` values. Usually set in global config; per-VM config can override.
+- `DVM_CHEZMOI_SIGNING_KEY`, `DVM_CHEZMOI_DEPLOY_KEY`: optional chezmoi `[data]` key
+  path overrides. Usually set in global config when `dvm ssh-key` is configured with
+  custom key names; per-VM config can override. When unset, generated chezmoi data
+  uses `~/.ssh/id_ed25519_dvm_signing.pub` and `~/.ssh/id_ed25519_dvm.pub`.
 - `DVM_CHEZMOI_CONFIG_TOML`: optional full chezmoi config written to
   `~/.config/chezmoi/chezmoi.toml`; when set, it takes over the generated chezmoi data
   config rather than merging with it.

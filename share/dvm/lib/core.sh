@@ -141,43 +141,12 @@ host_max_memory() {
 	printf '?\n'
 }
 
-available_recipes_block() {
-	local file name desc dir
-	{
-		for dir in "$DVM_SHARE/recipes" "$DVM_CONFIG/recipes"; do
-			[ -d "$dir" ] || continue
-			for file in "$dir"/*.sh; do
-				[ -f "$file" ] || continue
-				name="$(basename "$file" .sh)"
-				case "$name" in
-				_* | baseline) continue ;;
-				esac
-				printf '%s\n' "$name"
-			done
-		done
-	} | sort -u | while IFS= read -r name; do
-		file="$DVM_CONFIG/recipes/$name.sh"
-		[ -f "$file" ] || file="$DVM_SHARE/recipes/$name.sh"
-		desc="$(awk '/^# Description:/ {sub(/^# Description: */, ""); print; exit}' "$file" 2>/dev/null || true)"
-		if [ -n "$desc" ]; then
-			printf '# use %-12s # %s\n' "$name" "$desc"
-		else
-			printf '# use %s\n' "$name"
-		fi
-	done
-}
-
 render_vm_template() {
 	local src="$1" dst="$2"
-	local max_cpus max_memory recipes_block line
+	local max_cpus max_memory line
 	max_cpus="$(host_max_cpus)"
 	max_memory="$(host_max_memory)"
-	recipes_block="$(available_recipes_block)"
 	while IFS= read -r line || [ -n "$line" ]; do
-		if [ "$line" = "__DVM_AVAILABLE_RECIPES__" ]; then
-			printf '%s\n' "$recipes_block"
-			continue
-		fi
 		case "$line" in
 		*__DVM_HOST_MAX_CPUS__*) line="${line//__DVM_HOST_MAX_CPUS__/$max_cpus}" ;;
 		esac

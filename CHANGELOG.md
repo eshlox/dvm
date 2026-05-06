@@ -9,11 +9,16 @@
   `DVM_USER=${USER:-developer}`. Bundled `share/dvm/config.sh` is now fully
   commented; uncomment values to override defaults.
 - Changed `dvm init` to render the bundled VM template, substituting host CPU/memory
-  ceilings into inline comments and listing every available recipe (auto-detected
-  from `share/dvm/recipes` and `~/.config/dvm/recipes`) commented out by default.
+  ceilings into inline comments.
+- Added a `use_tools` helper in `share/dvm/config.sh`. The bundled VM template calls
+  it, so every general-purpose recipe (excluding service recipes like `llama` and
+  `cloudflared`) is selected from a single global location. Define more helpers
+  (`use_data_tools`, …) and mix them per VM as needed.
 - Rewrote `share/dvm/vms/app.sh` as a fully commented self-documenting template.
-- Added `# Description: <one line>` to bundled recipes so `dvm init` can show them in
-  the available-recipes block.
+- Added `# Description: <one line>` to bundled recipes as a one-liner docstring.
+- Moved `DVM_CHEZMOI_REPO`, `DVM_CHEZMOI_SIGNING_KEY`, and `DVM_CHEZMOI_DEPLOY_KEY` to
+  global config; per-VM config only opts in via `use chezmoi` (per-VM override still
+  works through the source order).
 - Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
 - Added VM config validation before Lima template rendering for VM names, users, sizing,
   code directories, host IPs, and port forwards.

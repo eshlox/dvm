@@ -9,23 +9,26 @@ for public dotfiles. If dotfiles must be private, add a separate SSH recipe late
 
 ## Config
 
+Put chezmoi settings in global config (`~/.config/dvm/config.sh`) since the dotfiles
+identity is usually the same across every VM. A per-VM config can still override any
+of these when needed (per-VM config sources last and wins).
+
 ```bash
 DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
+DVM_CHEZMOI_ROLE="vm"
+DVM_CHEZMOI_NAME="Your Name"
+DVM_CHEZMOI_EMAIL="you@example.com"
+```
 
+Then opt VMs in via the per-VM config:
+
+```bash
 use chezmoi
 ```
 
 The recipe installs `chezmoi`, writes `~/.config/chezmoi/chezmoi.toml` through a
 temporary file when configured, initializes `~/.local/share/chezmoi` when missing,
 pulls updates when already initialized, and runs `chezmoi apply`.
-
-For common dotfiles template data, put shared identity values in global DVM config:
-
-```bash
-DVM_CHEZMOI_ROLE="vm"
-DVM_CHEZMOI_NAME="Your Name"
-DVM_CHEZMOI_EMAIL="you@example.com"
-```
 
 The generated data uses the default key paths created by `dvm ssh-key <name>`:
 
@@ -34,7 +37,8 @@ signingKey = "~/.ssh/id_ed25519_dvm_signing.pub"
 deployKey = "~/.ssh/id_ed25519_dvm.pub"
 ```
 
-Override the paths in VM config only when you use custom key names:
+Override (in global config, or per-VM if a single VM needs different keys) only when
+`dvm ssh-key` is configured with custom names:
 
 ```bash
 DVM_CHEZMOI_SIGNING_KEY="~/.ssh/id_ed25519_project_signing.pub"

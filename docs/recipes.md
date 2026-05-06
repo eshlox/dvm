@@ -6,8 +6,10 @@ that boundary clear.
 ## Host Config
 
 Host config lives in `~/.config/dvm/vms/<name>.sh`. `dvm init` writes a fully commented
-template (built-in defaults: `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`).
-Uncomment what you need:
+template (built-in defaults: `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`) that
+calls `use_tools`, a helper defined in `~/.config/dvm/config.sh`. Uncomment recipes
+in `use_tools` once and every app VM picks them up. Per-VM configs can add extra
+`use <name>` lines for VM-specific recipes:
 
 ```bash
 # DVM_CPUS=4          # default 2 (host max shown in template)
@@ -15,9 +17,8 @@ Uncomment what you need:
 # DVM_CODE_DIR="~/code/$DVM_NAME"
 # DVM_PORTS="3000:3000"
 
-# use node         # Node.js, npm, corepack
-# use agent-user   # dvm-agent user with Bubblewrap sandbox for AI tools
-# use codex        # Codex CLI
+use_tools
+use codex   # extra recipe just for this VM
 ```
 
 `use <name>` only selects `recipes/<name>.sh`; it does not run the recipe on the host.
@@ -43,8 +44,7 @@ Rules:
 - Use `DVM_CODE_DIR` for project code.
 - Keep tool-specific config close to the recipe that uses it.
 - Do not add recipe metadata, dependency graphs, registries, or versioning.
-- Add `# Description: <one line>` near the top of a recipe so `dvm init` shows it in
-  the auto-generated "available recipes" comment block.
+- Add `# Description: <one line>` near the top of a recipe as a one-liner docstring.
 
 ## Built-In Recipes
 
@@ -172,16 +172,16 @@ $DVM_CODE_DIR/.dvm/sync.sh
 
 That hook runs after baseline and selected recipes, inside the guest.
 
-`chezmoi` applies public dotfiles over HTTPS:
+`chezmoi` applies public dotfiles over HTTPS. Put `DVM_CHEZMOI_REPO` and the optional
+identity values in `~/.config/dvm/config.sh` (they are the same across all VMs); the
+per-VM config only opts in:
 
 ```bash
-DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
 use chezmoi
 ```
 
-Shared chezmoi template data such as `DVM_CHEZMOI_ROLE`, `DVM_CHEZMOI_NAME`, and
-`DVM_CHEZMOI_EMAIL` usually belongs in `~/.config/dvm/config.sh`; generated key data
-uses the default paths from `dvm ssh-key <name>` unless overridden globally or per VM.
+Generated key data uses the default paths from `dvm ssh-key <name>` unless
+`DVM_CHEZMOI_SIGNING_KEY` / `DVM_CHEZMOI_DEPLOY_KEY` are set in global config.
 
 `llama` installs the llama service. Configure a dedicated VM:
 
