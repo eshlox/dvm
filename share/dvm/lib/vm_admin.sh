@@ -77,6 +77,137 @@ stop_vm() {
 	limactl stop "$DVM_LIMA_NAME"
 }
 
+stop_command() {
+	local all force inactive name
+	all=0
+	force=0
+	inactive=0
+	name=""
+	[ "$#" -gt 0 ] || die "stop requires a VM name, --all, or --inactive"
+	while [ "$#" -gt 0 ]; do
+		case "$1" in
+		--all) all=1 ;;
+		--inactive)
+			all=1
+			inactive=1
+			;;
+		--force | -f) force=1 ;;
+		--*) die "unknown stop option: $1" ;;
+		*)
+			[ -z "$name" ] || die "stop takes one VM name"
+			name="$1"
+			;;
+		esac
+		shift
+	done
+	if [ "$all" = "1" ]; then
+		[ -z "$name" ] || die "stop --all does not take a VM name"
+		stop_all_vms "$inactive" "$force"
+		return
+	fi
+	[ "$force" = "0" ] || die "stop <name> does not take --force"
+	stop_vm "$name"
+}
+
+vm_inactive_probe() {
+	local lima_name="$1"
+	limactl shell "$lima_name" bash -s <<'DVM_ACTIVITY_PROBE'
+set -euo pipefail
+
+# dvm activity probe
+uid="$(id -u)"
+reasons=()
+
+add_reason() {
+	reasons+=("$1")
+}
+
+if command -v pgrep >/dev/null 2>&1; then
+	if pgrep -u "$uid" -f '(^|/|[[:space:]])tmux([[:space:]:]|$)' >/dev/null 2>&1; then
+		add_reason tmux
+	fi
+	if pgrep -u "$uid" -f '(^|/|[[:space:]])zellij([[:space:]]|$)' >/dev/null 2>&1; then
+		add_reason zellij
+	fi
+elif ps -u "$uid" -o comm= 2>/dev/null | awk '$1 == "tmux" || $1 == "zellij" { found = 1 } END { exit found ? 0 : 1 }'; then
+	add_reason multiplexer
+fi
+
+if ps -u "$uid" -o pid=,tty=,comm= 2>/dev/null | awk -v self="$$" '
+	$1 == self { next }
+	$2 != "?" && $3 ~ /^(bash|zsh|fish|sh|ksh)$/ { found = 1 }
+	END { exit found ? 0 : 1 }
+'; then
+	add_reason shell
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+	for unit in dvm-cloudflared.service dvm-llama.service tailscaled.service; do
+		if systemctl is-active --quiet "$unit" 2>/dev/null; then
+			add_reason "$unit"
+		fi
+	done
+fi
+
+if [ "${#reasons[@]}" -gt 0 ]; then
+	printf 'active:'
+	printf ' %s' "${reasons[@]}"
+	printf '\n'
+	exit 1
+fi
+
+printf 'inactive\n'
+DVM_ACTIVITY_PROBE
+}
+
+stop_all_vms() {
+	local activity failed force inactive listing name ok rc skipped status
+	inactive="${1:-0}"
+	force="${2:-0}"
+	ok=0
+	failed=0
+	skipped=0
+	listing="$(limactl list --format '{{.Name}} {{.Status}}')"
+	while read -r name status _; do
+		case "$name" in
+		dvm-*) ;;
+		*) continue ;;
+		esac
+		if [ "$status" = "Stopped" ]; then
+			skipped=$((skipped + 1))
+			continue
+		fi
+		if [ "$inactive" = "1" ]; then
+			activity="$(vm_inactive_probe "$name" 2>&1)" && rc=0 || rc=$?
+			case "$rc" in
+			0) ;;
+			1)
+				printf 'dvm: skipping active VM: %s (%s)\n' "$name" "$activity" >&2
+				skipped=$((skipped + 1))
+				continue
+				;;
+			*)
+				if [ "$force" = "1" ]; then
+					printf 'dvm: inactive check failed for %s; forcing stop\n' "$name" >&2
+				else
+					printf 'dvm: inactive check failed for %s: %s\n' "$name" "$activity" >&2
+					failed=$((failed + 1))
+					continue
+				fi
+				;;
+			esac
+		fi
+		if limactl stop "$name"; then
+			ok=$((ok + 1))
+		else
+			printf 'dvm: stop failed: %s\n' "$name" >&2
+			failed=$((failed + 1))
+		fi
+	done <<<"$listing"
+	printf 'dvm stop --all: %s stopped, %s skipped, %s failed\n' "$ok" "$skipped" "$failed"
+	[ "$failed" -eq 0 ]
+}
+
 rm_vm() {
 	local force name orphan vm_file yes
 	name="${1:-}"

@@ -6,6 +6,25 @@ DVM keeps the command surface small. Most day-to-day work should still be `sync`
 Use public project names in DVM commands: `app`, `eshlox-net`, `llama`. The `dvm-`
 prefix is reserved for internal Lima instance names.
 
+## Zsh Completion
+
+DVM ships an opt-in zsh completion file in the repo:
+
+```zsh
+# ~/.zshrc
+fpath=(/path/to/dvm/share/dvm/completions $fpath)
+autoload -Uz compinit
+compinit
+```
+
+Zsh loads completion functions from directories in `fpath`, so the path points to the
+`completions` directory, not directly to `_dvm`. If your `~/.zshrc` already runs
+`compinit`, add only the `fpath=...` line above the existing `compinit` call.
+
+The completion includes DVM commands, command options, VM names from
+`$DVM_CONFIG/vms/*.sh`, DVM Lima instances from `limactl list`, and bundled `init`
+templates.
+
 ## Init
 
 ```bash
@@ -136,9 +155,29 @@ internal `dvm-` prefix and are aligned for terminal output.
 
 ```bash
 dvm stop app
+dvm stop --all
+dvm stop --all --inactive
+dvm stop --inactive
+dvm stop --inactive --force
 ```
 
-Stops the Lima VM.
+`stop <name>` stops one Lima VM.
+
+`stop --all` stops every DVM-managed Lima instance listed with the internal `dvm-`
+prefix, including instances whose DVM config was later removed. It releases VM memory
+without deleting disks or config.
+
+`stop --inactive` is shorthand for `stop --all --inactive`. It probes each running
+DVM VM and stops only VMs without a detected interactive shell, `tmux` process,
+`zellij` process, or active known DVM service unit (`dvm-cloudflared.service`,
+`dvm-llama.service`, `tailscaled.service`). This is intentionally conservative; it
+does not prove that arbitrary background jobs or dev servers are idle unless they are
+inside one of those detected sessions or services.
+
+Bulk stop commands skip already stopped instances, report failures, and exit non-zero
+if any VM failed to stop. With `--inactive`, active instances are skipped too, and
+`--force` stops a VM when the activity probe fails; VMs that are successfully detected
+as active are still skipped. To stop active VMs too, use plain `dvm stop --all`.
 
 ## Remove
 
