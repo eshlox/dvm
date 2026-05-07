@@ -52,6 +52,7 @@ use_tools() {
 	# use git-delta   # delta diff pager
 	# use just        # just task runner
 	# use tmux        # tmux terminal multiplexer
+	# use zellij      # Zellij terminal multiplexer
 	# use yazi        # yazi file manager
 	# use node        # Node.js, npm, corepack
 	# use python      # Python and uv
