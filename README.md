@@ -33,6 +33,17 @@ from a temporary snapshot of `bin/dvm` and its shell libraries, so editing or pu
 this repo cannot corrupt a long-running `dvm sync`. Bundled recipes, the Lima
 template, and example VM configs stay in the repo under `share/dvm`.
 
+For zsh completion, add the in-repo completion directory before `compinit` in
+`~/.zshrc`:
+
+```zsh
+fpath=(/path/to/dvm/share/dvm/completions $fpath)
+autoload -Uz compinit
+compinit
+```
+
+If your `~/.zshrc` already runs `compinit`, add only the `fpath=...` line above it.
+
 ## Commands
 
 ```bash

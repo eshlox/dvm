@@ -88,6 +88,7 @@ init_config() {
 		rel="${file#"$src"/}"
 		case "$rel" in
 		lima.yaml.in) ;;
+		completions/*) ;;
 		lib/*) ;;
 		recipes/*) ;;
 		vms/*) ;;

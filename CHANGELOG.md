@@ -30,6 +30,8 @@
   disks and config, plus `dvm stop --inactive` / `dvm stop --all --inactive` for
   stopping only VMs without a detected active shell, `tmux`/`zellij`, or known DVM
   service unit.
+- Added an opt-in zsh completion file at `share/dvm/completions/_dvm` for commands,
+  options, VM names, and bundled `init` templates.
 - Tightened `dvm rm` dirty check: when `git` is not installed in the guest, the
   check now exits with status 2 and refuses to delete the VM unless `--force` is
   passed. Previously the check exited cleanly when `git` was absent, allowing

@@ -209,8 +209,21 @@ grep -Fxq old-target "$TMP/old-dvm"
 grep -Fq 'dvm-run.' "$TMP/install-bin/dvm"
 grep -Fq 'DVM_LIB_DIR="$tmp_parent/lib"' "$TMP/install-bin/dvm"
 [ ! -e "$TMP/install-config/lib" ]
+[ ! -e "$TMP/install-config/completions" ]
 "$TMP/install-bin/dvm" help >"$TMP/install-help.out"
 grep -Fq 'dvm init <name> [template]' "$TMP/install-help.out"
+
+completion="$ROOT/share/dvm/completions/_dvm"
+[ -f "$completion" ]
+grep -Fq '#compdef dvm' "$completion"
+grep -Fq 'DVM_CONFIG:-$HOME/.config/dvm' "$completion"
+grep -Fq "limactl list --format '{{.Name}}'" "$completion"
+for cmd in init sync sh ssh cp log ssh-key gpg-key ls stop rm help; do
+	grep -Fq "'$cmd:" "$completion"
+done
+if command -v zsh >/dev/null 2>&1; then
+	zsh -n "$completion"
+fi
 
 "$ROOT/bin/dvm" init newapp
 [ -f "$TMP/config/vms/newapp.sh" ]

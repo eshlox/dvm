@@ -6,6 +6,25 @@ DVM keeps the command surface small. Most day-to-day work should still be `sync`
 Use public project names in DVM commands: `app`, `eshlox-net`, `llama`. The `dvm-`
 prefix is reserved for internal Lima instance names.
 
+## Zsh Completion
+
+DVM ships an opt-in zsh completion file in the repo:
+
+```zsh
+# ~/.zshrc
+fpath=(/path/to/dvm/share/dvm/completions $fpath)
+autoload -Uz compinit
+compinit
+```
+
+Zsh loads completion functions from directories in `fpath`, so the path points to the
+`completions` directory, not directly to `_dvm`. If your `~/.zshrc` already runs
+`compinit`, add only the `fpath=...` line above the existing `compinit` call.
+
+The completion includes DVM commands, command options, VM names from
+`$DVM_CONFIG/vms/*.sh`, DVM Lima instances from `limactl list`, and bundled `init`
+templates.
+
 ## Init
 
 ```bash
