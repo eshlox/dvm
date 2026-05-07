@@ -14,6 +14,8 @@ usage:
   dvm gpg-key <name>
   dvm ls
   dvm stop <name>
+  dvm stop --all [--inactive] [--force]
+  dvm stop --inactive [--force]
   dvm rm <name> --yes [--force]
 HELP
 }

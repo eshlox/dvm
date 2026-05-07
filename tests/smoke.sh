@@ -160,6 +160,22 @@ shell)
 	printf 'shell %s %s\n' "$vm" "$*" >>"$state/log"
 	cat >"$state/guest.sh"
 	bash -n "$state/guest.sh"
+	if grep -Fq '# dvm activity probe' "$state/guest.sh"; then
+		activity="$(cat "$state/activity/$vm" 2>/dev/null || true)"
+		case "$activity" in
+		active:*)
+			printf '%s\n' "$activity"
+			exit 1
+			;;
+		fail:*)
+			printf '%s\n' "${activity#fail:}" >&2
+			exit 2
+			;;
+		*)
+			printf 'inactive\n'
+			;;
+		esac
+	fi
 	;;
 delete)
 	printf 'delete %s\n' "$1" >>"$state/log"
@@ -227,6 +243,13 @@ status="$?"
 set -e
 [ "$status" -ne 0 ]
 grep -Fq 'ls takes no arguments' "$TMP/ls-extra.err"
+
+set +e
+"$ROOT/bin/dvm" stop --all extra >/dev/null 2>"$TMP/stop-all-extra.err"
+status="$?"
+set -e
+[ "$status" -ne 0 ]
+grep -Fq 'stop --all does not take a VM name' "$TMP/stop-all-extra.err"
 
 rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
 
@@ -410,6 +433,35 @@ grep -Fq 'Git commit signing public key' "$TMP/state/guest.sh"
 
 "$ROOT/bin/dvm" gpg-key app
 grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
+
+mkdir -p "$TMP/state/activity"
+printf 'active: zellij\n' >"$TMP/state/activity/dvm-app"
+printf 'fail: probe unavailable\n' >"$TMP/state/activity/dvm-rooted"
+printf 'active: dvm-cloudflared.service\n' >"$TMP/state/activity/dvm-cloudflared"
+printf 'active: tailscaled.service\n' >"$TMP/state/activity/dvm-tailscale"
+: >"$TMP/state/log"
+"$ROOT/bin/dvm" stop --inactive --force >"$TMP/stop-inactive.out" 2>"$TMP/stop-inactive.err"
+grep -Fq 'dvm stop --all: 2 stopped, 3 skipped, 0 failed' "$TMP/stop-inactive.out"
+grep -Fq 'skipping active VM: dvm-app (active: zellij)' "$TMP/stop-inactive.err"
+grep -Fq 'inactive check failed for dvm-rooted; forcing stop' "$TMP/stop-inactive.err"
+grep -Fq 'skipping active VM: dvm-cloudflared (active: dvm-cloudflared.service)' "$TMP/stop-inactive.err"
+grep -Fq 'skipping active VM: dvm-tailscale (active: tailscaled.service)' "$TMP/stop-inactive.err"
+grep -Fq 'stop dvm-rooted' "$TMP/state/log"
+grep -Fq 'stop dvm-race' "$TMP/state/log"
+if grep -Fq 'stop dvm-app' "$TMP/state/log" ||
+	grep -Fq 'stop dvm-cloudflared' "$TMP/state/log" ||
+	grep -Fq 'stop dvm-tailscale' "$TMP/state/log"; then
+	printf 'dvm stop --inactive stopped an active VM\n' >&2
+	exit 1
+fi
+rm -rf "$TMP/state/activity"
+
+: >"$TMP/state/log"
+"$ROOT/bin/dvm" stop --all >"$TMP/stop-all.out"
+grep -Fq 'dvm stop --all: 5 stopped, 0 skipped, 0 failed' "$TMP/stop-all.out"
+for vm in dvm-app dvm-rooted dvm-cloudflared dvm-tailscale dvm-race; do
+	grep -Fq "stop $vm" "$TMP/state/log"
+done
 
 "$ROOT/bin/dvm" stop app
 grep -Fq 'stop dvm-app' "$TMP/state/log"

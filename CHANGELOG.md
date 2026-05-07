@@ -26,6 +26,10 @@
 - Tightened CLI arg validation: `init`, `sync`, `sh`, `ssh-key`, `gpg-key`, `ls`, and
   `stop` now reject unexpected extra arguments with a clear error rather than
   silently ignoring them.
+- Added `dvm stop --all` to stop every DVM-managed Lima instance while preserving VM
+  disks and config, plus `dvm stop --inactive` / `dvm stop --all --inactive` for
+  stopping only VMs without a detected active shell, `tmux`/`zellij`, or known DVM
+  service unit.
 - Tightened `dvm rm` dirty check: when `git` is not installed in the guest, the
   check now exits with status 2 and refuses to delete the VM unless `--force` is
   passed. Previously the check exited cleanly when `git` was absent, allowing

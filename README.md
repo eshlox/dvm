@@ -47,6 +47,8 @@ dvm ssh-key app
 dvm gpg-key app
 dvm ls
 dvm stop app
+dvm stop --all
+dvm stop --inactive
 dvm rm app --yes
 ```
 
@@ -58,6 +60,11 @@ tools such as AI CLIs across every active VM.
 
 `dvm rm` requires `--yes` and checks nested Git repos for dirty work before deleting.
 Use `--force` only when you intentionally want to skip that check.
+
+`dvm stop --all` stops every DVM-managed Lima instance listed with the internal
+`dvm-` prefix. This releases VM memory without deleting disks or config.
+Use `dvm stop --inactive` to stop only VMs without a detected active shell,
+`tmux`/`zellij`, or known DVM service unit.
 
 `dvm ssh-key <name>` creates separate VM-local SSH keys for GitHub access and Git commit
 signing. Use the access key as a deploy/authentication key and add the signing key to
