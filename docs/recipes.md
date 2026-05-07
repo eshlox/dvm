@@ -56,7 +56,8 @@ recipes or project-specific VM configs.
 VMs only when the selected service recipes install every dependency they need.
 
 Interactive tools are split into one recipe per tool: `zsh`, `git`, `helix`,
-`lazygit`, `starship`, `fzf`, `bat`, `git-delta`, `just`, `tmux`, and `yazi`. `zsh`
+`lazygit`, `starship`, `fzf`, `bat`, `git-delta`, `just`, `tmux`, `zellij`, and
+`yazi`. `zsh`
 installs zsh and sets it as the guest user's default login shell with `usermod
 --shell`. The DNF-backed recipes install from Fedora.
 The upstream-backed recipes try Fedora first and otherwise use pinned official release
@@ -106,6 +107,7 @@ use bat
 use git-delta
 use just
 use tmux
+use zellij
 use yazi
 ```
 
@@ -123,6 +125,7 @@ use_app_tools() {
 	use git-delta
 	use just
 	use tmux
+	use zellij
 	use yazi
 }
 ```

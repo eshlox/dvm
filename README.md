@@ -177,7 +177,7 @@ First-pass recipes include:
 
 - `baseline`: required setup basics only
 - `zsh`, `git`, `helix`, `lazygit`, `starship`, `fzf`, `bat`, `git-delta`, `just`,
-  `tmux`, `yazi`: optional interactive tools
+  `tmux`, `zellij`, `yazi`: optional interactive tools
 - `agent-user`: `dvm-agent` plus mandatory Bubblewrap sandboxing for AI tools
 - `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM
 - `chezmoi`: public HTTPS dotfiles
