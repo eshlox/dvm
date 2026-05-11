@@ -129,15 +129,17 @@ dvm gpg-key app
 
 `ssh-key` creates or reuses two VM-local SSH keys:
 
-- `~/.ssh/id_ed25519_dvm`: GitHub access key. Use this as a repo deploy key or an
+- `~/.ssh/id_ed25519_dvm`: Git access key. Use this as a repo deploy key or an
   account authentication key.
-- `~/.ssh/id_ed25519_dvm_signing`: Git commit signing key. Add this to your GitHub
-  account as an SSH signing key.
+- `~/.ssh/id_ed25519_dvm_signing`: Git commit signing key. Add this to your Git
+  hosting account as an SSH signing key, if supported.
 
-The same GitHub SSH key cannot be both a repo deploy key and an account signing key, so
-DVM keeps those identities separate. The command also adds a GitHub SSH config entry for
-the access key and configures Git SSH signing with the signing key. Missing or empty
-public key files are regenerated through a temporary file and moved into place.
+Some Git hosting services keep repo deploy/access keys and account signing keys as
+separate identities, so DVM keeps those identities separate too. The command also adds a
+default `github.com` SSH config entry for the access key and configures Git SSH signing
+with the signing key. Add matching SSH config entries for other Git hosts if you want
+this access key selected automatically there. Missing or empty public key files are
+regenerated through a temporary file and moved into place.
 
 `gpg-key` creates or reuses a one-year VM-local signing key and prints the public key
 plus fingerprint. Neither command copies host private keys into the VM.
