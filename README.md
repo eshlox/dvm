@@ -77,9 +77,9 @@ Use `--force` only when you intentionally want to skip that check.
 Use `dvm stop --inactive` to stop only VMs without a detected active shell,
 `tmux`/`zellij`, or known DVM service unit.
 
-`dvm ssh-key <name>` creates separate VM-local SSH keys for GitHub access and Git commit
-signing. Use the access key as a deploy/authentication key and add the signing key to
-your GitHub account's SSH signing keys.
+`dvm ssh-key <name>` creates separate VM-local SSH keys for Git hosting access and Git
+commit signing. Use the access key as a deploy/authentication key and add the signing
+key to your Git hosting account's SSH signing keys, if supported.
 
 ## Config
 

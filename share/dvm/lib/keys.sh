@@ -18,7 +18,7 @@ config="$HOME/.ssh/config"
 mkdir -p "$HOME/.ssh"
 chmod 700 "$HOME/.ssh"
 if [ ! -f "$key" ]; then
-	ssh-keygen -t ed25519 -C "$DVM_NAME-dvm-github-access" -f "$key" -N ""
+	ssh-keygen -t ed25519 -C "$DVM_NAME-dvm-git-access" -f "$key" -N ""
 fi
 if [ ! -f "$signing_key" ]; then
 	ssh-keygen -t ed25519 -C "$DVM_NAME-dvm-git-signing" -f "$signing_key" -N ""
@@ -54,9 +54,9 @@ if command -v git >/dev/null 2>&1; then
 	GIT_CONFIG_GLOBAL="$git_config" git config --global user.signingkey "$signing_key.pub"
 	GIT_CONFIG_GLOBAL="$git_config" git config --global commit.gpgsign true
 fi
-printf 'GitHub access key public key (use as deploy key or account authentication key):\n'
+printf 'Git access key public key (use as deploy key or account authentication key):\n'
 cat "$key.pub"
-printf '\nGit commit signing public key (add to GitHub account as SSH signing key):\n'
+printf '\nGit commit signing public key (add to your Git hosting account as an SSH signing key, if supported):\n'
 cat "$signing_key.pub"
 DVM_SSH_KEY
 }

@@ -435,13 +435,13 @@ rm -f "$TMP/config/vms/race.sh"
 "$ROOT/bin/dvm" ssh-key app
 grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
 grep -Fq 'id_ed25519_dvm_signing' "$TMP/state/guest.sh"
-grep -Fq 'dvm-github-access' "$TMP/state/guest.sh"
+grep -Fq 'dvm-git-access' "$TMP/state/guest.sh"
 grep -Fq 'dvm-git-signing' "$TMP/state/guest.sh"
 grep -Fq 'write_public_key()' "$TMP/state/guest.sh"
 grep -Fq 'mktemp "${public_key}.XXXXXX"' "$TMP/state/guest.sh"
 grep -Fq 'mv "$tmp" "$public_key"' "$TMP/state/guest.sh"
 grep -Fq 'user.signingkey "$signing_key.pub"' "$TMP/state/guest.sh"
-grep -Fq 'GitHub access key public key' "$TMP/state/guest.sh"
+grep -Fq 'Git access key public key' "$TMP/state/guest.sh"
 grep -Fq 'Git commit signing public key' "$TMP/state/guest.sh"
 
 "$ROOT/bin/dvm" gpg-key app

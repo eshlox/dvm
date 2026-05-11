@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Changed `dvm ssh-key` generated access-key comments and output labels from
+  GitHub-specific wording to provider-neutral Git wording. Existing key file paths are
+  unchanged.
 - Fixed per-VM `DVM_CODE_ROOT` overrides so the default `DVM_CODE_DIR` is computed
   after VM config is sourced.
 - Fixed remaining user-facing docs and diagnostics that still used old command names
@@ -114,7 +117,7 @@
   `use_app_tools`.
 - Added nested Git dirty checks before `dvm rm`; `--force` skips the check.
 - Added VM-local SSH and GPG key helpers.
-- Changed `dvm ssh-key` to create separate VM-local GitHub access and Git commit
+- Changed `dvm ssh-key` to create separate VM-local Git hosting access and Git commit
   signing SSH keys, and to configure Git signing with the signing key.
 - Added bundled defaults under `share/dvm`: global config, Lima template, example VM
   configs, and reusable guest recipes.
