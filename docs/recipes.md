@@ -80,6 +80,11 @@ and expose wrappers in `/usr/local/bin`. Put `use agent-user` before these recip
 Node package does not provide `corepack`, and enables Corepack shims for pnpm/yarn.
 `python` installs Python, pip, and uv.
 
+`docker` installs Docker Engine and the Compose plugin from Docker's official Fedora
+repository, enables `docker.service`, and adds the guest user to the `docker` group so
+`docker` and `docker compose` work without sudo. The group change applies on the next
+shell, so exit and reopen `dvm sh <name>` after the first sync.
+
 After applying `use node`, pin pnpm in each project rather than installing a global
 pnpm:
 

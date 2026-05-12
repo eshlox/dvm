@@ -203,6 +203,7 @@ First-pass recipes include:
 - `cloudflared`: dedicated Cloudflare Tunnel VM
 - `tailscale`: tailnet membership and optional Funnel public ingress
 - `node`, `python`: language basics
+- `docker`: Docker Engine and Compose plugin
 
 Codex and Claude default to unattended mode inside the `dvm-agent` Bubblewrap sandbox
 so they can edit code and run project commands without prompting. Set
