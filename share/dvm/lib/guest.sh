@@ -42,7 +42,22 @@ ssh_vm() {
 	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
 	start_vm
 	term="$(guest_term)"
+	restore_host_tty_on_exit
 	limactl shell "$DVM_LIMA_NAME" env "TERM=$term" bash -c "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
+}
+
+# Guest TUIs (zellij, nvim, fzf, ...) can leave xterm private modes enabled on
+# the host terminal if they exit dirty. The leaked modes -- mouse tracking
+# (1000/1002/1003 + SGR 1006), bracketed paste (2004), focus reporting (1004)
+# -- make the host terminal print garbage on every keypress or pointer event.
+# Send the disable sequences and stty sane on the way out so the host shell
+# always lands on a clean tty.
+restore_host_tty_on_exit() {
+	[ -t 2 ] || return 0
+	trap '
+		printf "\e[?1000l\e[?1002l\e[?1003l\e[?1006l\e[?2004l\e[?1004l" >&2
+		stty sane 2>/dev/null || true
+	' EXIT INT TERM HUP
 }
 
 guest_home_dir() {
