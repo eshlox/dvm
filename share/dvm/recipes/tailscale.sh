@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Tailscale mesh + optional Funnel public ingress
 # Expects DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY) in the VM config for first auth.
 if ! command -v tailscale >/dev/null 2>&1; then

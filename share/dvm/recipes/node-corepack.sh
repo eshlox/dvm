@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Node.js, npm, corepack (pinned corepack version)
 dvm_pkg nodejs npm
 corepack_version="${DVM_COREPACK_VERSION:-0.34.0}"

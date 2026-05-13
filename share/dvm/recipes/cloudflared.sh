@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Cloudflare Tunnel service (dedicated VM)
 # Expects DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN) in the VM config.
 service="${DVM_CLOUDFLARED_SERVICE:-dvm-cloudflared.service}"

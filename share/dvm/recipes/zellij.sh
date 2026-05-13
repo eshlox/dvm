@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Zellij terminal multiplexer (pinned binary install)
 # Verified 2026-05-07: https://github.com/zellij-org/zellij/releases/tag/v0.44.2
 dvm_install_pinned zellij \

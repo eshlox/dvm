@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: dvm-agent user with Bubblewrap sandbox for AI tools
 : "${DVM_CODE_DIR:?DVM_CODE_DIR is required}"
 DVM_AI_AGENT_USER="${DVM_AI_AGENT_USER:-dvm-agent}"

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: lazygit TUI (pinned binary install)
 # Verified 2026-05-03: https://github.com/jesseduffield/lazygit/releases/tag/v0.61.1
 dvm_install_pinned lazygit \

@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Codex CLI
 dvm_recipe_require_agent_user codex
 dvm_codex_yolo="$(dvm_recipe_bool codex DVM_CODEX_YOLO "${DVM_CODEX_YOLO:-1}")"

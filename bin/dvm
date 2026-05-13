@@ -164,6 +164,7 @@ backup_keys() {
         fi
     done
     local keyid
+    # shellcheck disable=SC2016 # $HOME must expand inside the guest, not on the host
     keyid="$("$LIMACTL" shell --workdir / "$lima" sudo -u "$user" \
         bash -c '[ -s "$HOME/.dvm-gpg-keyid" ] && cat "$HOME/.dvm-gpg-keyid"' 2>/dev/null || true)"
     if [ -n "$keyid" ]; then

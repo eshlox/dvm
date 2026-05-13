@@ -1,3 +1,5 @@
+# shellcheck shell=bash
+# Concatenated into every guest sync script. Not run standalone.
 set -euo pipefail
 dvm_die() { printf 'dvm recipe: %s\n' "$*" >&2; exit 1; }
 dvm_recipe_die() { printf 'dvm recipe: %s: %s\n' "$1" "$2" >&2; exit 1; }
@@ -22,7 +24,9 @@ dvm_recipe_require_agent_user() {
 }
 dvm_recipe_validate_port() {
     case "$2" in ''|*[!0-9]*) dvm_recipe_die "$1" "invalid port: $2" ;; esac
-    [ "$2" -ge 1 ] && [ "$2" -le 65535 ] || dvm_recipe_die "$1" "port out of range: $2"
+    if [ "$2" -lt 1 ] || [ "$2" -gt 65535 ]; then
+        dvm_recipe_die "$1" "port out of range: $2"
+    fi
 }
 dvm_recipe_validate_service() {
     case "$2" in *.service) ;; *) dvm_recipe_die "$1" "service must end with .service: $2" ;; esac
@@ -52,7 +56,7 @@ dvm_install_pinned() {
         aarch64) url="$arm_url"; sha="$arm_sha" ;;
         x86_64) url="$x86_url"; sha="$x86_sha" ;;
     esac
-    local work; work="$(mktemp -d)"; trap "rm -rf $work" RETURN
+    local work; work="$(mktemp -d)"; trap 'rm -rf "$work"' RETURN
     case "$kind" in
         tar)
             dvm_download_verified "$url" "$sha" "$work/a.tar.gz"

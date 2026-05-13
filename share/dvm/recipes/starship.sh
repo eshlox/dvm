@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: starship prompt (pinned binary install)
 # Verified 2026-05-03: https://github.com/starship/starship/releases/tag/v1.25.1
 dvm_install_pinned starship \

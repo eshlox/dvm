@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: yazi file manager (pinned binary install)
 # Verified 2026-05-03: https://github.com/sxyazi/yazi/releases/tag/v26.1.22
 dvm_install_pinned yazi \

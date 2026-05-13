@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Mistral CLI
 dvm_recipe_require_agent_user mistral
 

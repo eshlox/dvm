@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: Claude Code CLI
 dvm_recipe_require_agent_user claude
 dvm_claude_bypass="$(dvm_recipe_bool claude DVM_CLAUDE_BYPASS "${DVM_CLAUDE_BYPASS:-1}")"

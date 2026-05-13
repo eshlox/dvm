@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: OpenCode CLI
 dvm_recipe_require_agent_user opencode
 

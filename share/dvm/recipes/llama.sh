@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Description: llama.cpp service (dedicated VM)
 # Single-model env-var model:
 #   DVM_LLAMA_HOST=127.0.0.1        (default)
