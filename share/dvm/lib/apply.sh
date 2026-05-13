@@ -101,12 +101,12 @@ emit_guest_secret_file() {
 	local secret="$5"
 	[ -n "$secret" ] || return 0
 	printf '# dvm %s file\n' "$label"
-	printf 'dvm_secret_file="$(mktemp "${TMPDIR:-/tmp}/%s.XXXXXX")"\n' "$prefix"
-	printf 'chmod 600 "$dvm_secret_file"\n'
-	printf 'cat >"$dvm_secret_file" <<'\''%s'\''\n' "$delimiter"
+	printf "dvm_secret_file=\"\$(mktemp \"\${TMPDIR:-/tmp}/%s.XXXXXX\")\"\n" "$prefix"
+	printf "chmod 600 \"\$dvm_secret_file\"\n"
+	printf "cat >\"\$dvm_secret_file\" <<'%s'\n" "$delimiter"
 	printf '%s\n' "$secret"
 	printf '%s\n' "$delimiter"
-	printf 'export %s="$dvm_secret_file"\n\n' "$env_var"
+	printf "export %s=\"\$dvm_secret_file\"\n\n" "$env_var"
 }
 
 apply_one() {

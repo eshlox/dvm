@@ -33,7 +33,9 @@ dvm_recipe_validate_port() {
 	case "$2" in
 	'' | *[!0-9]*) dvm_recipe_die "$1" "invalid port: $2" ;;
 	esac
-	[ "$2" -ge 1 ] && [ "$2" -le 65535 ] || dvm_recipe_die "$1" "invalid port: $2"
+	if [ "$2" -lt 1 ] || [ "$2" -gt 65535 ]; then
+		dvm_recipe_die "$1" "invalid port: $2"
+	fi
 }
 
 dvm_recipe_validate_service() {
@@ -198,30 +200,30 @@ dvm_recipe_install_pinned() {
 	shift 8
 	bins=("$@")
 
-	dvm_recipe_install_pinned_fallback() {
-		local url sha256
-		deps=(ca-certificates curl)
-		case "$archive_type" in
-		tar) deps+=(tar gzip) ;;
-		zip) deps+=(unzip) ;;
-		*) dvm_recipe_die "$name" "unsupported archive type: $archive_type" ;;
-		esac
-		sudo dnf5 install -y "${deps[@]}"
-		case "$(dvm_recipe_arch "$name")" in
-		arm64)
-			url="$arm_url"
-			sha256="$arm_sha256"
-			;;
-		x86_64)
-			url="$x86_url"
-			sha256="$x86_sha256"
-			;;
-		esac
-		case "$archive_type" in
-		tar) dvm_recipe_install_tar_bin "$name" "$url" "$sha256" "$cmd" ;;
-		zip) dvm_recipe_install_zip_bins "$name" "$url" "$sha256" "${bins[@]}" ;;
-		esac
-	}
+	dvm_recipe_dnf_or_pinned "$package" "$cmd" dvm_recipe_install_pinned_fallback "$@"
+}
 
-	dvm_recipe_dnf_or_pinned "$package" "$cmd" dvm_recipe_install_pinned_fallback
+dvm_recipe_install_pinned_fallback() {
+	local url sha256
+	deps=(ca-certificates curl)
+	case "$archive_type" in
+	tar) deps+=(tar gzip) ;;
+	zip) deps+=(unzip) ;;
+	*) dvm_recipe_die "$name" "unsupported archive type: $archive_type" ;;
+	esac
+	sudo dnf5 install -y "${deps[@]}"
+	case "$(dvm_recipe_arch "$name")" in
+	arm64)
+		url="$arm_url"
+		sha256="$arm_sha256"
+		;;
+	x86_64)
+		url="$x86_url"
+		sha256="$x86_sha256"
+		;;
+	esac
+	case "$archive_type" in
+	tar) dvm_recipe_install_tar_bin "$name" "$url" "$sha256" "$cmd" ;;
+	zip) dvm_recipe_install_zip_bins "$name" "$url" "$sha256" "${bins[@]}" ;;
+	esac
 }
