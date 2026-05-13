@@ -1,9 +1,8 @@
 # Description: Claude Code CLI
-: "${DVM_AI_AGENT_USER:=dvm-agent}"
 dvm_recipe_require_agent_user claude
 dvm_claude_bypass="$(dvm_recipe_bool claude DVM_CLAUDE_BYPASS "${DVM_CLAUDE_BYPASS:-1}")"
 
-sudo dnf5 install -y dnf5-plugins curl jq
+dvm_pkg dnf5-plugins curl jq
 # Verified 2026-05-03 from Anthropic's Claude Code package-manager instructions:
 # https://code.claude.com/docs/en/setup
 sudo tee /etc/yum.repos.d/claude-code.repo >/dev/null <<'CLAUDE_CODE_REPO'

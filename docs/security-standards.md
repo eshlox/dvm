@@ -1,83 +1,73 @@
 # Security Standards
 
-These are the operating rules for DVM. They are short because the implementation is
-small, but they are the bar for changes.
+The operating rules. Short because the implementation is small.
 
 ## Isolation
 
-- One project gets one VM.
-- Host project directories are not mounted into guests.
-- Code lives in the VM and is cloned from Git or created there.
-- `~` in DVM config means guest home, never host home; DVM expands it inside the VM.
-- Recreate by deleting the VM and applying recipes again.
+- One project, one VM.
+- Host code is never mounted into a guest. Code lives in the VM.
+- `~` in DVM config means **guest** home; the script expands it before
+  passing paths to Lima.
+- Recreate is `dvm rm <vm> --yes && dvm sync <vm>`. No state to
+  preserve outside the VM.
 
 ## Secrets
 
-- Do not put secrets in DVM config, public dotfiles, recipes, or project setup scripts.
-- Do not copy host SSH/GPG private keys into VMs.
-- Generate VM-local keys when a VM needs Git or signing access:
-  `dvm ssh-key <name>` and `dvm gpg-key <name>`.
-- `dvm ssh-key` intentionally creates separate SSH keys for Git hosting access and Git
-  commit signing. Do not reuse a repo deploy/access key as an account signing key.
-- The VM-local GPG helper creates an unencrypted, one-year signing key for disposable
-  VM use; do not treat it as a long-lived identity key.
-- Prefer repo-scoped deploy keys and service-scoped tokens.
-- Pass Cloudflare tokens only when syncing the cloudflared VM, or fetch them from
-  macOS Keychain in your shell before sync.
-- Do not put secrets in general `DVM_*` config. Most sync-time DVM values are visible
-  to host process listings while `limactl` runs.
-- The bundled cloudflared token handoff is special-cased: `CLOUDFLARED_TOKEN` and
-  `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
-  being passed as `limactl shell env` arguments.
+- Do not put secrets in `DVM_*` config files or recipes. Host env on
+  the host is visible to other processes while `limactl` runs.
+- Use `DVM_SECRETS=(NAME ...)` and pass values at sync time:
+  `NAME=value dvm sync <vm>`. The value is piped through stdin to a
+  mode-`0600` guest temp file (`/tmp/dvm-secret-<NAME>`); it never
+  appears in argv, host process env, or a host temp file.
+- Recipes read via `dvm_secret <NAME>`, which prints the temp file path.
+- Do not copy host SSH/GPG private keys into VMs. Generate VM-local
+  keys with `dvm ssh-key <vm>` and `dvm gpg-key <vm>`.
+- `ssh-key` creates separate access (`id_ed25519_dvm`) and signing
+  (`id_ed25519_dvm_signing`) keys. Don't reuse a deploy key as a
+  signing key.
+- The VM-local GPG key has no passphrase. It's a disposable signing
+  key for VM commits, not a long-lived identity.
 
 ## AI
 
-- Run hosted AI tools through `dvm-agent`.
-- Create `dvm-agent` as a system account with a home directory and no DVM-managed sudo
-  privileges.
-- Run AI tools through Bubblewrap. DVM does not support a non-Bubblewrap AI mode.
-- Codex and Claude default to unattended modes only inside the mandatory Bubblewrap
-  wrapper; the VM and sandbox are the security boundary, not tool-native prompt
-  approvals. Set `DVM_CODEX_YOLO=0` or `DVM_CLAUDE_BYPASS=0` when you want those
-  prompts for a VM.
-- Mount only project code at `/workspace`, the agent home, and the runtime/system paths
-  needed to execute tools.
-- Do not mount the main user's home into the AI sandbox.
-- Keep network access enabled for hosted AI tools; use the separate VM boundary for
-  project isolation.
-- Treat ACLs as defense in depth and as the permission bridge that lets `dvm-agent`
-  and the VM user share `DVM_CODE_DIR`. Bubblewrap is not a separate VM; guest root or
-  bad sudo policy can bypass it.
-- Review AI-generated changes before committing or running them.
+- Hosted AI tools run as `dvm-agent` inside Bubblewrap. There is no
+  non-sandboxed mode.
+- `dvm-agent` is a system account with no DVM-managed sudo.
+- Sandbox mounts: `/workspace` ← `DVM_CODE_DIR`, agent home, runtime
+  system bits. The primary user's home is **not** mounted.
+- Codex / Claude run unattended (`DVM_CODEX_YOLO=1`, `DVM_CLAUDE_BYPASS=1`)
+  by default. The VM + sandbox is the boundary, not per-action prompts.
+  Flip to `0` if you want native prompts.
+- ACLs on `DVM_CODE_DIR` are defense-in-depth, not isolation. Guest
+  root or bad sudo policy can still bypass.
+- Treat AI output as untrusted code until reviewed.
 
 ## Networking
 
-- Bind forwarded ports to `127.0.0.1` by default.
-- Use `0.0.0.0` only when you intentionally want LAN exposure.
-- Re-run `dvm sync <name>` after editing `DVM_PORTS`; DVM updates existing Lima port
-  forwards without recreating the VM.
-- Put shared services such as llama and cloudflared in dedicated VMs.
-- Use Lima internal names for VM-to-VM traffic.
+- Forwarded ports bind to `DVM_HOST_IP` (default `127.0.0.1`).
+- `0.0.0.0` only when you really want LAN exposure.
+- Service VMs (`llama`, `cloudflared`, `tailscale`) live in their own
+  VMs and are reached by other VMs via `lima-dvm-<name>.internal`.
 
 ## Deletion
 
-- `dvm rm <name> --yes` checks nested Git repos under `DVM_CODE_DIR` before deleting.
-- Use `--force` only when you have intentionally accepted losing uncommitted VM-local
-  work.
+- `dvm rm <vm> --yes` stops and deletes the Lima instance. No dirty
+  check. Inspect with `dvm sh <vm>` first if you might lose work.
+- The per-VM config in `~/.config/dvm/vms/` is **not** deleted; remove
+  by hand.
 
 ## Recipes
 
-- Recipes must be readable shell.
-- Recipes must be safe to rerun.
-- Recipes must not read host paths.
-- Recipes should install one concept and avoid hidden dependency systems.
-- Remote downloads should come from package managers or pinned URLs with checksums
-  when practical.
-- Updating a pinned upstream recipe means updating the version, URL, and sha256
-  together in the recipe.
+- Idempotent shell. Same recipe runs on every sync.
+- Use `dvm_pkg` for package installs; don't shell out to `dnf` directly.
+- Use `dvm_secret <NAME>` to access staged secrets.
+- Pinned binary installs use `dvm_install_pinned` with a verified
+  sha256. Update version, URL, and sha256 together.
+- Recipes never read host paths.
 
 ## Host
 
-- Keep the host dependency set small: Lima, Bash, DVM config.
-- Install DVM from a reviewed checkout or signed release.
-- Run `bash scripts/check.sh` before committing changes.
+- Keep host deps small: Lima, bash, flock, envsubst, sudo.
+- Install from a reviewed checkout. `install.sh` is a symlink only;
+  `git pull` is the update.
+- Run `bash tests/smoke.sh` before merging changes.

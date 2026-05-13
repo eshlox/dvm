@@ -2,233 +2,199 @@
 
 Keep your friends close, your supply chain in a VM.
 
-DVM is a tiny Bash wrapper around Lima. It creates one Fedora VM per project, runs the
-small setup baseline in every VM, lets each project opt into plain shell recipes, and
-keeps dev tools, AI CLIs, service credentials, and project code inside the VM.
+DVM is a small Bash script around Lima. It creates one Fedora VM per project,
+runs a fixed list of shell recipes inside it, and gets out of the way.
 
-The core rule:
+The model has three nouns:
 
-> DVM renders one Lima VM, starts it, sources one VM config on the host, and runs shell
-> recipes inside the guest.
+- **Packages** — distro package names listed in `DVM_PACKAGES`. Installed once
+  per sync with the guest package manager.
+- **Recipes** — shell behavior files under `share/dvm/recipes/`. Listed in
+  `DVM_RECIPES` in the order they should run.
+- **Secrets** — env-var names listed in `DVM_SECRETS`. Each value is staged
+  through stdin into a mode-`0600` guest file (`/tmp/dvm-secret-<NAME>`)
+  before recipes run; values never appear in argv or env.
 
 ## Install
 
 Requirements:
 
-- macOS with Lima 2.0.0 or newer installed: `brew install lima`
-- Bash 3.2+; the macOS system Bash works
-
-The bundled Lima template uses `vmType: vz`, so Linux hosts are not supported by the
-default template. Linux may work with a custom QEMU Lima template, but it is not tested.
-
-Install the wrapper:
+- Lima 1.0+ (`brew install lima` on macOS, `dnf install lima` on Fedora)
+- bash, flock, envsubst, sudo
+- a Unix host (macOS aarch64 or Linux aarch64/x86_64)
 
 ```bash
-./install.sh --init
+./install.sh
 ```
 
-This installs a small launcher into `~/.local/bin` and copies defaults into
-`~/.config/dvm` without overwriting existing files. The launcher runs each invocation
-from a temporary snapshot of `bin/dvm` and its shell libraries, so editing or pulling
-this repo cannot corrupt a long-running `dvm sync`. Bundled recipes, the Lima
-template, and example VM configs stay in the repo under `share/dvm`.
+This writes a single symlink: `~/.local/bin/dvm -> $REPO/bin/dvm`. There is
+no copy. `git pull` in this repo is the update. Override the destination
+with `PREFIX=/somewhere/else ./install.sh`.
 
-For zsh completion, add the in-repo completion directory before `compinit` in
-`~/.zshrc`:
+## Quick start
 
-```zsh
-fpath=(/path/to/dvm/share/dvm/completions $fpath)
-autoload -Uz compinit
-compinit
+```bash
+dvm new app             # writes ~/.config/dvm/vms/app.sh, opens $EDITOR
+dvm sync app            # create + start + provision the Lima instance
+dvm sh app              # interactive shell
+dvm                     # alias for `dvm ls`
 ```
-
-If your `~/.zshrc` already runs `compinit`, add only the `fpath=...` line above it.
 
 ## Commands
 
-```bash
-dvm init app
-dvm sync app
-dvm sync --all
-dvm sh app
-dvm ssh app -- pwd
-dvm cp ./plan.md app:.
-dvm log cloudflared
-dvm ssh-key app
-dvm gpg-key app
-dvm ls
-dvm stop app
-dvm stop --all
-dvm stop --inactive
-dvm rm app --yes
+```text
+dvm sync <vm> | --all   create/start the Lima instance and run recipes
+dvm sh <vm>             interactive shell (exec limactl shell)
+dvm ssh <vm> -- cmd...  non-interactive command
+dvm cp src dst          copy; one side may be vm:path
+dvm log <vm> [-f]       guest journalctl
+dvm ls [<vm>]           list configured/running VMs (optional filter)
+dvm rm <vm> --yes       stop and delete the Lima instance
+dvm stop <vm> | --all   stop running VMs
+dvm ssh-key <vm>        generate guest SSH keys (access + signing)
+dvm gpg-key <vm>        generate guest GPG signing key
+dvm new <vm>            write stub config, open $EDITOR
+dvm edit <vm>           edit per-VM config
+dvm config edit|show    edit/print global config
+dvm recipes             list available recipes
 ```
 
-`dvm sync <name>` creates the Lima VM if missing, starts it, runs
-`recipes/baseline.sh`, runs recipes selected by `~/.config/dvm/vms/<name>.sh`, then
-runs `~/code/<name>/.dvm/sync.sh` inside the guest if that file exists.
-Use `dvm sync --all` after recipe changes or when you want to update recipe-managed
-tools such as AI CLIs across every active VM.
-
-`dvm rm` requires `--yes` and checks nested Git repos for dirty work before deleting.
-Use `--force` only when you intentionally want to skip that check.
-
-`dvm stop --all` stops every DVM-managed Lima instance listed with the internal
-`dvm-` prefix. This releases VM memory without deleting disks or config.
-Use `dvm stop --inactive` to stop only VMs without a detected active shell,
-`tmux`/`zellij`, or known DVM service unit.
-
-`dvm ssh-key <name>` creates separate VM-local SSH keys for Git hosting access and Git
-commit signing. Use the access key as a deploy/authentication key and add the signing
-key to your Git hosting account's SSH signing keys, if supported.
+`DVM_DRY_RUN=1 dvm sync <vm>` prints the rendered guest script and exits
+without contacting Lima.
 
 ## Config
 
-Global defaults:
+Global, sourced first (optional):
 
 ```bash
-~/.config/dvm/config.sh
+# ~/.config/dvm/config.sh
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=10GiB
+DVM_CODE_ROOT="~/code"        # guest path; ~ expands to the guest user's home
+DVM_HOST_IP=127.0.0.1
+DVM_USER=developer
+DVM_AGENT_USER=dvm-agent
+DVM_DEFAULT_PACKAGES=(git tmux)
+DVM_DEFAULT_RECIPES=(zsh-login-shell agent-user codex)
 ```
 
-Per-VM config:
+Per VM, sourced after global:
 
 ```bash
-~/.config/dvm/vms/app.sh
+# ~/.config/dvm/vms/app.sh
+DVM_CPUS=4
+DVM_MEMORY=8GiB
+DVM_DISK=30GiB
+DVM_PORTS=(3000:3000 5173:5173)
+DVM_PACKAGES=(bat fzf helix)             # appended to DVM_DEFAULT_PACKAGES
+DVM_RECIPES=(node-corepack)              # appended to DVM_DEFAULT_RECIPES
+# DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+# DVM_CODE_DIR="~/code/app"              # default: $DVM_CODE_ROOT/$DVM_NAME
 ```
 
-Create a VM config from the bundled app example:
-
-```bash
-dvm init app
-```
-
-`dvm init` writes a fully commented template; uncomment what you need. Defaults are
-`DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`, `DVM_CODE_DIR=~/code/$DVM_NAME`,
-empty `DVM_PORTS`. The template shows the host's CPU and memory ceilings as inline
-comments and calls `use_tools`, a helper defined in your global config that holds the
-recipes shared across every app VM. Edit `~/.config/dvm/config.sh` once to choose
-your toolset; new VMs pick it up automatically. Per-VM configs can add extra
-recipes, define more helpers, or comment the `use_tools` line for a minimal VM.
-
-`~` in DVM variables means the guest user's home. Host project directories are not
-mounted into the VM. VM names use lowercase letters, numbers, and hyphens, starting
-with a letter. DVM commands use the public project name, for example `eshlox-net`; the
-internal Lima instance is named `dvm-eshlox-net`.
-
-## Create VMs
-
-New app VM:
-
-```bash
-dvm init myapp
-dvm sync myapp
-dvm sh myapp
-```
-
-Dedicated llama VM:
-
-```bash
-dvm init llama llama
-dvm sync llama
-dvm log llama -f
-```
-
-The bundled llama VM opens port `8080` for host access at `http://127.0.0.1:8080` and
-VM-to-VM access at `http://lima-dvm-llama.internal:8080`. It skips the dev-tool
-baseline and installs only the llama recipe.
-
-Cloudflared tunnel VM:
-
-```bash
-dvm init cloudflared cloudflared
-CLOUDFLARED_TOKEN="..." dvm sync cloudflared
-dvm log cloudflared -f
-```
-
-The cloudflared token is staged through a mode `0600` guest temp file during `sync`
-instead of being passed as a `limactl shell env` argument.
-
-Tailscale supports two patterns:
-
-**Private dev access** — reach app VMs by hostname from your Mac without
-juggling host ports. Add `use tailscale` to each app VM and sync:
-
-```bash
-TAILSCALE_AUTH_KEY="tskey-..." dvm sync fida
-# then from the host browser: http://fida:5173
-```
-
-**Public Funnel URLs** — publish a local service at a public `*.ts.net` URL
-on demand:
-
-```bash
-# One-time: create the VM and join your tailnet
-dvm init tailscale tailscale
-TAILSCALE_AUTH_KEY="tskey-..." dvm sync tailscale
-
-# Turn Funnel ON, pointing at another VM's service
-DVM_TAILSCALE_FUNNEL_TARGET="http://lima-dvm-app.internal:3000" \
-  dvm sync tailscale
-
-# Turn Funnel OFF
-dvm sync tailscale
-```
-
-Funnel is OFF by default; the recipe resets it on every sync, so leaving the
-target unset turns it off. Auth keys get the same mode `0600` guest temp-file
-handling as Cloudflare tokens. See [docs/services.md](docs/services.md#tailscale)
-for both patterns, the Funnel ACL prerequisite, and auth-key sourcing options
-(global config, env var, or macOS Keychain).
+Validation is "bash sources the file"; a typo raises a bash error on the
+next `dvm sync`. Re-open `$EDITOR` and try again. VM names match
+`^[a-z][a-z0-9-]*$`. Memory and disk are passed to Lima verbatim, so any
+size Lima accepts works.
 
 ## Recipes
 
-Bundled recipes live in `share/dvm/recipes` and can be copied or overridden in
-`~/.config/dvm/recipes`.
+A recipe is a `<name>.sh` shell snippet. User recipes at
+`~/.config/dvm/recipes/<name>.sh` override built-ins of the same name.
+`dvm sync` cats them into one bash stream, after a small helper prelude and
+the `dvm_pkg` call for `DVM_PACKAGES`. The execution order is the order of
+names in `DVM_RECIPES` — there is no topological sort, no `requires` field.
+`agent-user` must precede `codex`, `claude`, `opencode`, `mistral`.
 
-Local recipes override bundled recipes. Keep only recipes you intentionally customize in
-`~/.config/dvm/recipes`; otherwise DVM will not see bundled recipe updates.
+Built-in recipes (the ones that earn their own file):
 
-Add your own tools with recipes. Use individual bundled tool recipes such as
-`use helix` and `use lazygit`, or define your own local helper in
-`~/.config/dvm/config.sh`.
+- AI tooling: `agent-user`, `codex`, `claude`, `opencode`, `mistral`
+- Services: `llama`, `cloudflared`, `tailscale`, `docker`
+- Pinned binaries: `lazygit`, `starship`, `zellij`, `yazi`
+- Other behavior: `chezmoi`, `zsh-login-shell`, `node-corepack`
 
-First-pass recipes include:
+Everything else (`bat`, `fzf`, `git`, `git-delta`, `helix`, `just`,
+`python3`, `tmux`, etc.) is just a package name in `DVM_PACKAGES`. No file
+needed.
 
-- `baseline`: required setup basics only
-- `zsh`, `git`, `helix`, `lazygit`, `starship`, `fzf`, `bat`, `git-delta`, `just`,
-  `tmux`, `zellij`, `yazi`: optional interactive tools
-- `agent-user`: `dvm-agent` plus mandatory Bubblewrap sandboxing for AI tools
-- `codex`, `claude`, `opencode`, `mistral`: hosted AI CLIs inside the VM
-- `chezmoi`: public HTTPS dotfiles
-- `llama`: dedicated llama service VM
-- `cloudflared`: dedicated Cloudflare Tunnel VM
-- `tailscale`: tailnet membership and optional Funnel public ingress
-- `node`, `python`: language basics
-- `docker`: Docker Engine and Compose plugin
+### Helper prelude
 
-Codex and Claude default to unattended mode inside the `dvm-agent` Bubblewrap sandbox
-so they can edit code and run project commands without prompting. Set
-`DVM_CODEX_YOLO=0` or `DVM_CLAUDE_BYPASS=0` in a VM config when you want the tool's own
-approval prompts and sandboxing.
+Recipes can use these helpers, defined in the prelude `bin/dvm` generates:
 
-## Dedicated Service VMs
+- `dvm_die <msg>` / `dvm_recipe_die <recipe> <msg>` / `dvm_recipe_warn ...`
+- `dvm_pkg <pkgs...>` — invokes dnf5 / dnf / apt-get under sudo
+- `dvm_secret <ENV_VAR>` — prints the staged guest file path
+- `dvm_recipe_bool <recipe> <name> <value>` — normalises 1/0/true/false
+- `dvm_recipe_require_agent_user <recipe>` — fails if agent-user didn't run
+- `dvm_recipe_validate_port` / `validate_service` / `validate_sha256`
+- `dvm_recipe_arch` — prints `aarch64` or `x86_64`
+- `dvm_download_verified <url> <sha256> <out>` — curl + sha256sum -c
+- `dvm_install_pinned <name> <arm_url> <arm_sha> <x86_url> <x86_sha> <tar|zip> <bins...>`
+
+Exported variables: `DVM_VM`, `DVM_USER`, `DVM_AGENT_USER`, `DVM_CODE_DIR`,
+`DVM_HOST_IP`, `DVM_PORTS` (comma-separated), `DVM_RECIPE` (current recipe
+name).
+
+### Project hook
+
+If `<DVM_CODE_DIR>/.dvm/sync.sh` exists, it runs last, after all recipes,
+in the directory `DVM_CODE_DIR` as the primary user.
+
+## Service VMs
+
+**llama** — dedicated llama.cpp server. Set the model URL + sha256 in the
+per-VM config:
 
 ```bash
-dvm sync llama
-CLOUDFLARED_TOKEN="..." dvm sync cloudflared
-dvm log cloudflared
+DVM_RECIPES=(llama)
+DVM_PORTS=(8080:8080)
+DVM_LLAMA_MODEL_URL="https://example.invalid/model.gguf"
+DVM_LLAMA_MODEL_SHA256="0000...64hex"
+# Optional: DVM_LLAMA_HOST=127.0.0.1, DVM_LLAMA_PORT=8080
 ```
 
-Example service configs live in `share/dvm/vms`. Copy one into `~/.config/dvm/vms`
-when you want that VM to be active.
+**cloudflared** — tunnel runner. Stage the token through `DVM_SECRETS`:
 
-## Docs
+```bash
+DVM_RECIPES=(cloudflared)
+DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+# At sync time:
+DVM_CLOUDFLARED_TOKEN="..." dvm sync cloud
+```
 
-- [Commands](docs/commands.md): command reference
-- [Config](docs/config.md): global and per-VM Bash variables
-- [Lima](docs/lima.md): template and networking decisions
-- [Recipes](docs/recipes.md): recipe authoring and bundled recipe behavior
-- [AI](docs/ai.md): `dvm-agent` and hosted AI tools
-- [Services](docs/services.md): llama and cloudflared VMs
-- [Dotfiles](docs/dotfiles.md): chezmoi over HTTPS
-- [Security Standards](docs/security-standards.md): operating rules
-- [Docs index](docs/README.md)
+**tailscale** — tailnet membership and optional Funnel. First-time auth
+needs `DVM_TAILSCALE_AUTHKEY`:
+
+```bash
+DVM_RECIPES=(tailscale)
+DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
+# Optional: DVM_TAILSCALE_HOSTNAME, DVM_TAILSCALE_FUNNEL_TARGET=https://...
+DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync tailscale
+```
+
+## Layout
+
+```
+bin/dvm                       single-file bash program
+install.sh                    symlink installer
+share/dvm/lima.yaml.in        Lima YAML template (envsubst placeholders)
+share/dvm/config.sh.example   starter global config
+share/dvm/recipes/*.sh        built-in recipes
+tests/smoke.sh                end-to-end test with a fake limactl
+very-simple-plan.md           design notes
+```
+
+## Tests
+
+```bash
+bash tests/smoke.sh
+```
+
+Runs the full command surface against a fake `limactl` shim and asserts
+that argv, rendered YAML, and the piped guest script all look right. No
+real VM is touched.
+
+## License
+
+MIT. See `LICENSE`.

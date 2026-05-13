@@ -25,19 +25,21 @@ Defaults:
 - `~` in DVM config means the guest user's home
 - AI tools run inside the VM through `dvm-agent` when the recipe is used
 - public dotfiles use HTTPS by default
-- Cloudflare tokens are passed to sync explicitly, staged through a mode `0600` guest
-  temp file, and written inside the VM
-- Tailscale auth keys are handled the same way as Cloudflare tokens: passed to sync
-  explicitly, staged through a mode `0600` guest temp file, never passed as a
-  `limactl shell env` argument
-- forwarded ports bind to `127.0.0.1` unless config says otherwise
-- `dvm rm --yes` checks nested Git repos before deleting unless `--force` is used
+- forwarded ports bind to `127.0.0.1` unless `DVM_HOST_IP` says otherwise
 
-Most sync-time DVM environment values are visible to host process listings while
-`limactl` runs. Do not put secrets in general `DVM_*` config. The bundled cloudflared
-and tailscale handoffs are special-cased so `CLOUDFLARED_TOKEN`,
-`DVM_CLOUDFLARED_TOKEN`, `TAILSCALE_AUTH_KEY`, and `DVM_TAILSCALE_AUTH_KEY` are not
-passed as `limactl shell env` arguments.
+### Secret staging
+
+Names listed in `DVM_SECRETS` are read from the host process env at sync time
+and piped to the guest with one `limactl shell <vm> sudo install -m 600 -o
+$DVM_USER /dev/stdin /tmp/dvm-secret-<NAME>` call per secret. The secret value
+flows through stdin; only the filename appears in argv. Recipes read from
+`/tmp/dvm-secret-<NAME>` via the `dvm_secret <NAME>` helper.
+
+This is the only sanctioned mechanism for getting a credential into the guest.
+Do not put secrets in `DVM_*` config files: those become process env on the
+host while `limactl` runs and are visible to host process listings.
+
+### Agent sandbox
 
 The `dvm-agent` recipe uses Unix ACLs to grant access to project code and restrict
 common main-user secret paths, including SSH/GPG directories, token files, shell
@@ -51,7 +53,17 @@ prompts, but it means these tools can write project code, run project commands, 
 network, and access the agent user's own home. Set `DVM_CODEX_YOLO=0` or
 `DVM_CLAUDE_BYPASS=0` for a VM when you want tool-native prompts and sandboxing.
 
+### Guest-local keys
+
 Do not put host private keys in recipes or VM configs. Generate VM-local keys with
 `dvm ssh-key <name>` or `dvm gpg-key <name>` when needed. The GPG helper creates an
 unencrypted one-year VM-local signing key for disposable VM use, not a long-lived
 identity key.
+
+### Removed safeguards (from v1)
+
+- The dirty-git check on `dvm rm` is gone. `--yes` is the contract: if you
+  pass it, the VM is deleted regardless of uncommitted work. Inspect the VM
+  first with `dvm sh <name>` if you are unsure.
+- `dvm stop --inactive` is gone. There is no automated activity probe; stop
+  VMs explicitly.

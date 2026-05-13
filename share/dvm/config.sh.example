@@ -1,0 +1,20 @@
+# shellcheck shell=bash
+# Global DVM defaults. Copied to ~/.config/dvm/config.sh by `dvm config edit`
+# on first run. Uncomment lines to override built-ins.
+
+# VM resources (overridden per VM in ~/.config/dvm/vms/<name>.sh):
+# DVM_CPUS=2
+# DVM_MEMORY=2GiB
+# DVM_DISK=10GiB
+
+# DVM_CODE_ROOT="$HOME/code"   # parent for per-VM DVM_CODE_DIR
+# DVM_HOST_IP=127.0.0.1        # bind IP for DVM_PORTS
+# DVM_USER=developer           # primary guest user
+# DVM_AGENT_USER=dvm-agent     # account used by AI tool wrappers
+
+# Packages installed in every VM. Pure-dnf tools go here.
+# DVM_DEFAULT_PACKAGES=(git zsh tmux helix bat fzf just python3 python3-pip)
+
+# Recipes shared across every VM. Order matters: agent-user must come before
+# codex/claude/opencode/mistral. Per-VM DVM_RECIPES is appended to this.
+# DVM_DEFAULT_RECIPES=(zsh-login-shell agent-user codex)

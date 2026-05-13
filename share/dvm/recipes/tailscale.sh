@@ -1,19 +1,21 @@
 # Description: Tailscale mesh + optional Funnel public ingress
+# Expects DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY) in the VM config for first auth.
 if ! command -v tailscale >/dev/null 2>&1; then
-	sudo dnf5 config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
-	sudo dnf5 install -y tailscale
+	sudo dnf5 config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo \
+		|| sudo dnf config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
+	dvm_pkg tailscale
 fi
 
 sudo systemctl enable --now tailscaled
 
-hostname="${DVM_TAILSCALE_HOSTNAME:-${DVM_NAME:-}}"
-[ -n "$hostname" ] || dvm_recipe_die tailscale "DVM_TAILSCALE_HOSTNAME is required when DVM_NAME is unset"
+hostname="${DVM_TAILSCALE_HOSTNAME:-${DVM_VM:-}}"
+[ -n "$hostname" ] || dvm_recipe_die tailscale "DVM_TAILSCALE_HOSTNAME is required"
 
 auth_key=""
-auth_key_file="${DVM_TAILSCALE_AUTH_KEY_FILE:-}"
-if [ -n "$auth_key_file" ] && [ -f "$auth_key_file" ]; then
-	auth_key="$(cat "$auth_key_file")"
-	rm -f "$auth_key_file"
+auth_key_file="$(dvm_secret DVM_TAILSCALE_AUTHKEY 2>/dev/null || true)"
+if [ -n "$auth_key_file" ] && [ -r "$auth_key_file" ]; then
+	auth_key="$(sudo cat "$auth_key_file")"
+	sudo rm -f "$auth_key_file"
 fi
 
 current_state=""

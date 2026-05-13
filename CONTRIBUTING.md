@@ -1,8 +1,8 @@
 # Contributing
 
-DVM is intentionally small. Keep `bin/dvm` as a small dispatcher, put host-side wrapper
-helpers in `share/dvm/lib`, and put setup behavior in recipes or docs unless the
-wrapper truly has to bridge host config to Lima.
+DVM is intentionally small. The entire host program is one Bash script
+(`bin/dvm`). Put setup behavior in recipes (`share/dvm/recipes/`), not in
+`bin/dvm`, unless the wrapper truly has to bridge host config to Lima.
 
 Good fits:
 
@@ -19,12 +19,12 @@ Avoid:
 - secret-store abstractions
 - features better handled by `dvm ssh <name> -- ...`
 
-Run checks before handing work back:
+Run the smoke test before handing work back:
 
 ```bash
-bash scripts/check.sh
+bash tests/smoke.sh
 ```
 
-For every user-facing change, update the relevant docs and add an entry under
-`Unreleased` in [CHANGELOG.md](CHANGELOG.md). If a change is internal-only, say that in
-the final summary.
+For every user-facing change, update `README.md` and add an entry under
+`Unreleased` in [CHANGELOG.md](CHANGELOG.md). If a change is internal-only,
+say so in the final summary.

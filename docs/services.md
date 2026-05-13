@@ -1,340 +1,159 @@
 # Services
 
-Long-running services should usually get dedicated VMs. That keeps project VMs small
-and lets other VMs reach services through Lima's internal names. Bundled service VM
-examples set `DVM_NO_BASELINE=1`, so service syncs install only the service recipe.
+Long-running services usually deserve their own VM. Other VMs reach them
+via Lima's internal DNS (`lima-dvm-<name>.internal`).
 
-## Llama
+## llama
 
-Create an active config:
-
-```bash
-dvm init llama llama
-dvm sync llama
-```
-
-Optional model download:
+`share/dvm/recipes/llama.sh` installs llama.cpp and writes
+`dvm-llama.service`. Single-model env-var config:
 
 ```bash
-DVM_LLAMA_DEFAULT_MODEL="small"
-DVM_LLAMA_MODELS="small=https://example.invalid/model.gguf"
-DVM_LLAMA_MODELS_SHA256="small=..."
+# ~/.config/dvm/vms/llama.sh
+DVM_CPUS=8
+DVM_MEMORY=16GiB
+DVM_DISK=120GiB
+DVM_PORTS=(8080:8080)
+DVM_RECIPES=(llama)
+
+# Optional: download + verify one model
+DVM_LLAMA_MODEL_URL="https://example.invalid/model.gguf"
+DVM_LLAMA_MODEL_SHA256="0000...64hex"
+
+# Optional bind + port
+DVM_LLAMA_HOST=127.0.0.1
+DVM_LLAMA_PORT=8080
 ```
 
-`DVM_LLAMA_MODELS` is a space-separated `alias=https://...` list. The recipe downloads
-the selected alias, verifies the matching checksum when provided, and symlinks it to
-`~/models/current.gguf`. `DVM_LLAMA_REFRESH=1` forces a re-download.
-
-If no model URL is configured, place a model at:
-
-```text
-~/models/current.gguf
-```
-
-inside the llama VM, then run:
+Then:
 
 ```bash
 dvm sync llama
+# or, no URL: drop a .gguf at /home/$DVM_USER/models/current.gguf and sync
+curl http://127.0.0.1:8080            # from the host
+curl http://lima-dvm-llama.internal:8080   # from another VM
+dvm log llama -f
 ```
 
-Other VMs can call:
+## cloudflared
+
+`share/dvm/recipes/cloudflared.sh` installs cloudflared and writes
+`dvm-cloudflared.service`. The token is staged via `DVM_SECRETS`:
 
 ```bash
-curl http://lima-dvm-llama.internal:8080
+# ~/.config/dvm/vms/cloud.sh
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=10GiB
+DVM_RECIPES=(cloudflared)
+DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
 ```
 
-The bundled `share/dvm/vms/llama.sh` opens `DVM_PORTS="8080:8080"` and sets
-`DVM_LLAMA_HOST="0.0.0.0"`, so the service is reachable from the host and from other
-VMs by default:
+At sync time:
 
 ```bash
-curl http://127.0.0.1:8080
-curl http://lima-dvm-llama.internal:8080
+DVM_CLOUDFLARED_TOKEN="..." dvm sync cloud
+dvm log cloud -f
 ```
 
-Logs:
+The value is piped through stdin to `install -m 600 -o $DVM_USER`. It
+never appears in argv, host process env, or a host temp file.
+
+macOS Keychain helper:
 
 ```bash
-dvm log llama
+security add-generic-password -a "$USER" -s dvm-cloudflared -w "$TOKEN"
+DVM_CLOUDFLARED_TOKEN="$(security find-generic-password \
+    -a "$USER" -s dvm-cloudflared -w)" dvm sync cloud
 ```
 
-## Cloudflared
+Rotate the token in Cloudflare and re-sync if the VM is compromised. DVM
+has no secret store.
 
-Create an active config:
+## tailscale
+
+Two patterns; pick either or both.
+
+### Pattern 1 — private dev access (per app VM)
+
+Reach `http://app:5173` from your tailnet without juggling host ports.
 
 ```bash
-dvm init cloudflared cloudflared
-CLOUDFLARED_TOKEN="..." dvm sync cloudflared
+# host
+brew install --cask tailscale && open -a Tailscale.app   # macOS
+# log into the same tailnet
+
+# ~/.config/dvm/vms/app.sh
+DVM_RECIPES=(tailscale)
+DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
+# optional: DVM_TAILSCALE_HOSTNAME="app"   (defaults to $DVM_VM)
 ```
 
-The example config maps `CLOUDFLARED_TOKEN` to `DVM_CLOUDFLARED_TOKEN`. The recipe
-writes `/etc/cloudflared/dvm.env` with mode `0600` when a token is present and starts
-`dvm-cloudflared.service`. DVM stages that token through a mode `0600` guest temp file
-during `sync`, so the token is not passed as a `limactl shell env` argument on the
-host.
-
-For host convenience, use macOS Keychain yourself:
-
 ```bash
-security add-generic-password -a dvm -s cloudflared -w "$TOKEN"
-CLOUDFLARED_TOKEN="$(security find-generic-password -a dvm -s cloudflared -w)" \
-  dvm sync cloudflared
+DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync app
 ```
 
-DVM does not have a secret command. Rotate the token in Cloudflare if the VM is
-compromised.
+`http://app:5173` resolves via MagicDNS. Drop a clean HTTPS URL with
+`sudo tailscale serve --bg --https=443 http://localhost:5173` inside the
+VM if you want `https://app.<tailnet>.ts.net`.
 
-## Tailscale
+### Pattern 2 — public Funnel URL (dedicated VM)
 
-The `tailscale` recipe supports two patterns:
-
-1. **Private dev access.** Add `use tailscale` to any app VM so you can reach
-   its dev servers from your host (and other tailnet devices) by hostname,
-   without juggling `DVM_PORTS` across many VMs.
-2. **Public Funnel URLs.** Use the dedicated `tailscale` VM template to publish
-   one HTTP backend (running in any other DVM VM) at a public `*.ts.net` URL on
-   demand.
-
-The two are independent — you can use either, both, or neither. Both share the
-same auth-key flow; see [Auth key sourcing](#auth-key-sourcing).
-
-### Pattern 1: Private dev access (per app VM)
-
-Goal: reach `http://fida:5173`, `http://bar:3000`, etc. from your Mac without
-ever picking unique host ports per VM.
-
-1. **Install Tailscale on your host** and sign in to the same tailnet. The host
-   resolves VM hostnames via MagicDNS.
-
-2. **Add the recipe to each app VM** that should be reachable:
-
-   ```bash
-   # ~/.config/dvm/vms/fida.sh
-   use_tools
-   use tailscale
-   ```
-
-   You can drop `DVM_PORTS` from these VMs entirely — Tailscale gives each VM
-   its own IP, so port collisions don't exist on the tailnet.
-
-3. **Sync each VM**, providing the auth key (see
-   [Auth key sourcing](#auth-key-sourcing) for where to put it):
-
-   ```bash
-   TAILSCALE_AUTH_KEY="tskey-..." dvm sync fida
-   ```
-
-   The recipe registers the VM with hostname `$DVM_NAME` (override with
-   `DVM_TAILSCALE_HOSTNAME`).
-
-4. **Run dev servers as usual** inside the VM, listening on `0.0.0.0`:
-
-   ```bash
-   dvm ssh fida
-   npm run dev          # vite on 0.0.0.0:5173
-   ```
-
-   From the host browser:
-
-   ```text
-   http://fida:5173
-   http://bar:3000
-   ```
-
-#### Optional: drop the port with `tailscale serve`
-
-For a clean HTTPS URL without a port, run inside the VM:
+Publish one HTTP backend (running in any DVM VM) at a public
+`*.ts.net` URL on demand.
 
 ```bash
-sudo tailscale serve --bg --https=443 http://localhost:5173
+# ~/.config/dvm/vms/ts.sh
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_RECIPES=(tailscale)
+DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
 ```
 
-This persists across reboots. `https://fida.<tailnet>.ts.net` now hits vite
-directly. `tailscale serve status` shows current config; `tailscale serve
-reset` clears it.
-
-This is tailnet-private — only devices signed into your tailnet can reach it.
-For a public URL, see Pattern 2.
-
-### Pattern 2: Public Funnel URLs (dedicated VM)
-
-Use case: **publish a local VM service at a public `*.ts.net` URL on demand,
-share it with a teammate or external user, then turn it off when you're
-done**. Funnel is OFF by default; you flip it on by passing
-`DVM_TAILSCALE_FUNNEL_TARGET=<url>` at sync time and OFF by syncing again
-without it.
-
-DVM ships a dedicated `tailscale` VM template that joins the tailnet and
-proxies one HTTP backend (running in any other DVM VM reachable via Lima's
-internal DNS) to a public Funnel URL.
-
-#### One-time setup
-
-1. **Get an auth key** (see [Auth key sourcing](#auth-key-sourcing)). For a
-   long-lived proxy node, use a **reusable** key. Recommended: tag the key
-   (e.g. `tag:dvm`) so ACLs can reason about it.
-
-2. **Allow Funnel in your tailnet ACL.** Open **Access controls** in the admin
-   console and ensure your policy grants the `funnel` node attribute to the
-   tunnel device — for example:
-
-   ```hujson
-   "nodeAttrs": [
-     { "target": ["tag:dvm"], "attr": ["funnel"] }
-   ]
-   ```
-
-   Without this, `tailscale funnel` will report a permissions error inside the
-   VM. (Tailnets that allow Funnel everywhere can use a broader target like
-   `["*"]`, but tag-scoped is preferred.)
-
-3. **Create the proxy VM.**
-
-   ```bash
-   dvm init tailscale tailscale
-   TAILSCALE_AUTH_KEY="tskey-..." dvm sync tailscale
-   ```
-
-   The VM joins the tailnet. Funnel stays off — no public URL yet.
-
-The bundled template sets `DVM_NO_BASELINE=1` and maps `TAILSCALE_AUTH_KEY` to
-`DVM_TAILSCALE_AUTH_KEY`. DVM stages the key through a mode `0600` guest temp
-file during `sync`, so the value is never passed as a `limactl shell env`
-argument on the host.
-
-#### Day-to-day: Funnel on/off
-
-When a teammate needs to see your dev app for a few hours:
+Prereq: the tunnel device must have `funnel` in your tailnet ACL
+`nodeAttrs` (use a tag like `tag:dvm`).
 
 ```bash
-# Turn ON, pointing at the app VM's local port
+# join the tailnet
+DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync ts
+
+# turn Funnel ON, pointing at any reachable backend
 DVM_TAILSCALE_FUNNEL_TARGET="http://lima-dvm-app.internal:3000" \
-  dvm sync tailscale
+  DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync ts
 
-# DVM prints the public URL, e.g.:
-#   tailscale funnel: ON, target=http://lima-dvm-app.internal:3000
-#   tailscale public url: https://<machine>.<tailnet>.ts.net
+# turn Funnel OFF (recipe resets on every sync)
+DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync ts
 ```
 
-Share the URL. When you're done:
-
-```bash
-# Turn OFF
-dvm sync tailscale
-# tailscale funnel: OFF (set DVM_TAILSCALE_FUNNEL_TARGET=URL to enable)
-```
-
-The recipe runs `tailscale funnel reset` on every sync, so leaving
-`DVM_TAILSCALE_FUNNEL_TARGET` unset means OFF. No state to forget about.
-
-#### Pinning a permanent target
-
-If a single VM should always be the funnel target (e.g. a dedicated demo VM
-that's always sharing the same service), set the variable in the VM config
-itself instead of passing it at the command line:
-
-```bash
-# in ~/.config/dvm/vms/tailscale.sh
-DVM_TAILSCALE_FUNNEL_TARGET="http://lima-dvm-demo.internal:8080"
-```
-
-Then every `dvm sync tailscale` keeps Funnel ON pointing there. Comment the
-line out (or delete it) when you want to go back to the on-demand workflow.
-
-#### Limits to know
-
-- **One Funnel target per node.** To expose multiple services publicly at the
-  same time, run multiple Tailscale VMs (`dvm init demo-a tailscale`,
-  `dvm init demo-b tailscale`) and point each at a different backend.
-- **Funnel listens only on ports 443, 8443, 10000.** The recipe uses 443. The
-  *backend* (the URL you point at) can run on any port — Funnel terminates
-  TLS and proxies to whatever you specify.
-- **`tailscaled` must keep running for the tunnel to stay up.** `dvm stop
-  tailscale` or shutting down the host kills the public URL until the VM
-  starts again.
-- **The URL is your tailnet hostname**, like
-  `<machine>.<tailnet>.ts.net` — no custom domain. If you need a custom
-  domain, use the `cloudflared` recipe instead.
+Limits: one Funnel target per node, listens on 443/8443/10000, no custom
+domain (use `cloudflared` for that).
 
 ### Auth key sourcing
 
-A single **reusable** auth key works for every VM that uses the recipe.
-Generate one in the admin console under **Settings → Keys → Generate auth
-key**. DVM reads the key from `DVM_TAILSCALE_AUTH_KEY` first and falls back to
-`TAILSCALE_AUTH_KEY` (apply.sh:14) — so a value in config wins over an env
-var. Pick whichever sourcing fits your threat model.
+Generate a reusable key in the admin console. Three options, in
+order of decreasing exposure:
 
-#### A. Global config file (lowest friction, plaintext on disk)
+1. **Per-sync env** — `DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync ...`.
+   Lives only in the calling shell.
+2. **macOS Keychain** — store once, read at sync time:
+   ```bash
+   security add-generic-password -a "$USER" -s dvm-tailscale -w "tskey-..."
+   DVM_TAILSCALE_AUTHKEY="$(security find-generic-password \
+       -a "$USER" -s dvm-tailscale -w)" dvm sync app
+   ```
+3. **Shell rc** — `export DVM_TAILSCALE_AUTHKEY="..."` in `~/.zshrc`.
+   Plaintext on disk; acceptable for personal tailnets on encrypted
+   laptops.
 
-Set the key once in `~/.config/dvm/config.sh`:
-
-```bash
-DVM_TAILSCALE_AUTH_KEY="tskey-auth-..."
-```
-
-Then `dvm sync <name>` works with no env var. The key sits unencrypted in your
-home directory; reasonable if your laptop disk is encrypted and the key is a
-personal-tailnet reusable key.
-
-#### B. Shell env var (per-sync or per-shell)
-
-```bash
-TAILSCALE_AUTH_KEY="tskey-auth-..." dvm sync fida
-```
-
-Or export it in your shell rc so every sync in that shell picks it up:
-
-```bash
-# ~/.zshrc
-export TAILSCALE_AUTH_KEY="tskey-auth-..."
-```
-
-Same disk-plaintext concern as (A) when stored in rc files; (A) is usually
-simpler if you're going that route.
-
-#### C. macOS Keychain (no plaintext on disk)
-
-Store the key once:
-
-```bash
-security add-generic-password -a "$USER" -s dvm-tailscale-auth-key \
-  -w "tskey-auth-..."
-```
-
-Wrap `dvm sync` so it pulls the key from the Keychain on demand:
-
-```bash
-# ~/.zshrc
-dvm-sync() {
-  TAILSCALE_AUTH_KEY="$(security find-generic-password \
-      -a "$USER" -s dvm-tailscale-auth-key -w)" \
-    dvm sync "$@"
-}
-```
-
-Then `dvm-sync fida` reads the key at sync time only; it never lands on disk
-in plaintext and never enters shell history.
-
-### Auth key rotation and tear-down
-
-To rotate the auth key, generate a new one in the admin console, run
-`TAILSCALE_AUTH_KEY="tskey-new..." dvm sync <name>` (or update whichever
-sourcing path you use), then delete the old key. To remove a VM from your
-tailnet, delete the device in the admin console (or `dvm sh <name>` then
-`sudo tailscale logout`) and then `dvm rm <name> --yes`.
+To remove a VM from your tailnet: `dvm sh <vm>; sudo tailscale logout`,
+then `dvm rm <vm> --yes`, then delete the device in the admin console.
 
 ## Logs
 
-DVM has a log helper for service VMs:
-
 ```bash
-dvm log cloudflared
-dvm log cloudflared -f
-dvm log cloudflared dvm-cloudflared.service -f
 dvm log llama
-dvm log tailscale tailscaled.service -f
+dvm log cloud -f
+dvm log ts tailscaled.service -f
 ```
 
-If a VM has no known service recipe or more than one, pass the systemd unit explicitly.
-All arguments after the inferred or explicit unit are passed to `journalctl`, including
-filters such as `--since` and `--until`.
+Everything after the VM name is forwarded to `journalctl`.

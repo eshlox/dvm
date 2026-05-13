@@ -1,15 +1,15 @@
 # Agent Instructions
 
-This repository is intentionally small and audit-friendly. Keep changes focused and
-prefer docs or recipes over core behavior unless the core change is clearly justified.
+This repository is intentionally small. The whole tool is one Bash script
+(`bin/dvm`), one Lima YAML template, and a handful of shell recipes. Prefer
+docs or recipes over `bin/dvm` changes unless the core change is clearly
+justified.
 
 After every change:
 
-- Update user-facing docs when behavior, commands, config, recipes, workflows, or setup
-  examples change.
-- Update `CHANGELOG.md` under `Unreleased` for every user-visible change. If a change is
-  internal-only, make that explicit in the final summary.
-- Run `bash scripts/check.sh` before handing work back when possible.
+- Update `README.md` when commands, config, recipes, or workflows change.
+- Add a `CHANGELOG.md` entry under `Unreleased` for every user-visible
+  change. State explicitly if a change is internal-only.
+- Run `bash tests/smoke.sh` and confirm it passes.
 
-Do not edit unrelated files or generated local notes. In particular, leave unrelated
-draft docs alone unless the user asks for them.
+Do not edit unrelated files or planning drafts.

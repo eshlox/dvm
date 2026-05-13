@@ -1,483 +1,196 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1003,SC2016
+# End-to-end smoke test for dvm with a fake limactl.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-assert_contains() { grep -Fq -- "$2" "$1"; }
+LIMACTL_LOG="$TMP/limactl.log"
+STDIN_LOG="$TMP/stdin.log"
 
-assert_contains_all() {
-	local file="$1"
-	local needle
-	shift
-	for needle in "$@"; do
-		assert_contains "$file" "$needle"
-	done
-}
-
-assert_matches() { grep -Eq -- "$2" "$1"; }
-
-assert_not_contains() {
-	local file="$1"
-	local needle="$2"
-	local message="$3"
-	if grep -Fq -- "$needle" "$file"; then
-		printf '%s\n' "$message" >&2
-		exit 1
-	fi
-}
-
-reset_log() { : >"$TMP/state/log"; }
-
-run_fails() {
-	local err="$1"
-	local status
-	shift
-	set +e
-	"$@" >/dev/null 2>"$err"
-	status="$?"
-	set -e
-	[ "$status" -ne 0 ]
-}
-
-run_fails_capture() {
-	local out="$1"
-	local err="$2"
-	local status
-	shift 2
-	set +e
-	"$@" >"$out" 2>"$err"
-	status="$?"
-	set -e
-	[ "$status" -ne 0 ]
-}
-
-mkdir -p "$TMP/bin" "$TMP/config/vms" "$TMP/state"
-cp -R "$ROOT/share/dvm/." "$TMP/config/"
-rm -rf "$TMP/config/vms"
-mkdir -p "$TMP/config/vms"
-
-cat >>"$TMP/config/config.sh" <<'CONFIG'
-
-DVM_CHEZMOI_ROLE="vm"
-DVM_CHEZMOI_NAME="Example User"
-DVM_CHEZMOI_EMAIL="example@example.com"
-
-use_app_tools() {
-	use zsh
-	use git
-	use helix
-	use lazygit
-	use starship
-	use fzf
-	use bat
-	use git-delta
-	use just
-	use tmux
-	use yazi
-}
-CONFIG
-
-cat >"$TMP/config/vms/app.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=4GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/app"
-DVM_PORTS="3000:3000"
-DVM_CHEZMOI_REPO="https://github.com/example/dotfiles.git"
-DVM_APP_ONLY="app"
-
-use_app_tools
-use node
-use agent-user
-use codex
-use claude
-use chezmoi
-VM
-
-cat >"$TMP/config/vms/second.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=4GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/second"
-
-use python
-VM
-
-cat >"$TMP/config/vms/rooted.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=4GiB
-DVM_DISK=20GiB
-DVM_CODE_ROOT="~/work"
-
-use python
-VM
-
-cat >"$TMP/config/vms/cloudflared.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/cloudflared"
-DVM_CLOUDFLARED_TOKEN="${CLOUDFLARED_TOKEN:-}"
-
-use cloudflared
-VM
-
-cat >"$TMP/config/vms/tailscale.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/tailscale"
-DVM_NO_BASELINE=1
-DVM_TAILSCALE_AUTH_KEY="${TAILSCALE_AUTH_KEY:-}"
-DVM_TAILSCALE_FUNNEL_TARGET="http://lima-dvm-app.internal:3000"
-
-use tailscale
-VM
-
-cat >"$TMP/bin/limactl" <<'FAKE'
+# Fake limactl: logs argv, drains stdin on `shell`, returns no instances on list.
+mkdir -p "$TMP/bin"
+cat > "$TMP/bin/limactl" <<EOF
 #!/usr/bin/env bash
-set -euo pipefail
-state="${DVM_FAKE_STATE:?}"
-cmd="$1"
-shift
-case "$cmd" in
-list)
-	if [ -f "$state/list_empty_once" ]; then
-		rm -f "$state/list_empty_once"
-		exit 0
-	fi
-	if [ -f "$state/created" ]; then
-		case "${*:-}" in
-		*"{{.Name}}"*"{{.Status}}"*)
-			while IFS= read -r name; do printf '%s\tRunning\t%s/%s\n' "$name" "$state" "$name"; done <"$state/created"
-			;;
-		*"{{.Name}}"*"{{.Dir}}"*)
-			while IFS= read -r name; do printf '%s\t%s/%s\n' "$name" "$state" "$name"; done <"$state/created"
-			;;
-		'')
-			printf 'NAME STATUS SSH\n'
-			while IFS= read -r name; do printf '%s Running 127.0.0.1:60022\n' "$name"; done <"$state/created"
-			;;
-		*)
-			cat "$state/created"
-			;;
-		esac
-	fi
-	;;
-create)
-	name=""
-	while [ "$#" -gt 0 ]; do
-		case "$1" in
-		--name) name="$2"; shift ;;
-		*)
-			if [ -f "$1" ]; then
-				mkdir -p "$state/$name"
-				cp "$1" "$state/$name/lima.yaml"
-				cp "$1" "$state/lima.yaml"
-			fi
-			;;
-		esac
-		shift || true
-	done
-	if [ -f "$state/created" ] && grep -Fxq "$name" "$state/created"; then
-		printf 'FATA[0000] instance "%s" already exists\n' "$name" >&2
-		exit 1
-	fi
-	touch "$state/created"
-	grep -Fxq "$name" "$state/created" || printf '%s\n' "$name" >>"$state/created"
-	printf 'create %s\n' "$name" >>"$state/log"
-	;;
-start)
-	printf 'start %s\n' "$1" >>"$state/log"
-	;;
-stop)
-	printf 'stop %s\n' "$1" >>"$state/log"
-	;;
-edit)
-	printf 'edit %s\n' "$*" >>"$state/log"
-	;;
-copy)
-	printf 'copy %s\n' "$*" >>"$state/log"
-	;;
-shell)
-	vm="$1"
-	shift
-	printf 'shell %s %s\n' "$vm" "$*" >>"$state/log"
-	cat >"$state/guest.sh"
-	bash -n "$state/guest.sh"
-	if grep -Fq '# dvm activity probe' "$state/guest.sh"; then
-		activity="$(cat "$state/activity/$vm" 2>/dev/null || true)"
-		case "$activity" in
-		active:*)
-			printf '%s\n' "$activity"
-			exit 1
-			;;
-		fail:*)
-			printf '%s\n' "${activity#fail:}" >&2
-			exit 2
-			;;
-		*)
-			printf 'inactive\n'
-			;;
-		esac
-	fi
-	;;
-delete)
-	printf 'delete %s\n' "$1" >>"$state/log"
-	rm -rf "$state/$1"
-	if [ -f "$state/created" ]; then
-		grep -Fxv "$1" "$state/created" >"$state/created.tmp" || true
-		mv "$state/created.tmp" "$state/created"
-	fi
-	;;
-*)
-	printf 'fake limactl: unsupported %s\n' "$cmd" >&2
-	exit 1
-	;;
+{ printf '%q ' "\$@"; printf '\n'; } >> "$LIMACTL_LOG"
+case "\$1" in
+    --version) echo "limactl version 1.0.0 (fake)" ;;
+    list)
+        # Simulate one running VM when DVM_FAKE_HAS_VM is set.
+        if [ "\${DVM_FAKE_HAS_VM:-0}" = "1" ]; then
+            case "\$2" in
+                -q) printf 'dvm-app\n' ;;
+                --format) printf 'dvm-app\tRunning\t4\t8GiB\n' ;;
+            esac
+        fi
+        ;;
+    shell) cat > "$STDIN_LOG" ;;
 esac
-FAKE
+exit 0
+EOF
 chmod +x "$TMP/bin/limactl"
 
-export PATH="$TMP/bin:$PATH"
-export DVM_CONFIG="$TMP/config"
-export DVM_FAKE_STATE="$TMP/state"
-export LIMA_HOME="$TMP/state"
-export EDITOR=:
+mkdir -p "$TMP/cfg/vms"
+cat > "$TMP/cfg/vms/app.sh" <<'EOF'
+DVM_CPUS=4
+DVM_MEMORY=8GiB
+DVM_DISK=30GiB
+DVM_PORTS=(3000:3000 5173:5173)
+DVM_PACKAGES=(git tmux)
+DVM_RECIPES=(node-corepack)
+EOF
 
-mkdir -p "$TMP/install-bin"
-printf '%s\n' old-target >"$TMP/old-dvm"
-ln -s "$TMP/old-dvm" "$TMP/install-bin/dvm"
-PREFIX="$TMP/install-bin" DVM_CONFIG="$TMP/install-config" "$ROOT/install.sh" --init >"$TMP/install.out"
-assert_contains "$TMP/old-dvm" old-target
-[ -x "$TMP/install-bin/dvm" ]
-[ ! -L "$TMP/install-bin/dvm" ]
-assert_contains_all "$TMP/install-bin/dvm" \
-	'dvm-run.' \
-	'DVM_LIB_DIR="$tmp_parent/lib"'
-[ ! -e "$TMP/install-config/lib" ]
-[ ! -e "$TMP/install-config/completions" ]
-"$TMP/install-bin/dvm" help >"$TMP/install-help.out"
-assert_contains "$TMP/install-help.out" 'dvm init <name> [template]'
+cat > "$TMP/cfg/vms/cloud.sh" <<'EOF'
+DVM_CPUS=2
+DVM_MEMORY=2GiB
+DVM_DISK=10GiB
+DVM_RECIPES=(cloudflared)
+DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+EOF
 
-completion="$ROOT/share/dvm/completions/_dvm"
-[ -f "$completion" ]
-if command -v zsh >/dev/null 2>&1; then
-	zsh -n "$completion"
+run_dvm() {
+    PATH="$TMP/bin:$PATH" \
+    DVM_CONFIG_DIR="$TMP/cfg" \
+    DVM_SHARE_DIR="$ROOT/share/dvm" \
+    DVM_CACHE_DIR="$TMP/cache" \
+    "$ROOT/bin/dvm" "$@"
+}
+
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+ok()   { printf 'ok: %s\n' "$*"; }
+
+# --- help -------------------------------------------------------------------
+out="$(run_dvm help)"
+case "$out" in *"sync"*"sh"*"recipes"*) ok "help lists commands" ;; *) fail "help" ;; esac
+
+# --- sync renders YAML and pipes guest script ------------------------------
+: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
+run_dvm sync app >/dev/null
+grep -q "create --name dvm-app"     "$LIMACTL_LOG" || fail "no create call"
+grep -q "start dvm-app"             "$LIMACTL_LOG" || fail "no start call"
+grep -q "shell --workdir / dvm-app" "$LIMACTL_LOG" || fail "no shell call"
+ok "sync app issued create/start/shell"
+
+# YAML content
+yaml="$TMP/cache/app.yaml"
+[ -f "$yaml" ] || fail "no rendered yaml"
+grep -q "cpus: 4"                "$yaml" || fail "yaml missing cpus"
+grep -q 'memory: "8GiB"'         "$yaml" || fail "yaml missing memory"
+grep -q "hostnamectl set-hostname app.dvm" "$yaml" || fail "yaml missing hostname"
+grep -q "hostPort: 3000"         "$yaml" || fail "yaml missing port"
+grep -q '/home/developer/code/app' "$yaml" || fail "yaml missing guest code_dir"
+ok "rendered yaml has resources, ports, hostname, code_dir"
+
+# Guest script
+bash -n "$STDIN_LOG"
+grep -q 'export DVM_VM=app'         "$STDIN_LOG" || fail "stdin missing DVM_VM"
+grep -q 'dvm_pkg git tmux'          "$STDIN_LOG" || fail "stdin missing dvm_pkg call"
+grep -q '# >>> recipe: node-corepack' "$STDIN_LOG" || fail "stdin missing recipe header"
+ok "guest stdin passes bash -n and contains packages + recipe"
+
+# --- secrets staging -------------------------------------------------------
+: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
+DVM_CLOUDFLARED_TOKEN="testtok" run_dvm sync cloud >/dev/null
+grep -q "install -m 600 -o developer /dev/stdin /tmp/dvm-secret-DVM_CLOUDFLARED_TOKEN" "$LIMACTL_LOG" \
+    || fail "secret not staged via limactl shell install"
+# Token value must NOT appear in argv log.
+if grep -q "testtok" "$LIMACTL_LOG"; then fail "secret value leaked to argv log"; fi
+ok "secret staged via install -m 600 with no argv leak"
+
+# --- dry-run prints script without contacting Lima -------------------------
+: > "$LIMACTL_LOG"
+script="$(DVM_DRY_RUN=1 run_dvm sync app)"
+case "$script" in *"set -euo pipefail"*"node-corepack"*) ok "dry-run emits script" ;; *) fail "dry-run output" ;; esac
+case "$(cat "$LIMACTL_LOG")" in '') ok "dry-run did not call limactl" ;; *) fail "dry-run called limactl" ;; esac
+
+# --- ls + filter ----------------------------------------------------------
+: > "$LIMACTL_LOG"
+DVM_FAKE_HAS_VM=1 run_dvm ls | grep -q "^app " || fail "ls missing app"
+DVM_FAKE_HAS_VM=1 run_dvm ls app | grep -q "^app " || fail "ls <vm> filter"
+ok "ls and ls <vm> work"
+
+# --- stop, rm, sync --all --------------------------------------------------
+: > "$LIMACTL_LOG"
+run_dvm stop app >/dev/null
+grep -q "stop dvm-app" "$LIMACTL_LOG" || fail "stop didn't call limactl"
+ok "stop forwards to limactl"
+
+: > "$LIMACTL_LOG"
+DVM_FAKE_HAS_VM=1 run_dvm rm app --yes >/dev/null
+grep -q "delete --force dvm-app" "$LIMACTL_LOG" || fail "rm didn't delete"
+ok "rm --yes deletes instance"
+
+: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
+DVM_CLOUDFLARED_TOKEN=tok run_dvm sync --all >/dev/null
+[ "$(grep -c "create --name " "$LIMACTL_LOG")" -ge 2 ] || fail "sync --all didn't iterate"
+ok "sync --all iterates over per-VM configs"
+
+# --- cp parsing ------------------------------------------------------------
+: > "$LIMACTL_LOG"
+run_dvm cp ./local app:/guest >/dev/null
+grep -qE "copy ./local dvm-app:/guest" "$LIMACTL_LOG" || fail "cp host->guest rewrite"
+ok "cp rewrites vm:path to dvm-vm:path"
+
+# --- cp rejects two local paths -------------------------------------------
+if run_dvm cp ./a ./b >/dev/null 2>&1; then fail "cp should reject two local paths"; fi
+ok "cp rejects two local paths"
+
+# --- invalid VM name -------------------------------------------------------
+if run_dvm sync "Bad-Name" >/dev/null 2>&1; then fail "should reject invalid VM name"; fi
+ok "rejects invalid VM name"
+
+# --- recipes list ----------------------------------------------------------
+run_dvm recipes | grep -q "agent-user" || fail "recipes missing agent-user"
+ok "recipes lists agent-user"
+
+# --- absolute-target symlink to bin/dvm works (regression: install.sh path) -
+ln -sfn "$ROOT/bin/dvm" "$TMP/bin/dvm-link"
+PATH="$TMP/bin:$PATH" \
+DVM_CONFIG_DIR="$TMP/cfg" \
+DVM_SHARE_DIR="$ROOT/share/dvm" \
+DVM_CACHE_DIR="$TMP/cache" \
+"$TMP/bin/dvm-link" help >/dev/null 2>&1 \
+    || fail "dvm broken when launched through absolute-target symlink"
+ok "works through absolute-target symlink"
+
+# --- project hook is emitted in the guest script -------------------------
+: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
+run_dvm sync app >/dev/null
+grep -q '/.dvm/sync.sh' "$STDIN_LOG" || fail "project hook missing from guest script"
+ok "project hook check appears in guest stdin"
+
+# --- secret name validation ---------------------------------------------
+cat > "$TMP/cfg/vms/bad.sh" <<'EOF'
+DVM_RECIPES=()
+DVM_SECRETS=("bad name")
+EOF
+if BAD_SECRET=x run_dvm sync bad >/dev/null 2>&1; then
+    fail "should reject malformed secret name"
 fi
+ok "rejects malformed DVM_SECRETS entry"
 
-"$ROOT/bin/dvm" init newapp
-[ -f "$TMP/config/vms/newapp.sh" ]
-assert_contains "$TMP/config/vms/newapp.sh" 'DVM_CODE_DIR="~/code/$DVM_NAME"'
-assert_matches "$TMP/config/vms/newapp.sh" '^use_tools$'
-assert_not_contains "$TMP/config/vms/newapp.sh" '__DVM_HOST_MAX_CPUS__' \
-	'init left __DVM_HOST_MAX_CPUS__ placeholder unsubstituted'
-"$ROOT/bin/dvm" init llama llama
-[ -f "$TMP/config/vms/llama.sh" ]
-assert_contains "$TMP/config/vms/llama.sh" 'use llama'
-run_fails "$TMP/init-bad.err" "$ROOT/bin/dvm" init bad missing-template
-assert_contains "$TMP/init-bad.err" 'missing VM template: missing-template'
-run_fails "$TMP/stop-all-extra.err" "$ROOT/bin/dvm" stop --all extra
-assert_contains "$TMP/stop-all-extra.err" 'stop --all does not take a VM name'
-
-rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
-
-"$ROOT/bin/dvm" sync app 2>"$TMP/apply.err"
-assert_contains "$TMP/apply.err" 'dvm: syncing recipes for app: baseline zsh git helix lazygit starship fzf bat git-delta just tmux yazi node agent-user codex claude chezmoi'
-assert_contains_all "$TMP/state/log" \
-	'create dvm-app' \
-	'start dvm-app' \
-	'DVM_CODE_DIR=~/code/app'
-assert_not_contains "$TMP/state/log" 'DVM_CHEZMOI_SIGNING_KEY=' \
-	'default signing key should not require a VM config variable'
-assert_contains_all "$TMP/state/guest.sh" \
-	'set -euo pipefail' \
-	'dvm hostname' \
-	'hostnamectl set-hostname "$DVM_NAME"' \
-	'dvm recipe: agent-user' \
-	'/usr/local/libexec/dvm-ai-bwrap' \
-	'--bind "$DVM_AI_CODE_DIR" /workspace' \
-	'--setenv DVM_CODE_DIR /workspace' \
-	'dvm recipe: codex' \
-	'--dangerously-bypass-approvals-and-sandbox "\$@"' \
-	'dvm recipe: claude' \
-	'defaultMode = "bypassPermissions"' \
-	'dvm project hook'
-assert_contains "$TMP/state/lima.yaml" 'hostPort: 3000'
-bash -n "$TMP/state/guest.sh"
-
-reset_log
-"$ROOT/bin/dvm" sync rooted
-assert_contains "$TMP/state/log" 'DVM_CODE_DIR=~/work/rooted'
-
-reset_log
-CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" sync cloudflared
-assert_contains_all "$TMP/state/guest.sh" \
-	'dvm-cloudflared-token.' \
-	'ActiveEnterTimestamp'
-assert_not_contains "$TMP/state/log" 'CLOUDFLARED_TOKEN=smoke.Token_123=-' \
-	'cloudflared token leaked into limactl argv log'
-assert_not_contains "$TMP/state/log" 'DVM_CLOUDFLARED_TOKEN=smoke.Token_123=-' \
-	'DVM cloudflared token leaked into limactl argv log'
-
-reset_log
-TAILSCALE_AUTH_KEY="tskey-auth-smoke-Test_123" "$ROOT/bin/dvm" sync tailscale
-assert_contains_all "$TMP/state/guest.sh" \
-	'dvm recipe: tailscale' \
-	'dvm-tailscale-auth-key.' \
-	'tailscale funnel --bg --https=443'
-assert_contains "$TMP/state/log" 'DVM_TAILSCALE_FUNNEL_TARGET=http://lima-dvm-app.internal:3000'
-assert_not_contains "$TMP/state/log" 'TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' \
-	'tailscale auth key leaked into limactl argv log'
-assert_not_contains "$TMP/state/log" 'DVM_TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' \
-	'DVM tailscale auth key leaked into limactl argv log'
-
-run_fails "$TMP/tailscale-bad.err" env TAILSCALE_AUTH_KEY="not-a-tskey" "$ROOT/bin/dvm" sync tailscale
-assert_contains "$TMP/tailscale-bad.err" 'must start with tskey-'
-
-perl -0pi -e 's/DVM_PORTS="3000:3000"/DVM_PORTS="3000:3000 9000:9000"/' "$TMP/config/vms/app.sh"
-"$ROOT/bin/dvm" sync app
-assert_contains "$TMP/state/log" 'edit --tty=false --set .portForwards'
-bash -n "$TMP/state/guest.sh"
-
-"$ROOT/bin/dvm" ls >"$TMP/list.out"
-assert_matches "$TMP/list.out" '^app[[:space:]]+Running[[:space:]]+127\.0\.0\.1:60022'
-assert_not_contains "$TMP/list.out" 'dvm-app' 'dvm ls leaked internal Lima prefix'
-
-"$ROOT/bin/dvm" ssh app -- pwd
-assert_contains_all "$TMP/state/log" \
-	'shell dvm-app env TERM=' \
-	' bash -c '
-
-"$ROOT/bin/dvm" ssh dvm-app -- pwd
-assert_contains "$TMP/state/log" 'shell dvm-app env TERM='
-
-guest_home="/home/${USER:-developer}"
-guest_code_dir="$guest_home/code/app"
-printf 'plan\n' >"$TMP/plan.md"
-reset_log
-"$ROOT/bin/dvm" cp "$TMP/plan.md" app:.
-assert_contains_all "$TMP/state/log" \
-	"shell dvm-app mkdir -p $guest_code_dir" \
-	"copy $TMP/plan.md dvm-app:$guest_code_dir"
-
-reset_log
-"$ROOT/bin/dvm" cp -r --backend=scp app:docs "$TMP/docs-out"
-assert_contains "$TMP/state/log" "copy -r --backend=scp dvm-app:$guest_code_dir/docs $TMP/docs-out"
-assert_not_contains "$TMP/state/log" 'bash -s -- dvm-agent' \
-	'dvm cp refreshed agent ACLs on VM-to-host copy'
-
-touch "$TMP/state/list_empty_once"
-"$ROOT/bin/dvm" ssh app -- pwd
-assert_contains "$TMP/state/log" 'shell dvm-app env TERM='
-
-cat >"$TMP/config/vms/race.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/race"
-
-use python
-VM
-
-mkdir -p "$TMP/state/dvm-race"
-cp "$TMP/state/lima.yaml" "$TMP/state/dvm-race/lima.yaml"
-assert_contains "$TMP/state/created" dvm-race || printf '%s\n' dvm-race >>"$TMP/state/created"
-touch "$TMP/state/list_empty_once"
-"$ROOT/bin/dvm" sync race
-assert_contains "$TMP/state/log" 'shell dvm-race env '
-rm -f "$TMP/config/vms/race.sh"
-
-"$ROOT/bin/dvm" ssh-key app
-assert_contains "$TMP/state/log" 'shell dvm-app env DVM_NAME=app bash -s'
-assert_contains "$TMP/state/guest.sh" 'Git commit signing public key'
-
-"$ROOT/bin/dvm" gpg-key app
-assert_contains "$TMP/state/log" 'shell dvm-app env DVM_NAME=app bash -s'
-
-mkdir -p "$TMP/state/activity"
-printf 'active: zellij\n' >"$TMP/state/activity/dvm-app"
-printf 'fail: probe unavailable\n' >"$TMP/state/activity/dvm-rooted"
-printf 'active: dvm-cloudflared.service\n' >"$TMP/state/activity/dvm-cloudflared"
-printf 'active: tailscaled.service\n' >"$TMP/state/activity/dvm-tailscale"
-reset_log
-"$ROOT/bin/dvm" stop --inactive --force >"$TMP/stop-inactive.out" 2>"$TMP/stop-inactive.err"
-assert_contains "$TMP/stop-inactive.out" 'dvm stop --all: 2 stopped, 3 skipped, 0 failed'
-assert_contains "$TMP/stop-inactive.err" 'skipping active VM: dvm-app (active: zellij)'
-assert_contains "$TMP/state/log" 'stop dvm-rooted'
-assert_not_contains "$TMP/state/log" 'stop dvm-app' 'dvm stop --inactive stopped an active VM'
-assert_not_contains "$TMP/state/log" 'stop dvm-cloudflared' 'dvm stop --inactive stopped an active VM'
-assert_not_contains "$TMP/state/log" 'stop dvm-tailscale' 'dvm stop --inactive stopped an active VM'
-rm -rf "$TMP/state/activity"
-
-reset_log
-"$ROOT/bin/dvm" stop --all >"$TMP/stop-all.out"
-assert_contains "$TMP/stop-all.out" 'dvm stop --all: 5 stopped, 0 skipped, 0 failed'
-
-"$ROOT/bin/dvm" stop app
-assert_contains "$TMP/state/log" 'stop dvm-app'
-
-"$ROOT/bin/dvm" rm app --yes
-assert_contains_all "$TMP/state/log" \
-	'shell dvm-app bash -s -- ~/code/app' \
-	'stop dvm-app' \
-	'delete dvm-app'
-
-mkdir -p "$TMP/state/dvm-orphan"
-cp "$TMP/state/lima.yaml" "$TMP/state/dvm-orphan/lima.yaml"
-assert_contains "$TMP/state/created" dvm-orphan || printf '%s\n' dvm-orphan >>"$TMP/state/created"
-"$ROOT/bin/dvm" rm orphan --yes 2>"$TMP/rm-orphan.err"
-assert_contains_all "$TMP/rm-orphan.err" \
-	'deleting Lima VM without DVM config: dvm-orphan' \
-	'dirty check skipped because DVM config is missing'
-assert_contains "$TMP/state/log" 'delete dvm-orphan'
-
-reset_log
-rm -f "$TMP/state/created"
-rm -rf "$TMP/state"/dvm-*
-"$ROOT/bin/dvm" sync --all >"$TMP/apply-all.out"
-assert_contains_all "$TMP/state/log" \
-	'create dvm-app' \
-	'create dvm-second'
-if grep -F -- 'shell dvm-second ' "$TMP/state/log" | grep -Fq -- 'DVM_APP_ONLY='; then
-	printf 'DVM_APP_ONLY leaked from app into second\n' >&2
-	exit 1
+# --- cp does not misparse local paths with colons -----------------------
+: > "$LIMACTL_LOG"
+# Source has a colon but is not a VM ref (uppercase, no valid VM prefix);
+# treated as local, so cp must reject for missing VM side.
+if run_dvm cp ./Foo:bar ./baz >/dev/null 2>&1; then
+    fail "cp should reject when neither path looks like a VM ref"
 fi
+ok "cp does not misparse local paths containing :"
 
-"$ROOT/bin/dvm" log cloudflared
-assert_contains "$TMP/state/log" 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service --no-pager -n 100'
+# --- cp rejects cross-VM ------------------------------------------------
+if run_dvm cp app:/a other:/b >/dev/null 2>&1; then
+    fail "cp should reject cross-VM"
+fi
+ok "cp rejects cross-VM"
 
-cat >"$TMP/config/vms/invalid.sh" <<'VM'
-DVM_USER="root:bad"
-DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/invalid"
+# --- help and recipes do not invoke flock/envsubst -------------------
+# bash -x traces show which external tools each command touches at dispatch.
+trace="$(bash -x "$ROOT/bin/dvm" help 2>&1 >/dev/null || true)"
+case "$trace" in *flock*|*envsubst*) fail "help triggered flock/envsubst" ;; esac
+trace="$(bash -x "$ROOT/bin/dvm" recipes 2>&1 >/dev/null || true)"
+case "$trace" in *flock*|*envsubst*) fail "recipes triggered flock/envsubst" ;; esac
+ok "help/recipes don't invoke flock or envsubst"
 
-use python
-VM
-
-run_fails "$TMP/invalid.err" "$ROOT/bin/dvm" sync invalid
-assert_contains "$TMP/invalid.err" 'invalid DVM_USER: root:bad'
-rm -f "$TMP/config/vms/invalid.sh"
-
-cat >"$TMP/config/vms/bad.sh" <<'VM'
-DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=20GiB
-DVM_CODE_DIR="~/code/bad"
-
-use missing-recipe
-VM
-
-reset_log
-rm -f "$TMP/state/created"
-rm -rf "$TMP/state"/dvm-*
-run_fails_capture "$TMP/apply-all-fail.out" "$TMP/apply-all-fail.err" "$ROOT/bin/dvm" sync --all
-assert_contains "$TMP/apply-all-fail.err" 'dvm: sync failed: bad'
-assert_contains_all "$TMP/apply-all-fail.out" \
-	'dvm sync --all:' \
-	'1 failed'
-assert_contains "$TMP/state/log" 'create dvm-second'
+printf '\nall tests passed\n'

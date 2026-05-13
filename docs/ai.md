@@ -1,112 +1,79 @@
 # AI
 
-AI tools run inside VMs. Nothing needs to be installed on the host.
+Run hosted AI CLIs inside a VM, sandboxed to the project tree. Nothing
+installed on the host.
 
-## Agent User
+## Setup
 
-Use `agent-user` before hosted AI recipes:
+In the VM config, list `agent-user` **before** any AI tool recipe:
 
 ```bash
-use agent-user
-use codex
-use claude
-use opencode
-use mistral
+DVM_RECIPES=(agent-user codex claude opencode mistral)
 ```
 
-`agent-user` creates `dvm-agent` as a system account with a home directory, installs
-Bubblewrap, grants shared ACL access to `DVM_CODE_DIR` for both the VM user and
-`dvm-agent`, creates `/home/dvm-agent/scratch`, and installs the mandatory AI sandbox
-helper at `/usr/local/libexec/dvm-ai-bwrap`.
+`agent-user` creates a non-login `dvm-agent` system account, installs
+Bubblewrap, and grants shared ACL access to `DVM_CODE_DIR` for both the
+primary user and `dvm-agent`. AI wrappers always re-exec the tool as
+`dvm-agent` inside Bubblewrap — there is no non-sandboxed mode.
 
-AI tools do not run directly. The wrappers always run the tool as `dvm-agent` inside
-Bubblewrap. There is no non-Bubblewrap mode.
+The Bubblewrap view contains:
 
-The Bubblewrap filesystem view is intentionally small:
+- `/workspace` → `DVM_CODE_DIR` (read/write)
+- `/home/dvm-agent` (read/write, holds tool login state)
+- `/usr`, `/etc`, `/proc`, `/dev` (read-only system bits)
+- `/tmp`, `/var/tmp` (tmpfs)
 
-- `/workspace`: the project code from `DVM_CODE_DIR`, read/write
-- `/home/dvm-agent`: the agent user's home, read/write for login state and tool config
-- `/usr`, `/etc`, `/proc`, `/dev`: runtime/system paths needed to execute tools
-- `/tmp` and `/var/tmp`: sandbox-local temporary directories
-
-The main user's home, such as `/home/eshlox`, is not mounted into the sandbox. The ACL
-rules remain as defense in depth and to let `dvm-agent` bind the project directory.
-Network access is retained because hosted AI tools need their provider APIs. Guest root
-or bad sudo policy can still bypass this; Bubblewrap is not a separate VM.
+The primary user's home is **not** mounted into the sandbox. Network is
+available because hosted AI tools need provider APIs. Guest root or bad
+sudo policy can bypass this; Bubblewrap is not a separate VM.
 
 ## Tools
 
-- `codex`: installs `@openai/codex` with npm under `dvm-agent`. By default it starts
-  with `--dangerously-bypass-approvals-and-sandbox`; set `DVM_CODEX_YOLO=0` in a VM
-  config to leave Codex approval prompts and its own sandbox enabled.
-- `claude`: installs Claude Code from Anthropic's signed `latest` RPM repo. By default
-  it sets `defaultMode` to `bypassPermissions` for the `dvm-agent` user; set
-  `DVM_CLAUDE_BYPASS=0` in a VM config to leave Claude permission prompts enabled.
-- `opencode`: installs `opencode-ai` with npm under `dvm-agent`.
-- `mistral`: installs `mistral-vibe` with uv under `dvm-agent` and exposes `vibe` and
-  `mistral` wrappers.
+| Recipe | Install path | Notes |
+|---|---|---|
+| `codex` | `npm i -g @openai/codex` | starts in `--dangerously-bypass-approvals-and-sandbox`; opt out with `DVM_CODEX_YOLO=0` |
+| `claude` | Anthropic RPM repo | sets `defaultMode: bypassPermissions`; opt out with `DVM_CLAUDE_BYPASS=0` |
+| `opencode` | `npm i -g opencode-ai` | |
+| `mistral` | `uv tool install mistral-vibe` | wrappers `vibe` and `mistral` |
 
-Wrappers are installed in `/usr/local/bin`, clamp the host-side working directory to
-`DVM_CODE_DIR`, and enter the sandbox at `/workspace` or the matching subdirectory under
+Wrappers live in `/usr/local/bin`, clamp the host-side cwd to
+`DVM_CODE_DIR`, and enter the sandbox at the matching path under
 `/workspace`.
 
-## Authentication
+## Defaults
 
-Authenticate inside the VM:
-
-```bash
-dvm sh app
-codex
-claude
-opencode
-```
-
-Login state stays in the VM under the agent user's home, which is mounted into the
-sandbox.
-
-Codex and Claude start in unattended modes by default because DVM's intended boundary is
-the VM plus the `dvm-agent` Bubblewrap sandbox. In that mode they can edit project
-code, run project commands, use the network, and write their own login/tool state under
-the agent user's home without asking for each action. The main user's home, SSH keys,
-GPG keys, and common token/config paths are not mounted into the sandbox.
-
-Project ACLs are set recursively and as defaults on directories under `DVM_CODE_DIR`.
-Files created by the VM user or by AI tools should remain editable by both sides. Re-run
-`dvm sync <name>` if project permissions are changed manually or restored from an
-archive.
-
-Set these in a VM config when you want tool-native approval prompts and sandboxing:
+Codex and Claude run unattended by default. The VM + `dvm-agent`
+Bubblewrap sandbox is the boundary; the tools edit code and run project
+commands without per-action prompts. Override per VM:
 
 ```bash
 DVM_CODEX_YOLO=0
 DVM_CLAUDE_BYPASS=0
 ```
 
-To temporarily avoid unattended edits or commands for one session, start Claude with an
-explicit mode such as:
+For a single Claude session, `claude --permission-mode plan` runs in
+plan mode without changing the recipe default.
 
-```bash
-claude --permission-mode plan
-```
+## Authentication
+
+First time: `dvm sh app` then `codex` / `claude` / `opencode` and follow
+the login flow. Login state persists in the sandbox under
+`/home/dvm-agent`.
 
 ## Updates
 
-Re-run recipes to update AI tools:
+Re-run the recipes:
 
 ```bash
 dvm sync app
-dvm sync --all
 ```
 
-`codex` and `opencode` install `@latest` from npm. `mistral` runs `uv tool upgrade`.
-`claude` uses Anthropic's `latest` RPM channel and runs `dnf5 --refresh upgrade
-claude-code`. If Claude reports a version before the RPM repository publishes it, wait
-and re-run `dvm sync`.
+`codex` / `opencode` install `@latest` from npm each sync. `mistral`
+runs `uv tool upgrade`. `claude` uses Anthropic's `latest` RPM channel
+with `dnf5 --refresh upgrade`.
 
-## Security Practice
+## Practice
 
 - Keep provider tokens out of host shell history.
-- Keep project secrets out of dotfiles.
-- Prefer repo-scoped keys or service tokens over account-wide credentials.
+- Prefer repo-scoped keys over account-wide credentials.
 - Treat AI output as untrusted code until reviewed.
-- Re-run `dvm sync app` after recipe changes.

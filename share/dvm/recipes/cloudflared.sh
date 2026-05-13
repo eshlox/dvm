@@ -1,17 +1,13 @@
 # Description: Cloudflare Tunnel service (dedicated VM)
+# Expects DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN) in the VM config.
 service="${DVM_CLOUDFLARED_SERVICE:-dvm-cloudflared.service}"
-token_file="${DVM_CLOUDFLARED_TOKEN_FILE:-}"
-token="${DVM_CLOUDFLARED_TOKEN:-${CLOUDFLARED_TOKEN:-}}"
+token_file="$(dvm_secret DVM_CLOUDFLARED_TOKEN 2>/dev/null || true)"
+token=""
 
 dvm_recipe_validate_service cloudflared "$service"
-if [ -n "$token_file" ]; then
-	case "$token_file" in
-	/tmp/dvm-cloudflared-token.*) ;;
-	*) dvm_recipe_die cloudflared "invalid token file path: $token_file" ;;
-	esac
-	[ -r "$token_file" ] || dvm_recipe_die cloudflared "token file is not readable: $token_file"
-	trap 'rm -f "$token_file"' EXIT
-	token="$(cat "$token_file")"
+if [ -n "$token_file" ] && [ -r "$token_file" ]; then
+	trap 'sudo rm -f "$token_file"' EXIT
+	token="$(sudo cat "$token_file")"
 fi
 if [ -n "$token" ]; then
 	case "$token" in
@@ -19,12 +15,12 @@ if [ -n "$token" ]; then
 	esac
 fi
 
-sudo dnf5 install -y dnf5-plugins curl
+dvm_pkg dnf5-plugins curl
 if [ ! -f /etc/yum.repos.d/cloudflared.repo ]; then
 	sudo dnf5 config-manager addrepo --from-repofile=https://pkg.cloudflare.com/cloudflared.repo ||
 		sudo curl -fsSL -o /etc/yum.repos.d/cloudflared.repo https://pkg.cloudflare.com/cloudflared.repo
 fi
-sudo dnf5 install -y cloudflared
+dvm_pkg cloudflared
 sudo install -d -m 0700 /etc/cloudflared
 
 if [ -z "$token" ]; then
@@ -35,11 +31,10 @@ if [ -z "$token" ]; then
 		cat <<HELP
 cloudflared installed.
 
-To configure the tunnel, pass a token at sync time:
-  CLOUDFLARED_TOKEN=... dvm sync "$DVM_NAME"
+To configure the tunnel, add DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN) to
+~/.config/dvm/vms/${DVM_VM}.sh and run:
 
-For a VM config, use:
-  DVM_CLOUDFLARED_TOKEN="\${CLOUDFLARED_TOKEN:-}"
+  DVM_CLOUDFLARED_TOKEN=... dvm sync ${DVM_VM}
 HELP
 	fi
 	exit 0

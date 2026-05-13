@@ -1,17 +1,18 @@
 # Dotfiles
 
-The first dotfiles path is chezmoi over public HTTPS.
+DVM ships a `chezmoi` recipe that clones your public dotfiles repo over
+HTTPS and applies them inside the VM. Use it when the identity is the
+same across VMs.
 
 ## Why HTTPS
 
-Public HTTPS avoids copying host SSH private keys into VMs and avoids deploy-key setup
-for public dotfiles. If dotfiles must be private, add a separate SSH recipe later.
+Public HTTPS avoids copying host SSH keys into VMs and dodges deploy-key
+setup. Private dotfiles? Write your own recipe.
 
 ## Config
 
-Put chezmoi settings in global config (`~/.config/dvm/config.sh`) since the dotfiles
-identity is usually the same across every VM. A per-VM config can still override any
-of these when needed (per-VM config sources last and wins).
+Put chezmoi settings in `~/.config/dvm/config.sh` since the dotfiles
+identity is usually the same everywhere:
 
 ```bash
 DVM_CHEZMOI_REPO="https://github.com/YOUR_USER/dotfiles.git"
@@ -20,56 +21,43 @@ DVM_CHEZMOI_NAME="Your Name"
 DVM_CHEZMOI_EMAIL="you@example.com"
 ```
 
-Then opt VMs in via the per-VM config:
+Opt VMs in via:
 
 ```bash
-use chezmoi
+DVM_RECIPES=(chezmoi)        # or append to DVM_DEFAULT_RECIPES
 ```
 
-The recipe installs `chezmoi`, writes `~/.config/chezmoi/chezmoi.toml` through a
-temporary file when configured, initializes `~/.local/share/chezmoi` when missing,
-pulls updates when already initialized, and runs `chezmoi apply`.
+The recipe installs chezmoi, writes `~/.config/chezmoi/chezmoi.toml`,
+clones into `~/.local/share/chezmoi` (or pulls updates), then runs
+`chezmoi apply`.
 
-The generated data uses the default key paths created by `dvm ssh-key <name>`:
+The generated `[data]` block exposes:
 
 ```toml
+role       = "<DVM_CHEZMOI_ROLE>"
+name       = "<DVM_CHEZMOI_NAME>"
+email      = "<DVM_CHEZMOI_EMAIL>"
 signingKey = "~/.ssh/id_ed25519_dvm_signing.pub"
-deployKey = "~/.ssh/id_ed25519_dvm.pub"
+deployKey  = "~/.ssh/id_ed25519_dvm.pub"
 ```
 
-Override (in global config, or per-VM if a single VM needs different keys) only when
-`dvm ssh-key` is configured with custom names:
+Both key paths default to what `dvm ssh-key <vm>` creates. Override with
+`DVM_CHEZMOI_SIGNING_KEY` / `DVM_CHEZMOI_DEPLOY_KEY` if you use custom
+names.
 
-```bash
-DVM_CHEZMOI_SIGNING_KEY="~/.ssh/id_ed25519_project_signing.pub"
-DVM_CHEZMOI_DEPLOY_KEY="~/.ssh/id_ed25519_project_deploy.pub"
-```
+For full chezmoi config control, set `DVM_CHEZMOI_CONFIG_TOML` to the
+literal TOML body; it replaces the generated `[data]` block.
 
-The recipe writes the data to chezmoi's `[data]` section as `role`, `name`, `email`,
-`signingKey`, and `deployKey`. Only VMs that select `use chezmoi` consume these values.
-Service VMs such as llama and cloudflared are unaffected unless you add `use chezmoi` to
-them.
+## Security
 
-Do not use the deploy/access key path for account-level commit signing. Use
-`DVM_CHEZMOI_SIGNING_KEY` for commit signing and `DVM_CHEZMOI_DEPLOY_KEY` only if your
-dotfiles templates need to render SSH config for private repo access.
-
-For advanced chezmoi config, set `DVM_CHEZMOI_CONFIG_TOML` to the full TOML file
-contents. When this raw TOML variable is set, it takes over the generated config rather
-than merging with the individual variables.
-
-## Security Rules
-
-- Do not store secrets in public dotfiles.
-- Do not commit provider tokens, SSH private keys, GPG private keys, npm tokens, or
-  Cloudflare tokens.
-- Keep VM-specific secrets in the VM or in the service provider.
-- Review dotfiles install hooks as code.
+- Never commit provider tokens, SSH/GPG private keys, npm tokens, or
+  Cloudflare/Tailscale keys to public dotfiles.
+- VM-specific secrets stay in `DVM_SECRETS` or in the service provider.
+- Review dotfiles install hooks; they run as the primary user.
 
 ## Recovery
 
-If a first clone fails and leaves a broken chezmoi source directory, remove it inside
-the VM and reapply:
+A failed first clone leaves a broken source dir:
 
 ```bash
 dvm ssh app -- rm -rf ~/.local/share/chezmoi

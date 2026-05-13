@@ -1,51 +1,31 @@
-minimumLimaVersion: 2.0.0
-
-base:
-  - template:_images/fedora-43
-
-vmType: "vz"
-arch: "${DVM_ARCH}"
-
+# Rendered by dvm. Do not edit.
+minimumLimaVersion: 1.0.0
+images:
+- location: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-41-1.4.aarch64.qcow2"
+  arch: aarch64
+- location: "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-41-1.4.x86_64.qcow2"
+  arch: x86_64
 cpus: ${DVM_CPUS}
 memory: "${DVM_MEMORY}"
 disk: "${DVM_DISK}"
-
-mounts: []
-
+user:
+  name: "${DVM_USER}"
+ssh:
+  loadDotSSHPubKeys: false
+  forwardAgent: false
 containerd:
   system: false
   user: false
-
-user:
-  name: "${DVM_USER}"
-  home: "/home/${DVM_USER}"
-  shell: "/bin/bash"
-
-networks:
-  - lima: user-v2
-
 portForwards:
-${DVM_PORT_FORWARDS_YAML}
-  - guestPort: 5355
-    proto: any
-    ignore: true
-
+${DVM_PORT_FORWARDS}
 provision:
-  - mode: system
-    script: |
-      #!/usr/bin/env bash
-      set -euo pipefail
-      dnf5 install -y sudo shadow-utils tar gzip git
-
-  - mode: user
-    script: |
-      #!/usr/bin/env bash
-      set -euo pipefail
-      code_dir="${DVM_CODE_DIR}"
-      case "$code_dir" in
-        ""|"/Users"|"/Users/"*) exit 0 ;;
-        "~") code_dir="$HOME" ;;
-        "~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
-      esac
-      [ -n "$code_dir" ] || exit 0
-      mkdir -p "$code_dir" "$HOME/.local/bin" "$HOME/.config"
+- mode: system
+  script: |
+    set -euxo pipefail
+    hostnamectl set-hostname ${DVM_NAME}.dvm
+    dnf install -y git curl wget tar jq sudo ca-certificates
+    id -u "${DVM_USER}" >/dev/null 2>&1 || useradd -m -s /bin/bash "${DVM_USER}"
+    install -d -m 0755 /etc/sudoers.d
+    printf '%s ALL=(ALL) NOPASSWD:ALL\n' "${DVM_USER}" > /etc/sudoers.d/dvm-${DVM_USER}
+    chmod 0440 /etc/sudoers.d/dvm-${DVM_USER}
+    install -d -o "${DVM_USER}" -g "${DVM_USER}" "${DVM_CODE_DIR_GUEST}"
