@@ -11,7 +11,8 @@ dvm ssh <vm> -- cmd...    run a command in the VM (non-interactive)
 dvm cp src dst            copy; one side may be vm:path
 dvm log <vm> [-f] [args]  guest journalctl
 dvm ls [<vm>]             list configured + running VMs (optional name filter)
-dvm rm <vm> --yes         stop and delete the Lima instance
+dvm rm <vm> --yes [--no-backup]
+                          stop and delete the Lima instance (backs up keys)
 dvm stop <vm>             stop one running VM
 dvm stop --all            stop every running dvm-* instance
 dvm ssh-key <vm>          create/show guest SSH keys (access + signing)
@@ -72,6 +73,13 @@ replaces it.
 deletes it. The per-VM config file in `~/.config/dvm/vms/` is left alone;
 delete it by hand if you want. There is no dirty-git check — `--yes` is
 the contract.
+
+Before deletion, the VM's `id_ed25519_dvm*` SSH keys and the GPG signing
+key are backed up to `~/.config/dvm/backups/<vm>/`. The next `dvm sync
+<vm>` restores them into a freshly created VM, so identities survive
+recreation without re-adding keys to your Git host. Pass `--no-backup`
+to skip this. See [security-standards.md](security-standards.md) for
+the trust-model implications of keys living on the host.
 
 ## stop
 

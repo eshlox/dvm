@@ -18,8 +18,33 @@ The operating rules. Short because the implementation is small.
 - Use `DVM_SECRETS=(NAME ...)` and pass values at sync time:
   `NAME=value dvm sync <vm>`. The value is piped through stdin to a
   mode-`0600` guest temp file (`/tmp/dvm-secret-<NAME>`); it never
-  appears in argv, host process env, or a host temp file.
+  appears in argv, host process env of any child of `bin/dvm`, or a
+  host temp file.
 - Recipes read via `dvm_secret <NAME>`, which prints the temp file path.
+
+### Shell history is the practical leak vector
+
+Writing `DVM_X="actualsecret" dvm sync vm` puts the value in your shell
+history. Choose one of:
+
+1. **macOS Keychain (no plaintext on disk):**
+   ```bash
+   security add-generic-password -a "$USER" -s dvm-cf -w "$TOKEN"
+   DVM_CLOUDFLARED_TOKEN="$(security find-generic-password \
+       -a "$USER" -s dvm-cf -w)" dvm sync cloud
+   ```
+
+2. **1Password CLI or similar:**
+   ```bash
+   DVM_CLOUDFLARED_TOKEN="$(op read op://Personal/cf/token)" \
+       dvm sync cloud
+   ```
+
+3. **Leading-space + `HISTCONTROL=ignorespace`:** type ` DVM_X="..." dvm
+   sync vm` (note the leading space). The line is skipped by history.
+
+### VM-local keys
+
 - Do not copy host SSH/GPG private keys into VMs. Generate VM-local
   keys with `dvm ssh-key <vm>` and `dvm gpg-key <vm>`.
 - `ssh-key` creates separate access (`id_ed25519_dvm`) and signing
@@ -27,6 +52,26 @@ The operating rules. Short because the implementation is small.
   signing key.
 - The VM-local GPG key has no passphrase. It's a disposable signing
   key for VM commits, not a long-lived identity.
+
+### Key backup on `rm`
+
+`dvm rm <vm> --yes` backs up the VM's `id_ed25519_dvm*` files and the
+GPG signing key (armored, exported with `gpg --export-secret-keys`) to
+`~/.config/dvm/backups/<vm>/{ssh,gpg}/` before deleting the Lima
+instance. `dvm sync <vm>` restores them when the in-VM file is missing,
+so a recreated VM keeps the same identity without re-adding keys to
+your Git host.
+
+The backup files are mode `0600`, the directories `0700`. **This puts
+the private keys on your host disk** — the same trust bar as `~/.ssh/`.
+On an encrypted laptop you control, this is acceptable. If you share
+the host account or don't trust host disk reads, pass `--no-backup`:
+
+```bash
+dvm rm app --yes --no-backup
+```
+
+Forget a backup at any time: `rm -rf ~/.config/dvm/backups/<vm>/`.
 
 ## AI
 

@@ -49,3 +49,11 @@ Greenfield rewrite. No migration path from v1.
 - Improved: `envsubst` and `flock` are checked only inside the commands
   that need them (`sync`, `rm`), so `help`, `recipes`, `ls`, `config show`,
   and `config edit` work without them on `PATH`.
+- Added: `dvm rm <vm> --yes` backs up the VM's `id_ed25519_dvm*` SSH keys
+  and GPG signing key (armored) to `~/.config/dvm/backups/<vm>/` before
+  deleting. `dvm sync <vm>` restores them when the in-VM file is missing,
+  so recreated VMs keep the same identity without re-adding keys to the
+  Git host. Pass `--no-backup` to skip. Trust model: keys now live on the
+  host disk (mode `0600`); document discusses the implications.
+- Fixed shellcheck warnings SC2088/2015/2089/2090 with intent-documenting
+  inline disables and one `if`/`then` rewrite.

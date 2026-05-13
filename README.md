@@ -49,7 +49,7 @@ dvm ssh <vm> -- cmd...  non-interactive command
 dvm cp src dst          copy; one side may be vm:path
 dvm log <vm> [-f]       guest journalctl
 dvm ls [<vm>]           list configured/running VMs (optional filter)
-dvm rm <vm> --yes       stop and delete the Lima instance
+dvm rm <vm> --yes       stop and delete the Lima instance (backs up VM keys)
 dvm stop <vm> | --all   stop running VMs
 dvm ssh-key <vm>        generate guest SSH keys (access + signing)
 dvm gpg-key <vm>        generate guest GPG signing key
@@ -181,8 +181,8 @@ install.sh                    symlink installer
 share/dvm/lima.yaml.in        Lima YAML template (envsubst placeholders)
 share/dvm/config.sh.example   starter global config
 share/dvm/recipes/*.sh        built-in recipes
+share/dvm/prelude.sh          helper prelude embedded into each guest script
 tests/smoke.sh                end-to-end test with a fake limactl
-very-simple-plan.md           design notes
 ```
 
 ## Tests

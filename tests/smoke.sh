@@ -144,6 +144,34 @@ ok "rejects invalid VM name"
 run_dvm recipes | grep -q "agent-user" || fail "recipes missing agent-user"
 ok "recipes lists agent-user"
 
+# --- key backup on rm (default) -----------------------------------
+rm -rf "$TMP/cfg/backups"
+: > "$LIMACTL_LOG"
+DVM_FAKE_HAS_VM=1 run_dvm rm app --yes >/dev/null
+grep -q 'id_ed25519_dvm_signing.pub' "$LIMACTL_LOG" \
+    || fail "rm did not attempt to back up SSH keys"
+[ -d "$TMP/cfg/backups/app" ] || fail "no backup dir created"
+ok "rm backs up keys and creates backup dir"
+
+# --- --no-backup skips backup ---------------------------------------
+rm -rf "$TMP/cfg/backups"
+: > "$LIMACTL_LOG"
+DVM_FAKE_HAS_VM=1 run_dvm rm app --yes --no-backup >/dev/null
+if grep -q 'id_ed25519_dvm_signing.pub' "$LIMACTL_LOG"; then
+    fail "--no-backup should skip backup_keys"
+fi
+ok "rm --no-backup skips backup"
+
+# --- sync restores keys from backup --------------------------------
+mkdir -p "$TMP/cfg/backups/app/ssh"
+echo "fake-priv-key-content" > "$TMP/cfg/backups/app/ssh/id_ed25519_dvm"
+chmod 0600 "$TMP/cfg/backups/app/ssh/id_ed25519_dvm"
+: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
+run_dvm sync app >/dev/null
+grep -q 'install -m 0600 /dev/stdin' "$LIMACTL_LOG" \
+    || fail "sync did not call install -m 0600 for restore"
+ok "sync restores keys from backup dir on recreate"
+
 # --- absolute-target symlink to bin/dvm works (regression: install.sh path) -
 ln -sfn "$ROOT/bin/dvm" "$TMP/bin/dvm-link"
 PATH="$TMP/bin:$PATH" \

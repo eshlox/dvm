@@ -24,7 +24,9 @@ lima_name() { printf 'dvm-%s\n' "$1"; }
 # --- config loading --------------------------------------------------------
 load_global() {
     DVM_CPUS=2 DVM_MEMORY=2GiB DVM_DISK=10GiB
-    DVM_CODE_ROOT="~/code" DVM_HOST_IP=127.0.0.1
+    # shellcheck disable=SC2088 # leading ~ is a marker expanded by guest_path()
+    DVM_CODE_ROOT="~/code"
+    DVM_HOST_IP=127.0.0.1
     DVM_USER=developer DVM_AGENT_USER=dvm-agent
     DVM_DEFAULT_PACKAGES=() DVM_DEFAULT_RECIPES=()
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then . "$DVM_CONFIG_DIR/config.sh"; fi
@@ -32,6 +34,7 @@ load_global() {
 
 # Expand a leading ~ to the guest user's home directory.
 guest_path() {
+    # shellcheck disable=SC2088 # patterns match a leading ~ marker, not host home
     case "$1" in
         '~') printf '/home/%s\n' "$DVM_USER" ;;
         '~/'*) printf '/home/%s/%s\n' "$DVM_USER" "${1#\~/}" ;;
@@ -81,11 +84,14 @@ render_yaml() {
     else
         for p in "${DVM_PORTS[@]}"; do
             IFS=: read -r host guest <<<"$p"
-            [ -n "$host" ] && [ -n "$guest" ] || die "bad port spec: $p"
+            if [ -z "$host" ] || [ -z "$guest" ]; then die "bad port spec: $p"; fi
+            # Literal " in the YAML output; consumed by envsubst as bytes.
+            # shellcheck disable=SC2089
             DVM_PORT_FORWARDS+=$'\n'"- guestPort: $guest"$'\n'"  hostPort: $host"$'\n'"  hostIP: \"$DVM_HOST_IP\""
         done
     fi
     DVM_CODE_DIR_GUEST="$DVM_CODE_DIR"
+    # shellcheck disable=SC2090
     export DVM_NAME DVM_CPUS DVM_MEMORY DVM_DISK DVM_USER DVM_PORT_FORWARDS DVM_CODE_DIR_GUEST
     envsubst < "$DVM_SHARE/lima.yaml.in" > "$out"
     printf '%s\n' "$out"
@@ -137,6 +143,67 @@ build_guest_script() {
         "$DVM_CODE_DIR" "$DVM_CODE_DIR" "$DVM_CODE_DIR"
 }
 
+# --- key backup/restore ----------------------------------------------------
+# Backups live at $DVM_CONFIG_DIR/backups/<vm>/{ssh,gpg}/. Mode 0700/0600.
+# Same trust bar as ~/.ssh/ on the host: host disk encryption is the boundary.
+
+backup_dir_for() { printf '%s/backups/%s\n' "$DVM_CONFIG_DIR" "$1"; }
+
+backup_keys() {
+    local vm="$1" lima="$2" user="$3" dir
+    dir="$(backup_dir_for "$vm")"
+    install -d -m 0700 "$dir" "$dir/ssh" "$dir/gpg"
+    local f tmp
+    for f in id_ed25519_dvm id_ed25519_dvm.pub id_ed25519_dvm_signing id_ed25519_dvm_signing.pub; do
+        tmp="$dir/ssh/$f.tmp"
+        if "$LIMACTL" shell --workdir / "$lima" sudo -u "$user" \
+                bash -c "[ -r ~/.ssh/$f ] && cat ~/.ssh/$f" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+            chmod 0600 "$tmp" && mv "$tmp" "$dir/ssh/$f"
+        else
+            rm -f "$tmp"
+        fi
+    done
+    local keyid
+    keyid="$("$LIMACTL" shell --workdir / "$lima" sudo -u "$user" \
+        bash -c '[ -s "$HOME/.dvm-gpg-keyid" ] && cat "$HOME/.dvm-gpg-keyid"' 2>/dev/null || true)"
+    if [ -n "$keyid" ]; then
+        printf '%s\n' "$keyid" > "$dir/gpg/keyid"
+        chmod 0600 "$dir/gpg/keyid"
+        tmp="$dir/gpg/key.asc.tmp"
+        if "$LIMACTL" shell --workdir / "$lima" sudo -u "$user" \
+                gpg --batch --armor --export-secret-keys "$keyid" >"$tmp" 2>/dev/null && [ -s "$tmp" ]; then
+            chmod 0600 "$tmp" && mv "$tmp" "$dir/gpg/key.asc"
+        else
+            rm -f "$tmp"
+        fi
+    fi
+}
+
+restore_keys() {
+    local dir
+    dir="$(backup_dir_for "$DVM_NAME")"
+    [ -d "$dir" ] || return 0
+    local f
+    for f in id_ed25519_dvm id_ed25519_dvm.pub id_ed25519_dvm_signing id_ed25519_dvm_signing.pub; do
+        [ -r "$dir/ssh/$f" ] || continue
+        "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo -u "$DVM_USER" bash -c "
+            mkdir -p \"\$HOME/.ssh\" && chmod 0700 \"\$HOME/.ssh\"
+            [ -e \"\$HOME/.ssh/$f\" ] || install -m 0600 /dev/stdin \"\$HOME/.ssh/$f\"
+        " <"$dir/ssh/$f" 2>/dev/null || true
+    done
+    if [ -r "$dir/gpg/key.asc" ] && [ -r "$dir/gpg/keyid" ]; then
+        local keyid
+        keyid="$(cat "$dir/gpg/keyid")"
+        "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo -u "$DVM_USER" bash -c "
+            if [ ! -s \"\$HOME/.dvm-gpg-keyid\" ]; then
+                command -v gpg >/dev/null 2>&1 || exit 0
+                gpg --batch --import 2>/dev/null || true
+                printf '%s\n' '$keyid' > \"\$HOME/.dvm-gpg-keyid\"
+            fi
+        " <"$dir/gpg/key.asc" 2>/dev/null || true
+    fi
+}
+
 # --- commands --------------------------------------------------------------
 cmd_sync() {
     if [ "${1:-}" = "--all" ]; then
@@ -161,6 +228,7 @@ cmd_sync() {
         "$LIMACTL" create --name "$DVM_LIMA_NAME" "$yaml"
     fi
     "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
+    restore_keys
     stage_secrets
     build_guest_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo -u "$DVM_USER" bash -s
 }
@@ -218,21 +286,32 @@ cmd_ls() {
 }
 
 cmd_rm() {
-    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes"
+    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes [--no-backup]"
     local name="$1"; shift
-    local yes=0
+    local yes=0 backup=1
     while [ "$#" -gt 0 ]; do
-        case "$1" in --yes) yes=1 ;; *) die "unknown flag: $1" ;; esac
+        case "$1" in
+            --yes) yes=1 ;;
+            --no-backup) backup=0 ;;
+            *) die "unknown flag: $1" ;;
+        esac
         shift
     done
     [ "$yes" = "1" ] || die "dvm rm requires --yes"
     load_vm "$name"
     lock_vm "$DVM_NAME"
     if "$LIMACTL" list -q | grep -Fxq "$DVM_LIMA_NAME"; then
+        if [ "$backup" = "1" ]; then
+            backup_keys "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" || true
+        fi
         "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
         "$LIMACTL" delete --force "$DVM_LIMA_NAME"
     fi
-    printf 'removed %s\n' "$DVM_NAME"
+    if [ "$backup" = "1" ] && [ -d "$(backup_dir_for "$DVM_NAME")" ]; then
+        printf 'removed %s (keys backed up to %s)\n' "$DVM_NAME" "$(backup_dir_for "$DVM_NAME")"
+    else
+        printf 'removed %s\n' "$DVM_NAME"
+    fi
 }
 
 cmd_stop() {
@@ -378,7 +457,8 @@ dvm <command> [args]
   cp src dst              copy (one side may be vm:path)
   log <vm> [-f] [args]    journalctl on guest
   ls [<vm>]               list VMs (optional filter)
-  rm <vm> --yes           stop + delete instance
+  rm <vm> --yes [--no-backup]
+                          stop + delete instance (backs up VM keys by default)
   stop <vm> | --all       stop running VMs
   ssh-key <vm>            guest SSH keys (access + signing)
   gpg-key <vm>            guest GPG signing key
