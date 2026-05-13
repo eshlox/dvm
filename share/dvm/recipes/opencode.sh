@@ -1,12 +1,6 @@
-#!/usr/bin/env bash
 # Description: OpenCode CLI
-set -euo pipefail
-
 : "${DVM_AI_AGENT_USER:=dvm-agent}"
-command -v dvm_agent_write_wrapper >/dev/null 2>&1 || {
-	printf 'dvm: recipe opencode requires use agent-user before use opencode\n' >&2
-	exit 1
-}
+dvm_recipe_require_agent_user opencode
 
 sudo dnf5 install -y nodejs npm
 sudo -H -u "$DVM_AI_AGENT_USER" bash -lc 'npm config set prefix "$HOME/.local" && npm install -g opencode-ai@latest'

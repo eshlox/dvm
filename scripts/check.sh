@@ -16,7 +16,7 @@ shell_files | while IFS= read -r file; do
 done
 
 if command -v shellcheck >/dev/null 2>&1; then
-	shell_files | xargs shellcheck -x
+	shell_files | xargs shellcheck -s bash -x
 fi
 
 find . -path ./.git -prune -o -type f -print0 |

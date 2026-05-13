@@ -72,8 +72,7 @@ stop_vm() {
 	local name
 	name="${1:-}"
 	[ -n "$name" ] || die "stop requires a VM name"
-	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME"
+	require_existing_vm "$name"
 	limactl stop "$DVM_LIMA_NAME"
 }
 

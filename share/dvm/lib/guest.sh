@@ -38,9 +38,7 @@ ssh_vm() {
 	local term
 	shift || true
 	[ "${1:-}" != "--" ] || shift
-	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
-	start_vm
+	start_existing_vm "$name"
 	term="$(guest_term)"
 	restore_host_tty_on_exit
 	limactl shell "$DVM_LIMA_NAME" env "TERM=$term" bash -c "$guest_cd_script" dvm-ssh "$DVM_CODE_DIR" "$@"
@@ -232,9 +230,7 @@ cp_vm() {
 	[ "$endpoint_count" -gt 0 ] || die "cp requires one side to use name:path"
 	[ "$endpoint_count" -lt "${#operands[@]}" ] || die "cp requires one host path and one VM path"
 
-	load_vm "$vm_name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $vm_name first"
-	start_vm
+	start_existing_vm "$vm_name"
 	limactl shell "$DVM_LIMA_NAME" mkdir -p "$(guest_code_dir_abs)"
 
 	target_arg="${operands[$((${#operands[@]} - 1))]}"
@@ -319,9 +315,7 @@ logs_vm() {
 	name="${1:-}"
 	[ -n "$name" ] || die "log requires a VM name"
 	shift || true
-	load_vm "$name"
-	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
-	start_vm
+	start_existing_vm "$name"
 	if [ "$#" -gt 0 ]; then
 		case "$1" in
 		-*) unit="$(default_log_unit)" || die "log requires a unit when the VM has zero or multiple known service recipes" ;;

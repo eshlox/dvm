@@ -1,43 +1,21 @@
-#!/usr/bin/env bash
 # Description: Cloudflare Tunnel service (dedicated VM)
-set -euo pipefail
-
-cloudflared_die() {
-	printf 'dvm recipe: error: cloudflared: %s\n' "$*" >&2
-	exit 1
-}
-
-cloudflared_warn() {
-	printf 'dvm recipe: warning: cloudflared: %s\n' "$*" >&2
-}
-
-cloudflared_validate_service() {
-	case "$1" in
-	*.service) ;;
-	*) cloudflared_die "service must end with .service: $1" ;;
-	esac
-	case "$1" in
-	*/* | *..* | *[!A-Za-z0-9_.@-]*) cloudflared_die "invalid service name: $1" ;;
-	esac
-}
-
 service="${DVM_CLOUDFLARED_SERVICE:-dvm-cloudflared.service}"
 token_file="${DVM_CLOUDFLARED_TOKEN_FILE:-}"
 token="${DVM_CLOUDFLARED_TOKEN:-${CLOUDFLARED_TOKEN:-}}"
 
-cloudflared_validate_service "$service"
+dvm_recipe_validate_service cloudflared "$service"
 if [ -n "$token_file" ]; then
 	case "$token_file" in
 	/tmp/dvm-cloudflared-token.*) ;;
-	*) cloudflared_die "invalid token file path: $token_file" ;;
+	*) dvm_recipe_die cloudflared "invalid token file path: $token_file" ;;
 	esac
-	[ -r "$token_file" ] || cloudflared_die "token file is not readable: $token_file"
+	[ -r "$token_file" ] || dvm_recipe_die cloudflared "token file is not readable: $token_file"
 	trap 'rm -f "$token_file"' EXIT
 	token="$(cat "$token_file")"
 fi
 if [ -n "$token" ]; then
 	case "$token" in
-	*[!A-Za-z0-9._=-]*) cloudflared_die "invalid tunnel token characters" ;;
+	*[!A-Za-z0-9._=-]*) dvm_recipe_die cloudflared "invalid tunnel token characters" ;;
 	esac
 fi
 
@@ -97,9 +75,9 @@ sudo systemctl enable --now "$service"
 service_since="$(systemctl show "$service" -p ActiveEnterTimestamp --value 2>/dev/null || true)"
 if [ -n "$service_since" ] && [ "$service_since" != "n/a" ]; then
 	if sudo journalctl -u "$service" --since "$service_since" --no-pager 2>/dev/null | grep -Fqf "$token_pattern"; then
-		cloudflared_warn "$service journal contains the tunnel token; rotate the token and inspect logs"
+		dvm_recipe_warn cloudflared "$service journal contains the tunnel token; rotate the token and inspect logs"
 	fi
 elif sudo journalctl -u "$service" -n 200 --no-pager 2>/dev/null | grep -Fqf "$token_pattern"; then
-	cloudflared_warn "$service journal contains the tunnel token; rotate the token and inspect logs"
+	dvm_recipe_warn cloudflared "$service journal contains the tunnel token; rotate the token and inspect logs"
 fi
 printf 'cloudflared service configured: %s\n' "$service"

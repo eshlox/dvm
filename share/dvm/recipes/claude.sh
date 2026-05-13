@@ -1,20 +1,7 @@
-#!/usr/bin/env bash
 # Description: Claude Code CLI
-set -euo pipefail
-
 : "${DVM_AI_AGENT_USER:=dvm-agent}"
-command -v dvm_agent_write_wrapper >/dev/null 2>&1 || {
-	printf 'dvm: recipe claude requires use agent-user before use claude\n' >&2
-	exit 1
-}
-case "${DVM_CLAUDE_BYPASS:-1}" in
-1 | true | yes) dvm_claude_bypass=1 ;;
-0 | false | no) dvm_claude_bypass=0 ;;
-*)
-	printf 'dvm: recipe claude: DVM_CLAUDE_BYPASS must be 1 or 0\n' >&2
-	exit 1
-	;;
-esac
+dvm_recipe_require_agent_user claude
+dvm_claude_bypass="$(dvm_recipe_bool claude DVM_CLAUDE_BYPASS "${DVM_CLAUDE_BYPASS:-1}")"
 
 sudo dnf5 install -y dnf5-plugins curl jq
 # Verified 2026-05-03 from Anthropic's Claude Code package-manager instructions:

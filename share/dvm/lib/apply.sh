@@ -36,6 +36,8 @@ run_guest_apply() {
 
 	{
 		cat <<'DVM_HOSTNAME'
+set -euo pipefail
+
 # dvm hostname
 if [ -n "${DVM_NAME:-}" ] && command -v hostnamectl >/dev/null 2>&1; then
 	current_hostname="$(hostname 2>/dev/null || true)"
@@ -82,37 +84,29 @@ DVM_PROJECT_HOOK
 }
 
 emit_cloudflared_token_file() {
-	local token="$1"
-	[ -n "$token" ] || return 0
-	cat <<'DVM_CLOUDFLARED_TOKEN_SETUP'
-# dvm cloudflared token file
-dvm_cloudflared_token_file="$(mktemp "${TMPDIR:-/tmp}/dvm-cloudflared-token.XXXXXX")"
-chmod 600 "$dvm_cloudflared_token_file"
-cat >"$dvm_cloudflared_token_file" <<'DVM_CLOUDFLARED_TOKEN'
-DVM_CLOUDFLARED_TOKEN_SETUP
-	printf '%s\n' "$token"
-	cat <<'DVM_CLOUDFLARED_TOKEN_SETUP'
-DVM_CLOUDFLARED_TOKEN
-export DVM_CLOUDFLARED_TOKEN_FILE="$dvm_cloudflared_token_file"
-
-DVM_CLOUDFLARED_TOKEN_SETUP
+	emit_guest_secret_file "cloudflared token" DVM_CLOUDFLARED_TOKEN_FILE \
+		dvm-cloudflared-token DVM_CLOUDFLARED_TOKEN "$1"
 }
 
 emit_tailscale_auth_key_file() {
-	local key="$1"
-	[ -n "$key" ] || return 0
-	cat <<'DVM_TAILSCALE_AUTH_KEY_SETUP'
-# dvm tailscale auth key file
-dvm_tailscale_auth_key_file="$(mktemp "${TMPDIR:-/tmp}/dvm-tailscale-auth-key.XXXXXX")"
-chmod 600 "$dvm_tailscale_auth_key_file"
-cat >"$dvm_tailscale_auth_key_file" <<'DVM_TAILSCALE_AUTH_KEY'
-DVM_TAILSCALE_AUTH_KEY_SETUP
-	printf '%s\n' "$key"
-	cat <<'DVM_TAILSCALE_AUTH_KEY_SETUP'
-DVM_TAILSCALE_AUTH_KEY
-export DVM_TAILSCALE_AUTH_KEY_FILE="$dvm_tailscale_auth_key_file"
+	emit_guest_secret_file "tailscale auth key" DVM_TAILSCALE_AUTH_KEY_FILE \
+		dvm-tailscale-auth-key DVM_TAILSCALE_AUTH_KEY "$1"
+}
 
-DVM_TAILSCALE_AUTH_KEY_SETUP
+emit_guest_secret_file() {
+	local label="$1"
+	local env_var="$2"
+	local prefix="$3"
+	local delimiter="$4"
+	local secret="$5"
+	[ -n "$secret" ] || return 0
+	printf '# dvm %s file\n' "$label"
+	printf 'dvm_secret_file="$(mktemp "${TMPDIR:-/tmp}/%s.XXXXXX")"\n' "$prefix"
+	printf 'chmod 600 "$dvm_secret_file"\n'
+	printf 'cat >"$dvm_secret_file" <<'\''%s'\''\n' "$delimiter"
+	printf '%s\n' "$secret"
+	printf '%s\n' "$delimiter"
+	printf 'export %s="$dvm_secret_file"\n\n' "$env_var"
 }
 
 apply_one() {

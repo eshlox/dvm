@@ -55,6 +55,18 @@ start_vm() {
 	return 1
 }
 
+start_existing_vm() {
+	local name="$1"
+	load_vm "$name"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME; run dvm sync $name first"
+	start_vm
+}
+
+require_existing_vm() {
+	load_vm "$1"
+	vm_exists || die "VM does not exist: $DVM_LIMA_NAME"
+}
+
 ensure_vm() {
 	local create_output template tmp tmp_dir
 	if ! vm_exists; then

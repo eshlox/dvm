@@ -1,8 +1,86 @@
-#!/usr/bin/env bash
 
 dvm_recipe_die() {
 	printf 'dvm recipe: error: %s: %s\n' "$1" "$2" >&2
 	exit 1
+}
+
+dvm_recipe_warn() {
+	printf 'dvm recipe: warning: %s: %s\n' "$1" "$2" >&2
+}
+
+dvm_recipe_require_agent_user() {
+	command -v dvm_agent_write_wrapper >/dev/null 2>&1 || {
+		printf 'dvm: recipe %s requires use agent-user before use %s\n' "$1" "$1" >&2
+		exit 1
+	}
+}
+
+dvm_recipe_bool() {
+	local recipe="$1"
+	local name="$2"
+	local value="$3"
+	case "$value" in
+	1 | true | yes) printf '1\n' ;;
+	0 | false | no) printf '0\n' ;;
+	*)
+		printf 'dvm: recipe %s: %s must be 1 or 0\n' "$recipe" "$name" >&2
+		exit 1
+		;;
+	esac
+}
+
+dvm_recipe_validate_port() {
+	case "$2" in
+	'' | *[!0-9]*) dvm_recipe_die "$1" "invalid port: $2" ;;
+	esac
+	[ "$2" -ge 1 ] && [ "$2" -le 65535 ] || dvm_recipe_die "$1" "invalid port: $2"
+}
+
+dvm_recipe_validate_service() {
+	case "$2" in
+	*.service) ;;
+	*) dvm_recipe_die "$1" "service must end with .service: $2" ;;
+	esac
+	case "$2" in
+	*/* | *..* | *[!A-Za-z0-9_.@-]*) dvm_recipe_die "$1" "invalid service name: $2" ;;
+	esac
+}
+
+dvm_recipe_validate_alias() {
+	case "$2" in
+	'' | */* | .* | *..* | *[!A-Za-z0-9._-]*) dvm_recipe_die "$1" "invalid model alias: $2" ;;
+	esac
+}
+
+dvm_recipe_validate_https_url() {
+	case "$2" in
+	https://*) ;;
+	*) dvm_recipe_die "$1" "model URL must use https://: $2" ;;
+	esac
+	case "$2" in
+	*' '* | *$'\n'* | *$'\r'*) dvm_recipe_die "$1" "invalid model URL: $2" ;;
+	esac
+}
+
+dvm_recipe_validate_sha256() {
+	case "$2" in
+	????????????????????????????????????????????????????????????????)
+		case "$2" in
+		*[!A-Fa-f0-9]*) dvm_recipe_die "$1" "sha256 must be a 64-character hex digest" ;;
+		esac
+		;;
+	*) dvm_recipe_die "$1" "sha256 must be a 64-character hex digest" ;;
+	esac
+}
+
+dvm_recipe_sha256_file() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$2" | awk '{ print $1 }'
+	elif command -v shasum >/dev/null 2>&1; then
+		shasum -a 256 "$2" | awk '{ print $1 }'
+	else
+		dvm_recipe_die "$1" "sha256sum or shasum is required"
+	fi
 }
 
 dvm_recipe_arch() {
@@ -105,4 +183,45 @@ dvm_recipe_dnf_or_pinned() {
 		return 0
 	fi
 	"$fallback"
+}
+
+dvm_recipe_install_pinned() {
+	local name="$1"
+	local package="$2"
+	local cmd="$3"
+	local archive_type="$4"
+	local arm_url="$5"
+	local arm_sha256="$6"
+	local x86_url="$7"
+	local x86_sha256="$8"
+	local -a bins deps
+	shift 8
+	bins=("$@")
+
+	dvm_recipe_install_pinned_fallback() {
+		local url sha256
+		deps=(ca-certificates curl)
+		case "$archive_type" in
+		tar) deps+=(tar gzip) ;;
+		zip) deps+=(unzip) ;;
+		*) dvm_recipe_die "$name" "unsupported archive type: $archive_type" ;;
+		esac
+		sudo dnf5 install -y "${deps[@]}"
+		case "$(dvm_recipe_arch "$name")" in
+		arm64)
+			url="$arm_url"
+			sha256="$arm_sha256"
+			;;
+		x86_64)
+			url="$x86_url"
+			sha256="$x86_sha256"
+			;;
+		esac
+		case "$archive_type" in
+		tar) dvm_recipe_install_tar_bin "$name" "$url" "$sha256" "$cmd" ;;
+		zip) dvm_recipe_install_zip_bins "$name" "$url" "$sha256" "${bins[@]}" ;;
+		esac
+	}
+
+	dvm_recipe_dnf_or_pinned "$package" "$cmd" dvm_recipe_install_pinned_fallback
 }

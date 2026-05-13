@@ -1,7 +1,4 @@
-#!/usr/bin/env bash
 # Description: public dotfiles via chezmoi over HTTPS
-set -euo pipefail
-
 : "${DVM_CHEZMOI_REPO:?DVM_CHEZMOI_REPO is required for recipe chezmoi}"
 
 sudo dnf5 install -y chezmoi git

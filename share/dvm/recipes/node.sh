@@ -1,7 +1,4 @@
-#!/usr/bin/env bash
 # Description: Node.js, npm, corepack
-set -euo pipefail
-
 sudo dnf5 install -y nodejs npm
 
 corepack_version="${DVM_COREPACK_VERSION:-0.34.0}"

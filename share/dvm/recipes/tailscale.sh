@@ -1,12 +1,4 @@
-#!/usr/bin/env bash
 # Description: Tailscale mesh + optional Funnel public ingress
-set -euo pipefail
-
-tailscale_die() {
-	printf 'dvm recipe: error: tailscale: %s\n' "$*" >&2
-	exit 1
-}
-
 if ! command -v tailscale >/dev/null 2>&1; then
 	sudo dnf5 config-manager addrepo --from-repofile=https://pkgs.tailscale.com/stable/fedora/tailscale.repo
 	sudo dnf5 install -y tailscale
@@ -15,7 +7,7 @@ fi
 sudo systemctl enable --now tailscaled
 
 hostname="${DVM_TAILSCALE_HOSTNAME:-${DVM_NAME:-}}"
-[ -n "$hostname" ] || tailscale_die "DVM_TAILSCALE_HOSTNAME is required when DVM_NAME is unset"
+[ -n "$hostname" ] || dvm_recipe_die tailscale "DVM_TAILSCALE_HOSTNAME is required when DVM_NAME is unset"
 
 auth_key=""
 auth_key_file="${DVM_TAILSCALE_AUTH_KEY_FILE:-}"
@@ -37,7 +29,7 @@ Running)
 	fi
 	;;
 *)
-	[ -n "$auth_key" ] || tailscale_die "tailscale is not authenticated; pass TAILSCALE_AUTH_KEY=tskey-... when running dvm sync"
+	[ -n "$auth_key" ] || dvm_recipe_die tailscale "tailscale is not authenticated; pass TAILSCALE_AUTH_KEY=tskey-... when running dvm sync"
 	sudo tailscale up --auth-key="$auth_key" --hostname="$hostname" --accept-dns
 	;;
 esac
@@ -47,10 +39,10 @@ if [ -n "${DVM_TAILSCALE_FUNNEL_TARGET:-}" ]; then
 	target="$DVM_TAILSCALE_FUNNEL_TARGET"
 	case "$target" in
 	http://* | https://*) ;;
-	*) tailscale_die "DVM_TAILSCALE_FUNNEL_TARGET must be a http:// or https:// URL: $target" ;;
+	*) dvm_recipe_die tailscale "DVM_TAILSCALE_FUNNEL_TARGET must be a http:// or https:// URL: $target" ;;
 	esac
 	case "$target" in
-	*' '* | *$'\n'* | *$'\r'* | *'"'* | *'`'*) tailscale_die "invalid characters in DVM_TAILSCALE_FUNNEL_TARGET: $target" ;;
+	*' '* | *$'\n'* | *$'\r'* | *'"'* | *'`'*) dvm_recipe_die tailscale "invalid characters in DVM_TAILSCALE_FUNNEL_TARGET: $target" ;;
 	esac
 	sudo tailscale funnel --bg --https=443 "$target"
 	printf 'tailscale funnel: ON, target=%s\n' "$target"

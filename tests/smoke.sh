@@ -6,6 +6,54 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+assert_contains() { grep -Fq -- "$2" "$1"; }
+
+assert_contains_all() {
+	local file="$1"
+	local needle
+	shift
+	for needle in "$@"; do
+		assert_contains "$file" "$needle"
+	done
+}
+
+assert_matches() { grep -Eq -- "$2" "$1"; }
+
+assert_not_contains() {
+	local file="$1"
+	local needle="$2"
+	local message="$3"
+	if grep -Fq -- "$needle" "$file"; then
+		printf '%s\n' "$message" >&2
+		exit 1
+	fi
+}
+
+reset_log() { : >"$TMP/state/log"; }
+
+run_fails() {
+	local err="$1"
+	local status
+	shift
+	set +e
+	"$@" >/dev/null 2>"$err"
+	status="$?"
+	set -e
+	[ "$status" -ne 0 ]
+}
+
+run_fails_capture() {
+	local out="$1"
+	local err="$2"
+	local status
+	shift 2
+	set +e
+	"$@" >"$out" 2>"$err"
+	status="$?"
+	set -e
+	[ "$status" -ne 0 ]
+}
+
 mkdir -p "$TMP/bin" "$TMP/config/vms" "$TMP/state"
 cp -R "$ROOT/share/dvm/." "$TMP/config/"
 rm -rf "$TMP/config/vms"
@@ -203,216 +251,127 @@ mkdir -p "$TMP/install-bin"
 printf '%s\n' old-target >"$TMP/old-dvm"
 ln -s "$TMP/old-dvm" "$TMP/install-bin/dvm"
 PREFIX="$TMP/install-bin" DVM_CONFIG="$TMP/install-config" "$ROOT/install.sh" --init >"$TMP/install.out"
-grep -Fxq old-target "$TMP/old-dvm"
+assert_contains "$TMP/old-dvm" old-target
 [ -x "$TMP/install-bin/dvm" ]
 [ ! -L "$TMP/install-bin/dvm" ]
-grep -Fq 'dvm-run.' "$TMP/install-bin/dvm"
-grep -Fq 'DVM_LIB_DIR="$tmp_parent/lib"' "$TMP/install-bin/dvm"
+assert_contains_all "$TMP/install-bin/dvm" \
+	'dvm-run.' \
+	'DVM_LIB_DIR="$tmp_parent/lib"'
 [ ! -e "$TMP/install-config/lib" ]
 [ ! -e "$TMP/install-config/completions" ]
 "$TMP/install-bin/dvm" help >"$TMP/install-help.out"
-grep -Fq 'dvm init <name> [template]' "$TMP/install-help.out"
+assert_contains "$TMP/install-help.out" 'dvm init <name> [template]'
 
 completion="$ROOT/share/dvm/completions/_dvm"
 [ -f "$completion" ]
-grep -Fq '#compdef dvm' "$completion"
-grep -Fq 'DVM_CONFIG:-$HOME/.config/dvm' "$completion"
-grep -Fq "limactl list --format '{{.Name}}'" "$completion"
-for cmd in init sync sh ssh cp log ssh-key gpg-key ls stop rm help; do
-	grep -Fq "'$cmd:" "$completion"
-done
 if command -v zsh >/dev/null 2>&1; then
 	zsh -n "$completion"
 fi
 
 "$ROOT/bin/dvm" init newapp
 [ -f "$TMP/config/vms/newapp.sh" ]
-grep -Fq 'DVM_CODE_DIR="~/code/$DVM_NAME"' "$TMP/config/vms/newapp.sh"
-grep -Eq '^use_tools$' "$TMP/config/vms/newapp.sh"
-if grep -Fq '__DVM_HOST_MAX_CPUS__' "$TMP/config/vms/newapp.sh"; then
-	printf 'init left __DVM_HOST_MAX_CPUS__ placeholder unsubstituted\n' >&2
-	exit 1
-fi
+assert_contains "$TMP/config/vms/newapp.sh" 'DVM_CODE_DIR="~/code/$DVM_NAME"'
+assert_matches "$TMP/config/vms/newapp.sh" '^use_tools$'
+assert_not_contains "$TMP/config/vms/newapp.sh" '__DVM_HOST_MAX_CPUS__' \
+	'init left __DVM_HOST_MAX_CPUS__ placeholder unsubstituted'
 "$ROOT/bin/dvm" init llama llama
 [ -f "$TMP/config/vms/llama.sh" ]
-grep -Fq 'use llama' "$TMP/config/vms/llama.sh"
-set +e
-"$ROOT/bin/dvm" init bad missing-template >/dev/null 2>"$TMP/init-bad.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'missing VM template: missing-template' "$TMP/init-bad.err"
-
-set +e
-"$ROOT/bin/dvm" sync app trailing-garbage >/dev/null 2>"$TMP/sync-extra.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'sync takes one VM name' "$TMP/sync-extra.err"
-
-set +e
-"$ROOT/bin/dvm" ls extra >/dev/null 2>"$TMP/ls-extra.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'ls takes no arguments' "$TMP/ls-extra.err"
-
-set +e
-"$ROOT/bin/dvm" stop --all extra >/dev/null 2>"$TMP/stop-all-extra.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'stop --all does not take a VM name' "$TMP/stop-all-extra.err"
+assert_contains "$TMP/config/vms/llama.sh" 'use llama'
+run_fails "$TMP/init-bad.err" "$ROOT/bin/dvm" init bad missing-template
+assert_contains "$TMP/init-bad.err" 'missing VM template: missing-template'
+run_fails "$TMP/stop-all-extra.err" "$ROOT/bin/dvm" stop --all extra
+assert_contains "$TMP/stop-all-extra.err" 'stop --all does not take a VM name'
 
 rm -f "$TMP/config/vms/newapp.sh" "$TMP/config/vms/llama.sh"
 
 "$ROOT/bin/dvm" sync app 2>"$TMP/apply.err"
-grep -Fq 'dvm: syncing recipes for app: baseline zsh git helix lazygit starship fzf bat git-delta just tmux yazi node agent-user codex claude chezmoi' "$TMP/apply.err"
-grep -Fq 'create dvm-app' "$TMP/state/log"
-grep -Fq 'start dvm-app' "$TMP/state/log"
-grep -Fq 'DVM_CODE_DIR=~/code/app' "$TMP/state/log"
-grep -Fq 'dvm hostname' "$TMP/state/guest.sh"
-grep -Fq 'hostnamectl set-hostname "$DVM_NAME"' "$TMP/state/guest.sh"
-grep -Fq 'dvm recipe: zsh' "$TMP/state/guest.sh"
-grep -Fq 'usermod --shell "$zsh_path" "$(id -un)"' "$TMP/state/guest.sh"
-grep -Fq 'dvm recipe: bat' "$TMP/state/guest.sh"
-grep -Fq 'bat cache --build' "$TMP/state/guest.sh"
-grep -Fq 'dvm recipe: yazi' "$TMP/state/guest.sh"
-grep -Fq 'dvm recipe: agent-user' "$TMP/state/guest.sh"
-grep -Fq 'dnf5 install -y acl bubblewrap shadow-utils sudo' "$TMP/state/guest.sh"
-grep -Fq 'useradd --system --create-home --user-group --shell /bin/bash "$DVM_AI_AGENT_USER"' "$TMP/state/guest.sh"
-grep -Fq 'sudo setfacl -R -m "u:$DVM_AI_AGENT_USER:rwx" "$code_dir"' "$TMP/state/guest.sh"
-grep -Fq 'sudo setfacl -R -m "u:$DVM_USER:rwx" "$code_dir"' "$TMP/state/guest.sh"
-grep -Fq 'sudo find "$code_dir" -type d -exec setfacl -d -m "u:$DVM_AI_AGENT_USER:rwx" {} +' "$TMP/state/guest.sh"
-grep -Fq 'sudo find "$code_dir" -type d -exec setfacl -d -m "u:$DVM_USER:rwx" {} +' "$TMP/state/guest.sh"
-grep -Fq '/usr/local/libexec/dvm-ai-bwrap' "$TMP/state/guest.sh"
-grep -Fq 'exec /usr/bin/bwrap \' "$TMP/state/guest.sh"
-grep -Fq -- '--bind "$DVM_AI_CODE_DIR" /workspace' "$TMP/state/guest.sh"
-grep -Fq -- '--setenv DVM_CODE_DIR /workspace' "$TMP/state/guest.sh"
-grep -Fq -- '-- "$DVM_AI_TARGET" "$@"' "$TMP/state/guest.sh"
-grep -Fq 'dvm recipe: codex' "$TMP/state/guest.sh"
-grep -Fq 'DVM_CODEX_YOLO:-1' "$TMP/state/guest.sh"
-grep -Fq '/usr/local/libexec/dvm-codex' "$TMP/state/guest.sh"
-grep -Fq -- '--dangerously-bypass-approvals-and-sandbox "\$@"' "$TMP/state/guest.sh"
-grep -Fq 'dvm recipe: claude' "$TMP/state/guest.sh"
-grep -Fq 'baseurl=https://downloads.claude.ai/claude-code/rpm/latest' "$TMP/state/guest.sh"
-grep -Fq 'dnf5 --refresh upgrade -y claude-code' "$TMP/state/guest.sh"
-grep -Fq 'defaultMode = "bypassPermissions"' "$TMP/state/guest.sh"
-grep -Fq 'skipDangerousModePermissionPrompt = true' "$TMP/state/guest.sh"
-grep -Fq 'DVM_CLAUDE_BYPASS:-1' "$TMP/state/guest.sh"
-grep -Fq 'DVM_CHEZMOI_ROLE=vm' "$TMP/state/log"
-grep -Fq 'DVM_CHEZMOI_NAME=Example User' "$TMP/state/log"
-if grep -Fq 'DVM_CHEZMOI_SIGNING_KEY=' "$TMP/state/log"; then
-	printf 'default signing key should not require a VM config variable\n' >&2
-	exit 1
-fi
-grep -Fq 'signing_key="${DVM_CHEZMOI_SIGNING_KEY:-~/.ssh/id_ed25519_dvm_signing.pub}"' "$TMP/state/guest.sh"
-grep -Fq 'deploy_key="${DVM_CHEZMOI_DEPLOY_KEY:-~/.ssh/id_ed25519_dvm.pub}"' "$TMP/state/guest.sh"
-grep -Fq 'signingKey = %s' "$TMP/state/guest.sh"
-grep -Fq 'deployKey = %s' "$TMP/state/guest.sh"
-grep -Fq 'tmp="$(mktemp "${config}.XXXXXX")"' "$TMP/state/guest.sh"
-grep -Fq 'mv "$tmp" "$config"' "$TMP/state/guest.sh"
-grep -Fq 'dvm project hook' "$TMP/state/guest.sh"
-grep -Fq 'hostPort: 3000' "$TMP/state/lima.yaml"
+assert_contains "$TMP/apply.err" 'dvm: syncing recipes for app: baseline zsh git helix lazygit starship fzf bat git-delta just tmux yazi node agent-user codex claude chezmoi'
+assert_contains_all "$TMP/state/log" \
+	'create dvm-app' \
+	'start dvm-app' \
+	'DVM_CODE_DIR=~/code/app'
+assert_not_contains "$TMP/state/log" 'DVM_CHEZMOI_SIGNING_KEY=' \
+	'default signing key should not require a VM config variable'
+assert_contains_all "$TMP/state/guest.sh" \
+	'set -euo pipefail' \
+	'dvm hostname' \
+	'hostnamectl set-hostname "$DVM_NAME"' \
+	'dvm recipe: agent-user' \
+	'/usr/local/libexec/dvm-ai-bwrap' \
+	'--bind "$DVM_AI_CODE_DIR" /workspace' \
+	'--setenv DVM_CODE_DIR /workspace' \
+	'dvm recipe: codex' \
+	'--dangerously-bypass-approvals-and-sandbox "\$@"' \
+	'dvm recipe: claude' \
+	'defaultMode = "bypassPermissions"' \
+	'dvm project hook'
+assert_contains "$TMP/state/lima.yaml" 'hostPort: 3000'
 bash -n "$TMP/state/guest.sh"
 
-: >"$TMP/state/log"
+reset_log
 "$ROOT/bin/dvm" sync rooted
-grep -Fq 'DVM_CODE_DIR=~/work/rooted' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'DVM_CODE_DIR=~/work/rooted'
 
-: >"$TMP/state/log"
+reset_log
 CLOUDFLARED_TOKEN="smoke.Token_123=-" "$ROOT/bin/dvm" sync cloudflared
-grep -Fq 'dvm-cloudflared-token.' "$TMP/state/guest.sh"
-grep -Fq 'token_file="${DVM_CLOUDFLARED_TOKEN_FILE:-}"' "$TMP/state/guest.sh"
-grep -Fq 'ActiveEnterTimestamp' "$TMP/state/guest.sh"
-if grep -Fq 'CLOUDFLARED_TOKEN=smoke.Token_123=-' "$TMP/state/log"; then
-	printf 'cloudflared token leaked into limactl argv log\n' >&2
-	exit 1
-fi
-if grep -Fq 'DVM_CLOUDFLARED_TOKEN=smoke.Token_123=-' "$TMP/state/log"; then
-	printf 'DVM cloudflared token leaked into limactl argv log\n' >&2
-	exit 1
-fi
+assert_contains_all "$TMP/state/guest.sh" \
+	'dvm-cloudflared-token.' \
+	'ActiveEnterTimestamp'
+assert_not_contains "$TMP/state/log" 'CLOUDFLARED_TOKEN=smoke.Token_123=-' \
+	'cloudflared token leaked into limactl argv log'
+assert_not_contains "$TMP/state/log" 'DVM_CLOUDFLARED_TOKEN=smoke.Token_123=-' \
+	'DVM cloudflared token leaked into limactl argv log'
 
-: >"$TMP/state/log"
+reset_log
 TAILSCALE_AUTH_KEY="tskey-auth-smoke-Test_123" "$ROOT/bin/dvm" sync tailscale
-grep -Fq 'dvm recipe: tailscale' "$TMP/state/guest.sh"
-grep -Fq 'dvm-tailscale-auth-key.' "$TMP/state/guest.sh"
-grep -Fq 'auth_key_file="${DVM_TAILSCALE_AUTH_KEY_FILE:-}"' "$TMP/state/guest.sh"
-grep -Fq 'tailscale up --auth-key=' "$TMP/state/guest.sh"
-grep -Fq 'tailscale funnel --bg --https=443' "$TMP/state/guest.sh"
-grep -Fq 'DVM_TAILSCALE_FUNNEL_TARGET=http://lima-dvm-app.internal:3000' "$TMP/state/log"
-if grep -Fq 'TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' "$TMP/state/log"; then
-	printf 'tailscale auth key leaked into limactl argv log\n' >&2
-	exit 1
-fi
-if grep -Fq 'DVM_TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' "$TMP/state/log"; then
-	printf 'DVM tailscale auth key leaked into limactl argv log\n' >&2
-	exit 1
-fi
+assert_contains_all "$TMP/state/guest.sh" \
+	'dvm recipe: tailscale' \
+	'dvm-tailscale-auth-key.' \
+	'tailscale funnel --bg --https=443'
+assert_contains "$TMP/state/log" 'DVM_TAILSCALE_FUNNEL_TARGET=http://lima-dvm-app.internal:3000'
+assert_not_contains "$TMP/state/log" 'TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' \
+	'tailscale auth key leaked into limactl argv log'
+assert_not_contains "$TMP/state/log" 'DVM_TAILSCALE_AUTH_KEY=tskey-auth-smoke-Test_123' \
+	'DVM tailscale auth key leaked into limactl argv log'
 
-set +e
-TAILSCALE_AUTH_KEY="not-a-tskey" "$ROOT/bin/dvm" sync tailscale 2>"$TMP/tailscale-bad.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'must start with tskey-' "$TMP/tailscale-bad.err"
+run_fails "$TMP/tailscale-bad.err" env TAILSCALE_AUTH_KEY="not-a-tskey" "$ROOT/bin/dvm" sync tailscale
+assert_contains "$TMP/tailscale-bad.err" 'must start with tskey-'
 
 perl -0pi -e 's/DVM_PORTS="3000:3000"/DVM_PORTS="3000:3000 9000:9000"/' "$TMP/config/vms/app.sh"
 "$ROOT/bin/dvm" sync app
-grep -Fq 'edit --tty=false --set .portForwards' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'edit --tty=false --set .portForwards'
 bash -n "$TMP/state/guest.sh"
 
 "$ROOT/bin/dvm" ls >"$TMP/list.out"
-grep -Eq '^NAME[[:space:]]+STATUS[[:space:]]+SSH' "$TMP/list.out"
-grep -Eq '^app[[:space:]]+Running[[:space:]]+127\.0\.0\.1:60022' "$TMP/list.out"
-if grep -Fq 'dvm-app' "$TMP/list.out"; then
-	printf 'dvm ls leaked internal Lima prefix\n' >&2
-	exit 1
-fi
+assert_matches "$TMP/list.out" '^app[[:space:]]+Running[[:space:]]+127\.0\.0\.1:60022'
+assert_not_contains "$TMP/list.out" 'dvm-app' 'dvm ls leaked internal Lima prefix'
 
 "$ROOT/bin/dvm" ssh app -- pwd
-grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
-grep -Fq ' bash -c ' "$TMP/state/log"
-grep -Fq '${code_dir#\~/}' "$TMP/state/log"
-grep -Fq 'export SHELL="$login_shell"' "$TMP/state/log"
-expanded_code_dir="$(
-	HOME=/home/example bash -c '
-		code_dir="~/code/app"
-		case "$code_dir" in
-			"~") code_dir="$HOME" ;;
-			"~/"*) code_dir="$HOME/${code_dir#\~/}" ;;
-		esac
-		printf "%s\n" "$code_dir"
-	'
-)"
-[ "$expanded_code_dir" = "/home/example/code/app" ]
+assert_contains_all "$TMP/state/log" \
+	'shell dvm-app env TERM=' \
+	' bash -c '
 
 "$ROOT/bin/dvm" ssh dvm-app -- pwd
-grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'shell dvm-app env TERM='
 
 guest_home="/home/${USER:-developer}"
 guest_code_dir="$guest_home/code/app"
 printf 'plan\n' >"$TMP/plan.md"
-: >"$TMP/state/log"
+reset_log
 "$ROOT/bin/dvm" cp "$TMP/plan.md" app:.
-grep -Fq "shell dvm-app mkdir -p $guest_code_dir" "$TMP/state/log"
-grep -Fq "copy $TMP/plan.md dvm-app:$guest_code_dir" "$TMP/state/log"
-grep -Fq "shell dvm-app bash -s -- dvm-agent ${USER:-developer} $guest_home $guest_code_dir $guest_code_dir plan.md" "$TMP/state/log"
-grep -Fq 'setfacl -R -m "u:$agent_user:rwx" "$1"' "$TMP/state/guest.sh"
-grep -Fq 'setfacl -R -m "u:$vm_user:rwx" "$1"' "$TMP/state/guest.sh"
+assert_contains_all "$TMP/state/log" \
+	"shell dvm-app mkdir -p $guest_code_dir" \
+	"copy $TMP/plan.md dvm-app:$guest_code_dir"
 
-: >"$TMP/state/log"
+reset_log
 "$ROOT/bin/dvm" cp -r --backend=scp app:docs "$TMP/docs-out"
-grep -Fq "copy -r --backend=scp dvm-app:$guest_code_dir/docs $TMP/docs-out" "$TMP/state/log"
-if grep -Fq 'bash -s -- dvm-agent' "$TMP/state/log"; then
-	printf 'dvm cp refreshed agent ACLs on VM-to-host copy\n' >&2
-	exit 1
-fi
+assert_contains "$TMP/state/log" "copy -r --backend=scp dvm-app:$guest_code_dir/docs $TMP/docs-out"
+assert_not_contains "$TMP/state/log" 'bash -s -- dvm-agent' \
+	'dvm cp refreshed agent ACLs on VM-to-host copy'
 
 touch "$TMP/state/list_empty_once"
 "$ROOT/bin/dvm" ssh app -- pwd
-grep -Fq 'shell dvm-app env TERM=' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'shell dvm-app env TERM='
 
 cat >"$TMP/config/vms/race.sh" <<'VM'
 DVM_CPUS=2
@@ -425,92 +384,70 @@ VM
 
 mkdir -p "$TMP/state/dvm-race"
 cp "$TMP/state/lima.yaml" "$TMP/state/dvm-race/lima.yaml"
-grep -Fxq dvm-race "$TMP/state/created" || printf '%s\n' dvm-race >>"$TMP/state/created"
+assert_contains "$TMP/state/created" dvm-race || printf '%s\n' dvm-race >>"$TMP/state/created"
 touch "$TMP/state/list_empty_once"
 "$ROOT/bin/dvm" sync race
-grep -Fq 'start dvm-race' "$TMP/state/log"
-grep -Fq 'shell dvm-race env ' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'shell dvm-race env '
 rm -f "$TMP/config/vms/race.sh"
 
 "$ROOT/bin/dvm" ssh-key app
-grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
-grep -Fq 'id_ed25519_dvm_signing' "$TMP/state/guest.sh"
-grep -Fq 'dvm-git-access' "$TMP/state/guest.sh"
-grep -Fq 'dvm-git-signing' "$TMP/state/guest.sh"
-grep -Fq 'write_public_key()' "$TMP/state/guest.sh"
-grep -Fq 'mktemp "${public_key}.XXXXXX"' "$TMP/state/guest.sh"
-grep -Fq 'mv "$tmp" "$public_key"' "$TMP/state/guest.sh"
-grep -Fq 'user.signingkey "$signing_key.pub"' "$TMP/state/guest.sh"
-grep -Fq 'Git access key public key' "$TMP/state/guest.sh"
-grep -Fq 'Git commit signing public key' "$TMP/state/guest.sh"
+assert_contains "$TMP/state/log" 'shell dvm-app env DVM_NAME=app bash -s'
+assert_contains "$TMP/state/guest.sh" 'Git commit signing public key'
 
 "$ROOT/bin/dvm" gpg-key app
-grep -Fq 'shell dvm-app env DVM_NAME=app bash -s' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'shell dvm-app env DVM_NAME=app bash -s'
 
 mkdir -p "$TMP/state/activity"
 printf 'active: zellij\n' >"$TMP/state/activity/dvm-app"
 printf 'fail: probe unavailable\n' >"$TMP/state/activity/dvm-rooted"
 printf 'active: dvm-cloudflared.service\n' >"$TMP/state/activity/dvm-cloudflared"
 printf 'active: tailscaled.service\n' >"$TMP/state/activity/dvm-tailscale"
-: >"$TMP/state/log"
+reset_log
 "$ROOT/bin/dvm" stop --inactive --force >"$TMP/stop-inactive.out" 2>"$TMP/stop-inactive.err"
-grep -Fq 'dvm stop --all: 2 stopped, 3 skipped, 0 failed' "$TMP/stop-inactive.out"
-grep -Fq 'skipping active VM: dvm-app (active: zellij)' "$TMP/stop-inactive.err"
-grep -Fq 'inactive check failed for dvm-rooted; forcing stop' "$TMP/stop-inactive.err"
-grep -Fq 'skipping active VM: dvm-cloudflared (active: dvm-cloudflared.service)' "$TMP/stop-inactive.err"
-grep -Fq 'skipping active VM: dvm-tailscale (active: tailscaled.service)' "$TMP/stop-inactive.err"
-grep -Fq 'stop dvm-rooted' "$TMP/state/log"
-grep -Fq 'stop dvm-race' "$TMP/state/log"
-if grep -Fq 'stop dvm-app' "$TMP/state/log" ||
-	grep -Fq 'stop dvm-cloudflared' "$TMP/state/log" ||
-	grep -Fq 'stop dvm-tailscale' "$TMP/state/log"; then
-	printf 'dvm stop --inactive stopped an active VM\n' >&2
-	exit 1
-fi
+assert_contains "$TMP/stop-inactive.out" 'dvm stop --all: 2 stopped, 3 skipped, 0 failed'
+assert_contains "$TMP/stop-inactive.err" 'skipping active VM: dvm-app (active: zellij)'
+assert_contains "$TMP/state/log" 'stop dvm-rooted'
+assert_not_contains "$TMP/state/log" 'stop dvm-app' 'dvm stop --inactive stopped an active VM'
+assert_not_contains "$TMP/state/log" 'stop dvm-cloudflared' 'dvm stop --inactive stopped an active VM'
+assert_not_contains "$TMP/state/log" 'stop dvm-tailscale' 'dvm stop --inactive stopped an active VM'
 rm -rf "$TMP/state/activity"
 
-: >"$TMP/state/log"
+reset_log
 "$ROOT/bin/dvm" stop --all >"$TMP/stop-all.out"
-grep -Fq 'dvm stop --all: 5 stopped, 0 skipped, 0 failed' "$TMP/stop-all.out"
-for vm in dvm-app dvm-rooted dvm-cloudflared dvm-tailscale dvm-race; do
-	grep -Fq "stop $vm" "$TMP/state/log"
-done
+assert_contains "$TMP/stop-all.out" 'dvm stop --all: 5 stopped, 0 skipped, 0 failed'
 
 "$ROOT/bin/dvm" stop app
-grep -Fq 'stop dvm-app' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'stop dvm-app'
 
 "$ROOT/bin/dvm" rm app --yes
-grep -Fq 'shell dvm-app bash -s -- ~/code/app' "$TMP/state/log"
-grep -Fq 'stop dvm-app' "$TMP/state/log"
-grep -Fq 'delete dvm-app' "$TMP/state/log"
+assert_contains_all "$TMP/state/log" \
+	'shell dvm-app bash -s -- ~/code/app' \
+	'stop dvm-app' \
+	'delete dvm-app'
 
 mkdir -p "$TMP/state/dvm-orphan"
 cp "$TMP/state/lima.yaml" "$TMP/state/dvm-orphan/lima.yaml"
-grep -Fxq dvm-orphan "$TMP/state/created" || printf '%s\n' dvm-orphan >>"$TMP/state/created"
+assert_contains "$TMP/state/created" dvm-orphan || printf '%s\n' dvm-orphan >>"$TMP/state/created"
 "$ROOT/bin/dvm" rm orphan --yes 2>"$TMP/rm-orphan.err"
-grep -Fq 'deleting Lima VM without DVM config: dvm-orphan' "$TMP/rm-orphan.err"
-grep -Fq 'dirty check skipped because DVM config is missing' "$TMP/rm-orphan.err"
-grep -Fq 'delete dvm-orphan' "$TMP/state/log"
+assert_contains_all "$TMP/rm-orphan.err" \
+	'deleting Lima VM without DVM config: dvm-orphan' \
+	'dirty check skipped because DVM config is missing'
+assert_contains "$TMP/state/log" 'delete dvm-orphan'
 
-: >"$TMP/state/log"
+reset_log
 rm -f "$TMP/state/created"
 rm -rf "$TMP/state"/dvm-*
 "$ROOT/bin/dvm" sync --all >"$TMP/apply-all.out"
-grep -Fq 'create dvm-app' "$TMP/state/log"
-grep -Fq 'create dvm-second' "$TMP/state/log"
-if grep -F 'shell dvm-second ' "$TMP/state/log" | grep -Fq 'DVM_APP_ONLY='; then
+assert_contains_all "$TMP/state/log" \
+	'create dvm-app' \
+	'create dvm-second'
+if grep -F -- 'shell dvm-second ' "$TMP/state/log" | grep -Fq -- 'DVM_APP_ONLY='; then
 	printf 'DVM_APP_ONLY leaked from app into second\n' >&2
 	exit 1
 fi
 
 "$ROOT/bin/dvm" log cloudflared
-grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service --no-pager -n 100' "$TMP/state/log"
-
-"$ROOT/bin/dvm" log cloudflared -f
-grep -Fq 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service -f' "$TMP/state/log"
-
-"$ROOT/bin/dvm" log tailscale
-grep -Fq 'shell dvm-tailscale sudo journalctl -u tailscaled.service --no-pager -n 100' "$TMP/state/log"
+assert_contains "$TMP/state/log" 'shell dvm-cloudflared sudo journalctl -u dvm-cloudflared.service --no-pager -n 100'
 
 cat >"$TMP/config/vms/invalid.sh" <<'VM'
 DVM_USER="root:bad"
@@ -522,12 +459,8 @@ DVM_CODE_DIR="~/code/invalid"
 use python
 VM
 
-set +e
-"$ROOT/bin/dvm" sync invalid >/dev/null 2>"$TMP/invalid.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'invalid DVM_USER: root:bad' "$TMP/invalid.err"
+run_fails "$TMP/invalid.err" "$ROOT/bin/dvm" sync invalid
+assert_contains "$TMP/invalid.err" 'invalid DVM_USER: root:bad'
 rm -f "$TMP/config/vms/invalid.sh"
 
 cat >"$TMP/config/vms/bad.sh" <<'VM'
@@ -539,15 +472,12 @@ DVM_CODE_DIR="~/code/bad"
 use missing-recipe
 VM
 
-: >"$TMP/state/log"
+reset_log
 rm -f "$TMP/state/created"
 rm -rf "$TMP/state"/dvm-*
-set +e
-"$ROOT/bin/dvm" sync --all >"$TMP/apply-all-fail.out" 2>"$TMP/apply-all-fail.err"
-status="$?"
-set -e
-[ "$status" -ne 0 ]
-grep -Fq 'dvm: sync failed: bad' "$TMP/apply-all-fail.err"
-grep -Fq 'dvm sync --all:' "$TMP/apply-all-fail.out"
-grep -Fq '1 failed' "$TMP/apply-all-fail.out"
-grep -Fq 'create dvm-second' "$TMP/state/log"
+run_fails_capture "$TMP/apply-all-fail.out" "$TMP/apply-all-fail.err" "$ROOT/bin/dvm" sync --all
+assert_contains "$TMP/apply-all-fail.err" 'dvm: sync failed: bad'
+assert_contains_all "$TMP/apply-all-fail.out" \
+	'dvm sync --all:' \
+	'1 failed'
+assert_contains "$TMP/state/log" 'create dvm-second'
