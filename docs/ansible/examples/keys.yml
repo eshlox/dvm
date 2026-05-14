@@ -9,6 +9,15 @@
 # when you want the same identity across recreated VMs. Pick one per VM via
 # DVM_ANSIBLE_EXTRA_VARS=("dvm_keys_mode=generate").
 
+- name: Ensure ~/.ssh exists
+  ansible.builtin.file:
+    path: "/home/{{ dvm_user }}/.ssh"
+    state: directory
+    owner: "{{ dvm_user }}"
+    group: "{{ dvm_user }}"
+    mode: "0700"
+  become: true
+
 # --- generate -------------------------------------------------------------
 
 - name: Generate SSH access key

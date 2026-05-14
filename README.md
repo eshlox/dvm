@@ -63,7 +63,7 @@ dvm sh <vm>                 interactive limactl shell
 dvm ssh <vm> -- cmd...      non-interactive shell command
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f]           guest journalctl
-dvm ls [<vm>]               list configured/running VMs
+dvm ls [<vm>]               list running Lima instances (optional name filter)
 dvm stop <vm> | --all       stop running VMs
 dvm rm <vm> --yes           stop and delete the Lima instance
 dvm new <vm>                write stub config, open $EDITOR

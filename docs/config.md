@@ -20,9 +20,9 @@ on the next `dvm sync`; re-open `$EDITOR` and fix.
 | `DVM_USER` | `developer` | Primary guest user |
 | `DVM_ANSIBLE_REPO` | _(required)_ | Absolute path to the external Ansible repo |
 | `DVM_ANSIBLE_PLAYBOOK` | `"site.yml"` | Relative path of the playbook inside the repo |
-| `DVM_ANSIBLE_EXTRA_ARGS` | `()` | Extra args appended to every `ansible-playbook` call |
+| `DVM_ANSIBLE_EXTRA_ARGS` | `()` | Extra args appended to every `ansible-playbook` call. Passed verbatim — keep secrets out (they'd land in argv) |
 | `DVM_USE_BASE` | `0` | Set to `1` to clone from `dvm-<DVM_BASE_NAME>` instead of starting a fresh template |
-| `DVM_BASE_NAME` | `"dvm-base"` | Name of the optional base VM |
+| `DVM_BASE_NAME` | `"base"` | Short name of the optional base VM; the Lima instance becomes `dvm-<DVM_BASE_NAME>` |
 | `DVM_BASE_TAGS` | `(base)` | Ansible tags applied when running `dvm base build` |
 
 ## Per VM (`~/.config/dvm/vms/<vm>.sh`)

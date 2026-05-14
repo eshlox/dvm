@@ -10,6 +10,18 @@
     creates: /usr/local/bin/claude
   become: true
 
+- name: Ensure Claude config dirs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ dvm_agent_user | default('dvm-agent') }}"
+    group: "{{ dvm_agent_user | default('dvm-agent') }}"
+    mode: "0700"
+  loop:
+    - "/home/{{ dvm_agent_user | default('dvm-agent') }}/.claude"
+    - "/home/{{ dvm_agent_user | default('dvm-agent') }}/.config/claude"
+  become: true
+
 - name: Configure Claude for the agent user
   ansible.builtin.copy:
     dest: "/home/{{ dvm_agent_user | default('dvm-agent') }}/.claude/settings.json"

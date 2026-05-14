@@ -244,21 +244,21 @@ if run_dvm sync "Bad-Name" >/dev/null 2>&1; then fail "should reject invalid VM 
 ok "rejects invalid VM name"
 
 # --- base build + clone path ----------------------------------------------
+# Use the default DVM_BASE_NAME=base, so the Lima instance is dvm-base.
 cat > "$TMP/cfg/config.sh" <<EOF
 DVM_TEMPLATE="template:fedora"
 DVM_CPUS=2 DVM_MEMORY=4 DVM_DISK=30
 DVM_ANSIBLE_REPO="$TMP/ansible"
 DVM_ANSIBLE_PLAYBOOK="site.yml"
 DVM_USE_BASE=1
-DVM_BASE_NAME=dvm-base
 DVM_BASE_TAGS=(base)
 EOF
 : > "$LIMACTL_LOG"; : > "$ANSIBLE_LOG"
 run_dvm base build >/dev/null
-grep -q "start --name dvm-dvm-base" "$LIMACTL_LOG" || fail "base build didn't start base VM"
+grep -q "start --name dvm-base" "$LIMACTL_LOG" || fail "base build didn't start dvm-base"
 grep -Fxq -- "--tags" "$ANSIBLE_LOG" || fail "base build missing --tags flag"
 grep -Fxq -- "base"   "$ANSIBLE_LOG" || fail "base build missing base tag value"
-ok "base build starts base VM and runs ansible with base tags"
+ok "base build starts dvm-base and runs ansible with base tags"
 
 # Now sync the app VM with DVM_USE_BASE=1 — should clone, not start template.
 rm -rf "$HOME_DIR/.lima/dvm-app"
@@ -270,8 +270,8 @@ cat > "$TMP/bin/limactl" <<EOF
 case "\$1" in
     list)
         case "\$2" in
-            -q) printf 'dvm-dvm-base\n' ;;
-            --format) printf 'dvm-dvm-base\tStopped\t2\t4GiB\n' ;;
+            -q) printf 'dvm-base\n' ;;
+            --format) printf 'dvm-base\tStopped\t2\t4GiB\n' ;;
         esac
         ;;
     clone)
@@ -288,8 +288,8 @@ chmod +x "$TMP/bin/limactl"
 
 run_dvm sync app >/dev/null
 grep -q -- "clone" "$LIMACTL_LOG" || fail "sync with DVM_USE_BASE=1 didn't clone"
-grep -q "dvm-dvm-base dvm-app" "$LIMACTL_LOG" || fail "clone argv missing source/dest"
-ok "DVM_USE_BASE=1 clones from base instead of fresh start"
+grep -q "dvm-base dvm-app" "$LIMACTL_LOG" || fail "clone argv missing source/dest"
+ok "DVM_USE_BASE=1 clones from dvm-base instead of fresh start"
 
 # --- doctor ---------------------------------------------------------------
 # Restore working limactl (so doctor doesn't fail on missing VMs).
@@ -310,13 +310,58 @@ esac
 case "$out" in *"$TMP/ansible"*) ok "doctor reports DVM_ANSIBLE_REPO" ;; *) fail "doctor missing repo" ;; esac
 
 # --- dvm ansible <vm> -- forwards args ------------------------------------
+# Fake limactl that lists dvm-app so the existence check passes.
+cat > "$TMP/bin/limactl" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+    list) [ "\$2" = "-q" ] && printf 'dvm-app\n' ;;
+    start) : ;;
+esac
+exit 0
+EOF
+chmod +x "$TMP/bin/limactl"
 mkdir -p "$HOME_DIR/.lima/dvm-app"
 printf 'all:\n  hosts:\n    dvm-app:\n' > "$HOME_DIR/.lima/dvm-app/ansible-inventory.yaml"
 : > "$ANSIBLE_LOG"
 run_dvm ansible app -- --check --diff
-grep -q -- "--check" "$ANSIBLE_LOG" || fail "ansible passthrough missing --check"
-grep -q -- "--diff" "$ANSIBLE_LOG" || fail "ansible passthrough missing --diff"
+grep -Fxq -- "--check" "$ANSIBLE_LOG" || fail "ansible passthrough missing --check"
+grep -Fxq -- "--diff"  "$ANSIBLE_LOG" || fail "ansible passthrough missing --diff"
 ok "dvm ansible forwards extra args"
+
+# --- dvm ansible refuses when VM does not exist ---------------------------
+cat > "$TMP/bin/limactl" <<EOF
+#!/usr/bin/env bash
+case "\$1" in list) ;; esac
+exit 0
+EOF
+chmod +x "$TMP/bin/limactl"
+if run_dvm ansible app -- --check >/dev/null 2>&1; then
+    fail "dvm ansible should refuse when VM is missing"
+fi
+ok "dvm ansible errors when VM is missing"
+
+# --- port validator rejects bad specs -------------------------------------
+cat > "$TMP/cfg/vms/badport.sh" <<'EOF'
+DVM_ANSIBLE_TAGS=(base)
+DVM_PORTS=(70000:3000)
+EOF
+if run_dvm sync badport >/dev/null 2>&1; then fail "should reject port > 65535"; fi
+ok "rejects out-of-range port"
+
+cat > "$TMP/cfg/vms/badport.sh" <<'EOF'
+DVM_ANSIBLE_TAGS=(base)
+DVM_PORTS=(abc:3000)
+EOF
+if run_dvm sync badport >/dev/null 2>&1; then fail "should reject non-numeric port"; fi
+ok "rejects non-numeric port"
+
+cat > "$TMP/cfg/vms/badport.sh" <<'EOF'
+DVM_ANSIBLE_TAGS=(base)
+DVM_PORTS=(1:2:3)
+EOF
+if run_dvm sync badport >/dev/null 2>&1; then fail "should reject 3-part port spec"; fi
+ok "rejects port with extra colon"
+rm -f "$TMP/cfg/vms/badport.sh"
 
 # --- absolute-target symlink to bin/dvm works ------------------------------
 ln -sfn "$ROOT/bin/dvm" "$TMP/bin/dvm-link"

@@ -1,9 +1,14 @@
 # Example: roles/agent_user/tasks/main.yml
 #
-# Creates the unprivileged sandbox user that AI tooling (codex/claude/opencode)
-# runs as. Keeps agent processes off the primary developer account so a
-# compromised model session cannot rewrite your shell config or push code as
-# you.
+# Creates the unprivileged identity that AI tooling (codex/claude/opencode)
+# runs as. Pairs with the `sandbox` role, which installs the bubblewrap
+# wrapper that actually contains the agent at runtime. Splitting identity
+# from sandbox lets you swap sandbox technology (bwrap → firejail → systemd
+# scope) without touching user/group state.
+#
+# Group membership: the agent is added to {{ dvm_user }}'s primary group so
+# that, paired with mode 02775 on dvm_code_dir (set by the base role), the
+# sandboxed agent can write to project code without owning the directory.
 
 - name: Create agent user
   ansible.builtin.user:
@@ -13,21 +18,17 @@
     state: present
   become: true
 
+- name: Add agent to developer's group (for shared code write access)
+  ansible.builtin.user:
+    name: "{{ dvm_agent_user | default('dvm-agent') }}"
+    groups: "{{ dvm_user }}"
+    append: true
+  become: true
+
 - name: Allow developer to sudo to agent user without password
   ansible.builtin.copy:
-    dest: "/etc/sudoers.d/dvm-agent"
+    dest: /etc/sudoers.d/dvm-agent
     mode: "0440"
     content: |
       {{ dvm_user }} ALL=({{ dvm_agent_user | default('dvm-agent') }}) NOPASSWD:ALL
-  become: true
-
-- name: Install agent wrapper
-  ansible.builtin.copy:
-    dest: /usr/local/bin/dvm-agent
-    mode: "0755"
-    content: |
-      #!/usr/bin/env bash
-      # Run a command as the sandbox agent user, in the project dir.
-      exec sudo -u {{ dvm_agent_user | default('dvm-agent') }} -H \
-        bash -lc "cd {{ dvm_code_dir }} && \"\$@\"" -- "$@"
   become: true

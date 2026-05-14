@@ -36,5 +36,8 @@
     state: directory
     owner: "{{ dvm_user }}"
     group: "{{ dvm_user }}"
-    mode: "0755"
+    # mode 02775: group-writable + setgid so files created inside inherit
+    # the group. The agent_user role adds the AI sandbox account to this
+    # group so AI tools running inside bwrap can edit project code.
+    mode: "02775"
   become: true

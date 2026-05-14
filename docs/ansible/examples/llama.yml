@@ -22,11 +22,25 @@
     version: master
   become: true
 
+- name: Configure llama-server build
+  ansible.builtin.command:
+    cmd: cmake -B build -DLLAMA_BUILD_SERVER=ON
+    chdir: /opt/llama.cpp
+    creates: /opt/llama.cpp/build/CMakeCache.txt
+  become: true
+
 - name: Build llama-server
   ansible.builtin.command:
-    cmd: cmake -B build -DLLAMA_BUILD_SERVER=ON && cmake --build build --target llama-server -j
+    cmd: cmake --build build --target llama-server -j
     chdir: /opt/llama.cpp
     creates: /opt/llama.cpp/build/bin/llama-server
+  become: true
+
+- name: Ensure model directory
+  ansible.builtin.file:
+    path: /var/lib/llama
+    state: directory
+    mode: "0755"
   become: true
 
 - name: Download model

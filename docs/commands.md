@@ -9,7 +9,7 @@ dvm sh <vm>                 interactive limactl shell
 dvm ssh <vm> -- cmd...      non-interactive shell command
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f] [args]    guest journalctl
-dvm ls [<vm>]               list configured/running VMs
+dvm ls [<vm>]               list running Lima instances (optional name filter)
 dvm stop <vm> | --all       stop running VMs
 dvm rm <vm> --yes           stop and delete the Lima instance
 dvm new <vm>                write stub config and open $EDITOR
@@ -64,7 +64,9 @@ name are passed straight to `journalctl`, so `dvm log app -u nginx -f` works.
 
 Pulls `limactl list --format '{{.Name}}\t{{.Status}}\t{{.CPUs}}\t{{.Memory}}'`,
 filters to `dvm-*`, strips the prefix, and prints a four-column table.
-`dvm ls <vm>` shows just that one row.
+`dvm ls <vm>` shows just that one row. Only Lima-known instances are
+listed; a VM you've defined with `dvm new` but not yet synced will not
+appear until `dvm sync` creates the instance.
 
 ## `dvm rm`
 

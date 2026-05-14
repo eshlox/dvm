@@ -165,6 +165,7 @@ in `site.yml` and pick the subset that fits each VM:
   roles:
     - { role: base,        tags: [base] }
     - { role: agent_user,  tags: [agent-user, ai] }
+    - { role: sandbox,     tags: [sandbox, ai] }
     - { role: chezmoi,     tags: [chezmoi] }
     - { role: codex,       tags: [codex, ai] }
     - { role: claude,      tags: [claude, ai] }
@@ -266,6 +267,8 @@ consistently is up to your Ansible repo.
 
 ## Examples
 
-See [examples/](ansible/examples/) for working roles covering codex, claude,
-chezmoi, tailscale, cloudflared, llama.cpp, and keys. They are reference
-material, not runtime code; copy what fits into your own repo.
+See [examples/](ansible/examples/) for reference role sketches covering
+codex, claude, chezmoi, tailscale, cloudflared, llama.cpp, and keys.
+They show the intended shape but are not lint-tested against a real
+distro — validate before adopting. See
+[examples/README.md](ansible/examples/README.md) for the index.

@@ -16,6 +16,15 @@
     creates: /usr/local/bin/codex
   become: true
 
+- name: Ensure codex config dir
+  ansible.builtin.file:
+    path: "/home/{{ dvm_agent_user | default('dvm-agent') }}/.codex"
+    state: directory
+    owner: "{{ dvm_agent_user | default('dvm-agent') }}"
+    group: "{{ dvm_agent_user | default('dvm-agent') }}"
+    mode: "0700"
+  become: true
+
 - name: Write Codex auth file
   ansible.builtin.copy:
     dest: "/home/{{ dvm_agent_user | default('dvm-agent') }}/.codex/auth.json"

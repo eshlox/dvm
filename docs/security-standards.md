@@ -26,6 +26,10 @@ DVM rejects entries in `DVM_ANSIBLE_EXTRA_VARS` whose name contains
 `token`, `password`, `secret`, or that look like `key=…`. That check is a
 guard against accidents, not a security boundary.
 
+`DVM_ANSIBLE_EXTRA_ARGS` is **not** filtered — it's an escape hatch for
+flags like `--check --diff`, `-K`, `--ask-vault-pass`. Do not put secret
+values there; they'd land directly in the `ansible-playbook` argv.
+
 ### Shell history is still a leak vector
 
 `DVM_TAILSCALE_AUTHKEY="actualsecret" dvm sync vm` puts the value in your
@@ -64,12 +68,34 @@ material. See [ansible/examples/keys.yml](ansible/examples/keys.yml).
 
 ## AI tooling
 
-- The Ansible `agent_user` role creates an unprivileged `dvm-agent`
-  account. Codex, Claude, OpenCode etc. run as that user.
-- Sudo rules let the developer become the agent user without password,
-  not the reverse.
-- The agent user has no DVM-managed access to `~` of the developer user.
-- Treat AI output as untrusted code until reviewed.
+AI tools (Codex, Claude, OpenCode, …) run as the unprivileged
+`dvm-agent` account inside a Bubblewrap sandbox. Two roles, separated
+on purpose:
+
+- **`agent_user`** owns identity: it creates the `dvm-agent` user, adds
+  it to `{{ dvm_user }}`'s group (so the sandbox can write to project
+  code), and writes a sudo rule allowing `dvm_user → dvm-agent` (one
+  direction only).
+- **`sandbox`** owns runtime: it installs `bubblewrap` and writes
+  `/usr/local/bin/dvm-agent`, a wrapper that runs an arbitrary command
+  as the agent user inside bwrap.
+
+What the bwrap wrapper actually guarantees:
+
+- `/workspace` (= `dvm_code_dir`) is the only writable path on the
+  project side. Code lives there; the agent can edit it.
+- The agent's own `$HOME` is private and writable. Tool state
+  (`~/.codex`, `~/.claude`, …) lives there.
+- Everything else is read-only.
+- `/tmp`, `/var/tmp`, `/run` are tmpfs — nothing leaks between calls.
+- PID, IPC, and UTS namespaces are unshared.
+- Network is shared so AI APIs are reachable. Switch to
+  `--unshare-net` for offline-only roles.
+
+The sudo edge runs through `dvm-agent` → bwrap, never the reverse, so a
+compromised agent process cannot become `{{ dvm_user }}` and cannot read
+the developer's home outside `dvm_code_dir`. Treat AI output as
+untrusted code until reviewed.
 
 ## Networking
 

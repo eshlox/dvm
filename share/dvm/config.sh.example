@@ -33,5 +33,5 @@
 # `dvm-<DVM_BASE_NAME>` instead of starting a fresh template. Build the base
 # first with `dvm base build`.
 # DVM_USE_BASE=0
-# DVM_BASE_NAME=dvm-base
+# DVM_BASE_NAME=base          # Lima instance becomes dvm-<DVM_BASE_NAME>, i.e. dvm-base
 # DVM_BASE_TAGS=(base)

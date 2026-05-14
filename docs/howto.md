@@ -70,8 +70,14 @@ Edit the stub to pick tags and resources:
 ```bash
 DVM_CPUS=4 DVM_MEMORY=8 DVM_DISK=60
 DVM_PORTS=(3000:3000)
-DVM_ANSIBLE_TAGS=(base agent-user node chezmoi)
+DVM_ANSIBLE_TAGS=(base agent-user sandbox node chezmoi)
 ```
+
+Pair `agent-user` and `sandbox` whenever you want AI tools inside the
+VM — the first creates the unprivileged identity, the second wraps it
+in bubblewrap. See
+[ansible/examples/agent_user.yml](ansible/examples/agent_user.yml) and
+[ansible/examples/sandbox.yml](ansible/examples/sandbox.yml).
 
 ## Add or change packages
 
@@ -243,7 +249,7 @@ DVM_BASE_TAGS=(base)
 ```
 
 ```bash
-dvm base build          # builds dvm-dvm-base, runs --tags base, stops it
+dvm base build          # builds dvm-base, runs --tags base, stops it
 dvm sync app            # clones from base instead of fresh template
 ```
 
