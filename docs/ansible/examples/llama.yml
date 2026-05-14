@@ -1,0 +1,65 @@
+# Example: roles/llama/tasks/main.yml
+#
+# Stands up a llama.cpp HTTP server backed by a verified model file. The
+# model URL and sha256 come from per-VM vars (set in DVM_ANSIBLE_EXTRA_VARS).
+# Pair with a per-VM DVM_PORTS=(8080:8080) entry so the host can reach the
+# server on 127.0.0.1:8080.
+
+- name: Install build deps
+  ansible.builtin.package:
+    name:
+      - git
+      - cmake
+      - gcc-c++
+      - make
+    state: present
+  become: true
+
+- name: Clone llama.cpp
+  ansible.builtin.git:
+    repo: https://github.com/ggerganov/llama.cpp.git
+    dest: /opt/llama.cpp
+    version: master
+  become: true
+
+- name: Build llama-server
+  ansible.builtin.command:
+    cmd: cmake -B build -DLLAMA_BUILD_SERVER=ON && cmake --build build --target llama-server -j
+    chdir: /opt/llama.cpp
+    creates: /opt/llama.cpp/build/bin/llama-server
+  become: true
+
+- name: Download model
+  ansible.builtin.get_url:
+    url: "{{ llama_model_url }}"
+    dest: "/var/lib/llama/model.gguf"
+    checksum: "sha256:{{ llama_model_sha256 }}"
+    mode: "0644"
+  become: true
+
+- name: Install systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/llama.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=llama.cpp server
+      After=network-online.target
+
+      [Service]
+      ExecStart=/opt/llama.cpp/build/bin/llama-server \
+        --host {{ dvm_host_ip }} --port {{ llama_port | default(8080) }} \
+        -m /var/lib/llama/model.gguf
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  become: true
+
+- name: Enable llama service
+  ansible.builtin.systemd:
+    name: llama.service
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true

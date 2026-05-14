@@ -1,0 +1,35 @@
+# Example: roles/claude/tasks/main.yml
+#
+# Installs the Claude Code CLI for the agent user. Anthropic API key comes
+# from the host env via `lookup('env', ...)` — never put it in DVM config.
+
+- name: Install Claude Code CLI
+  ansible.builtin.shell: |
+    curl -fsSL https://claude.ai/install.sh | bash
+  args:
+    creates: /usr/local/bin/claude
+  become: true
+
+- name: Configure Claude for the agent user
+  ansible.builtin.copy:
+    dest: "/home/{{ dvm_agent_user | default('dvm-agent') }}/.claude/settings.json"
+    content: |
+      {
+        "model": "claude-opus-4-7"
+      }
+    owner: "{{ dvm_agent_user | default('dvm-agent') }}"
+    group: "{{ dvm_agent_user | default('dvm-agent') }}"
+    mode: "0600"
+  become: true
+
+- name: Write ANTHROPIC_API_KEY env file
+  ansible.builtin.copy:
+    dest: "/home/{{ dvm_agent_user | default('dvm-agent') }}/.config/claude/env"
+    content: |
+      ANTHROPIC_API_KEY={{ lookup('env', 'DVM_ANTHROPIC_API_KEY') }}
+    owner: "{{ dvm_agent_user | default('dvm-agent') }}"
+    group: "{{ dvm_agent_user | default('dvm-agent') }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  when: lookup('env', 'DVM_ANTHROPIC_API_KEY') | length > 0

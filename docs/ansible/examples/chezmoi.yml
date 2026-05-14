@@ -1,0 +1,18 @@
+# Example: roles/chezmoi/tasks/main.yml
+#
+# Pulls in dotfiles via chezmoi from a separate user-owned repo. DVM does not
+# manage dotfiles itself — this role does. Run after `keys` so SSH/GPG auth
+# is available if the repo is private.
+
+- name: Install chezmoi
+  ansible.builtin.package:
+    name: chezmoi
+    state: present
+  become: true
+
+- name: Apply dotfiles
+  ansible.builtin.command:
+    cmd: "chezmoi init --apply {{ chezmoi_repo }}"
+    creates: "/home/{{ dvm_user }}/.local/share/chezmoi"
+  become: true
+  become_user: "{{ dvm_user }}"

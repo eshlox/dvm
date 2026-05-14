@@ -37,14 +37,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck gettext
+          sudo apt-get install -y --no-install-recommends shellcheck
 
       - name: Shellcheck
         run: |
           set -euo pipefail
           shellcheck -e SC1090,SC1091,SC2034,SC2154 bin/dvm install.sh tests/smoke.sh
-          shellcheck -e SC1090,SC1091,SC2034,SC2154 share/dvm/prelude.sh
-          shellcheck -e SC1090,SC1091,SC2034,SC2154,SC2086,SC2155 share/dvm/recipes/*.sh
 
       - name: Smoke test
         run: bash tests/smoke.sh

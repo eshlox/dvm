@@ -1,0 +1,38 @@
+# Example: roles/tailscale/tasks/main.yml
+#
+# Joins the VM to your tailnet. Auth key comes from the host env at sync
+# time, never DVM config. The `no_log: true` flag keeps the value out of
+# Ansible output even when running with -v.
+
+- name: Add Tailscale repo
+  ansible.builtin.yum_repository:
+    name: tailscale-stable
+    description: Tailscale stable
+    baseurl: "https://pkgs.tailscale.com/stable/fedora/$basearch"
+    gpgkey: "https://pkgs.tailscale.com/stable/fedora/repo.gpg"
+    gpgcheck: true
+  become: true
+
+- name: Install tailscale
+  ansible.builtin.package:
+    name: tailscale
+    state: present
+  become: true
+
+- name: Enable tailscaled
+  ansible.builtin.service:
+    name: tailscaled
+    state: started
+    enabled: true
+  become: true
+
+- name: Bring tailscale up
+  ansible.builtin.command:
+    cmd: >-
+      tailscale up
+      --auth-key {{ lookup('env', 'DVM_TAILSCALE_AUTHKEY') }}
+      --hostname {{ tailscale_hostname | default(dvm_name) }}
+  no_log: true
+  become: true
+  changed_when: false
+  when: lookup('env', 'DVM_TAILSCALE_AUTHKEY') | length > 0

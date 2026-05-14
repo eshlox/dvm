@@ -2,65 +2,80 @@
 
 Keep your friends close, your supply chain in a VM.
 
-DVM is a small Bash script around Lima. It creates one Fedora VM per project,
-runs a fixed list of shell recipes inside it, and gets out of the way.
+DVM is a tiny Bash wrapper around three existing tools:
 
-The model has three nouns:
+- **Lima** owns the VM (create, start, shell, copy, log, delete).
+- **Ansible** owns the guest configuration, from a separate user-owned repo.
+- **chezmoi** owns your dotfiles, called by Ansible from a separate dotfiles
+  repo.
 
-- **Packages** — distro package names listed in `DVM_PACKAGES`. Installed once
-  per sync with the guest package manager.
-- **Recipes** — shell behavior files under `share/dvm/recipes/`. Listed in
-  `DVM_RECIPES` in the order they should run.
-- **Secrets** — env-var names listed in `DVM_SECRETS`. Each value is staged
-  through stdin into a mode-`0600` guest file (`/tmp/dvm-secret-<NAME>`)
-  before recipes run; values never appear in argv or env.
+DVM is the memory layer that turns "create my usual VM and configure it" into
+one command. It does not ship roles, it does not manage dotfiles, it does not
+handle secrets. It writes a non-secret vars file, picks the right Lima
+template, and invokes `ansible-playbook` against Lima's generated inventory.
 
 ## Install
 
 Requirements:
 
-- Lima 1.0+ (`brew install lima` on macOS, `dnf install lima` on Fedora)
-- bash, flock, envsubst, sudo
+- Lima 2.0+ (`brew install lima` on macOS, `dnf install lima` on Fedora)
+- `ansible-playbook` (`brew install ansible`, `dnf install ansible`, or pipx)
+- `bash`, `git`, an `$EDITOR`
 - a Unix host (macOS aarch64 or Linux aarch64/x86_64)
 
 ```bash
 ./install.sh
 ```
 
-This writes a single symlink: `~/.local/bin/dvm -> $REPO/bin/dvm`. There is
-no copy. `git pull` in this repo is the update. Override the destination
-with `PREFIX=/somewhere/else ./install.sh`.
+Writes one symlink: `~/.local/bin/dvm -> $REPO/bin/dvm`. `git pull` in this
+repo is the update. Override the destination with
+`PREFIX=/somewhere/else ./install.sh`.
 
 ## Quick start
 
+You also need an Ansible repo. The minimum is `site.yml` plus one tagged
+role. See [docs/ansible.md](docs/ansible.md) for the full contract and
+[docs/ansible/examples/](docs/ansible/examples) for working roles.
+For task recipes ("add packages", "recreate without losing keys",
+"per-VM toolchains"), jump to [docs/howto.md](docs/howto.md).
+
 ```bash
-dvm new app             # writes ~/.config/dvm/vms/app.sh, opens $EDITOR
-dvm sync app            # create + start + provision the Lima instance
-dvm sh app              # interactive shell
-dvm                     # alias for `dvm ls`
+# 1. point DVM at your Ansible repo
+dvm config edit          # opens ~/.config/dvm/config.sh
+# set DVM_ANSIBLE_REPO=$HOME/code/ansible
+
+# 2. create a VM config
+dvm new app              # writes ~/.config/dvm/vms/app.sh, opens $EDITOR
+
+# 3. create + provision
+dvm sync app             # limactl start template:fedora + ansible-playbook
+
+# 4. live in it
+dvm sh app               # interactive shell
+dvm                      # alias for `dvm ls`
 ```
 
 ## Commands
 
-```text
-dvm sync <vm> | --all   create/start the Lima instance and run recipes
-dvm sh <vm>             interactive shell (exec limactl shell)
-dvm ssh <vm> -- cmd...  non-interactive command
-dvm cp src dst          copy; one side may be vm:path
-dvm log <vm> [-f]       guest journalctl
-dvm ls [<vm>]           list configured/running VMs (optional filter)
-dvm rm <vm> --yes       stop and delete the Lima instance (backs up VM keys)
-dvm stop <vm> | --all   stop running VMs
-dvm ssh-key <vm>        generate guest SSH keys (access + signing)
-dvm gpg-key <vm>        generate guest GPG signing key
-dvm new <vm>            write stub config, open $EDITOR
-dvm edit <vm>           edit per-VM config
-dvm config edit|show    edit/print global config
-dvm recipes             list available recipes
+```
+dvm sync <vm> | --all       create/start the Lima VM and run ansible-playbook
+dvm sh <vm>                 interactive limactl shell
+dvm ssh <vm> -- cmd...      non-interactive shell command
+dvm cp src dst              copy; one side may be vm:path
+dvm log <vm> [-f]           guest journalctl
+dvm ls [<vm>]               list configured/running VMs
+dvm stop <vm> | --all       stop running VMs
+dvm rm <vm> --yes           stop and delete the Lima instance
+dvm new <vm>                write stub config, open $EDITOR
+dvm edit <vm>               edit per-VM config
+dvm config edit | show      edit/show global config
+dvm base build | rm         build or delete the optional reusable base VM
+dvm ansible <vm> -- args... run ansible-playbook with extra arguments
+dvm doctor                  check Lima, Ansible, repo, playbook, inventory
 ```
 
-`DVM_DRY_RUN=1 dvm sync <vm>` prints the rendered guest script and exits
-without contacting Lima.
+`DVM_DRY_RUN=1 dvm sync <vm>` prints the limactl argv, the vars file, and
+the ansible-playbook argv without touching Lima.
 
 ## Config
 
@@ -68,15 +83,15 @@ Global, sourced first (optional):
 
 ```bash
 # ~/.config/dvm/config.sh
+DVM_TEMPLATE="template:fedora"
 DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=10GiB
-DVM_CODE_ROOT="~/code"        # guest path; ~ expands to the guest user's home
+DVM_MEMORY=4
+DVM_DISK=30
 DVM_HOST_IP=127.0.0.1
 DVM_USER=developer
-DVM_AGENT_USER=dvm-agent
-DVM_DEFAULT_PACKAGES=(git tmux)
-DVM_DEFAULT_RECIPES=(zsh-login-shell agent-user codex)
+
+DVM_ANSIBLE_REPO="$HOME/code/ansible"
+DVM_ANSIBLE_PLAYBOOK="site.yml"
 ```
 
 Per VM, sourced after global:
@@ -84,105 +99,56 @@ Per VM, sourced after global:
 ```bash
 # ~/.config/dvm/vms/app.sh
 DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=30GiB
+DVM_MEMORY=8
+DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_PACKAGES=(bat fzf helix)             # appended to DVM_DEFAULT_PACKAGES
-DVM_RECIPES=(node-corepack)              # appended to DVM_DEFAULT_RECIPES
-# DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
-# DVM_CODE_DIR="~/code/app"              # default: $DVM_CODE_ROOT/$DVM_NAME
+
+DVM_ANSIBLE_TAGS=(base agent-user codex node chezmoi)
+DVM_ANSIBLE_EXTRA_VARS=(
+  "dvm_profile=app"
+  "chezmoi_repo=git@github.com:me/dotfiles.git"
+)
 ```
 
-Validation is "bash sources the file"; a typo raises a bash error on the
-next `dvm sync`. Re-open `$EDITOR` and try again. VM names match
-`^[a-z][a-z0-9-]*$`. Memory and disk are passed to Lima verbatim, so any
-size Lima accepts works.
+Memory and disk are GiB integers (Lima's flags accept plain numbers).
+DVM rejects extra-vars entries whose name contains `token`, `password`,
+`secret`, or that look like `key=…`. Secrets belong in Ansible Vault or
+env lookups inside the playbook, not in DVM config.
 
-## Recipes
+See [docs/config.md](docs/config.md) for the full table.
 
-A recipe is a `<name>.sh` shell snippet. User recipes at
-`~/.config/dvm/recipes/<name>.sh` override built-ins of the same name.
-`dvm sync` cats them into one bash stream, after a small helper prelude and
-the `dvm_pkg` call for `DVM_PACKAGES`. The execution order is the order of
-names in `DVM_RECIPES` — there is no topological sort, no `requires` field.
-`agent-user` must precede `codex`, `claude`, `opencode`, `mistral`.
+## What DVM hands to Ansible
 
-Built-in recipes (the ones that earn their own file):
+For every `dvm sync <vm>`, DVM writes `~/.cache/dvm/<vm>.vars.yml` and
+passes it as `-e @…`:
 
-- AI tooling: `agent-user`, `codex`, `claude`, `opencode`, `mistral`
-- Services: `llama`, `cloudflared`, `tailscale`, `docker`
-- Pinned binaries: `lazygit`, `starship`, `zellij`, `yazi`
-- Other behavior: `chezmoi`, `zsh-login-shell`, `node-corepack`
-
-Everything else (`bat`, `fzf`, `git`, `git-delta`, `helix`, `just`,
-`python3`, `tmux`, etc.) is just a package name in `DVM_PACKAGES`. No file
-needed.
-
-### Helper prelude
-
-Recipes can use these helpers, defined in the prelude `bin/dvm` generates:
-
-- `dvm_die <msg>` / `dvm_recipe_die <recipe> <msg>` / `dvm_recipe_warn ...`
-- `dvm_pkg <pkgs...>` — invokes dnf5 / dnf / apt-get under sudo
-- `dvm_secret <ENV_VAR>` — prints the staged guest file path
-- `dvm_recipe_bool <recipe> <name> <value>` — normalises 1/0/true/false
-- `dvm_recipe_require_agent_user <recipe>` — fails if agent-user didn't run
-- `dvm_recipe_validate_port` / `validate_service` / `validate_sha256`
-- `dvm_recipe_arch` — prints `aarch64` or `x86_64`
-- `dvm_download_verified <url> <sha256> <out>` — curl + sha256sum -c
-- `dvm_install_pinned <name> <arm_url> <arm_sha> <x86_url> <x86_sha> <tar|zip> <bins...>`
-
-Exported variables: `DVM_VM`, `DVM_USER`, `DVM_AGENT_USER`, `DVM_CODE_DIR`,
-`DVM_HOST_IP`, `DVM_PORTS` (comma-separated), `DVM_RECIPE` (current recipe
-name).
-
-### Project hook
-
-If `<DVM_CODE_DIR>/.dvm/sync.sh` exists, it runs last, after all recipes,
-in the directory `DVM_CODE_DIR` as the primary user.
-
-## Service VMs
-
-**llama** — dedicated llama.cpp server. Set the model URL + sha256 in the
-per-VM config:
-
-```bash
-DVM_RECIPES=(llama)
-DVM_PORTS=(8080:8080)
-DVM_LLAMA_MODEL_URL="https://example.invalid/model.gguf"
-DVM_LLAMA_MODEL_SHA256="0000...64hex"
-# Optional: DVM_LLAMA_HOST=127.0.0.1, DVM_LLAMA_PORT=8080
+```yaml
+dvm_name: app
+dvm_lima_name: dvm-app
+dvm_user: developer
+dvm_code_dir: /home/developer/code/app
+dvm_host_ip: 127.0.0.1
+dvm_ports:
+  - host: 3000
+    guest: 3000
 ```
 
-**cloudflared** — tunnel runner. Stage the token through `DVM_SECRETS`:
+These are the only variables DVM contributes. Your roles consume them as
+`{{ dvm_user }}`, `{{ dvm_code_dir }}`, etc.
 
-```bash
-DVM_RECIPES=(cloudflared)
-DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
-# At sync time:
-DVM_CLOUDFLARED_TOKEN="..." dvm sync cloud
-```
-
-**tailscale** — tailnet membership and optional Funnel. First-time auth
-needs `DVM_TAILSCALE_AUTHKEY`:
-
-```bash
-DVM_RECIPES=(tailscale)
-DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
-# Optional: DVM_TAILSCALE_HOSTNAME, DVM_TAILSCALE_FUNNEL_TARGET=https://...
-DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync tailscale
-```
+DVM never mounts host code into the guest. Code lives at `dvm_code_dir`
+and is cloned by the Ansible playbook (typically via `ansible.builtin.git`).
+See [docs/security-standards.md](docs/security-standards.md) for the
+isolation model.
 
 ## Layout
 
 ```
 bin/dvm                       single-file bash program
 install.sh                    symlink installer
-share/dvm/lima.yaml.in        Lima YAML template (envsubst placeholders)
 share/dvm/config.sh.example   starter global config
-share/dvm/recipes/*.sh        built-in recipes
-share/dvm/prelude.sh          helper prelude embedded into each guest script
-tests/smoke.sh                end-to-end test with a fake limactl
+docs/                         contract and example Ansible roles
+tests/smoke.sh                end-to-end test with fake limactl + ansible-playbook
 ```
 
 ## Tests
@@ -191,9 +157,9 @@ tests/smoke.sh                end-to-end test with a fake limactl
 bash tests/smoke.sh
 ```
 
-Runs the full command surface against a fake `limactl` shim and asserts
-that argv, rendered YAML, and the piped guest script all look right. No
-real VM is touched.
+Asserts the limactl argv (template, flags, port forwards), the generated
+vars file, and the ansible-playbook argv (inventory, playbook, tags,
+vars file) all look right. No real VM is touched.
 
 ## License
 

@@ -1,6 +1,42 @@
 # Changelog
 
-## v2 (unreleased)
+## v3 (unreleased)
+
+Greenfield rewrite. No migration path from v2. DVM is now a tiny Lima +
+Ansible conductor; guest configuration moves entirely into the user's
+external Ansible repo.
+
+- New `bin/dvm` (single Bash file) drives Lima with `limactl start` flags
+  (`--name`, `--cpus`, `--memory`, `--disk`, `--port-forward`) and a
+  template (default `template:fedora`). No more YAML rendering, no
+  `envsubst`, no `flock`.
+- New three-noun config: `DVM_TEMPLATE`, resource flags, and
+  `DVM_ANSIBLE_*` (repo, playbook, tags, extra-vars, extra-args).
+  `DVM_PACKAGES`, `DVM_RECIPES`, `DVM_SECRETS` are gone.
+- `dvm sync <vm>` writes a non-secret `~/.cache/dvm/<vm>.vars.yml`
+  (containing `dvm_name`, `dvm_lima_name`, `dvm_user`, `dvm_code_dir`,
+  `dvm_host_ip`, `dvm_ports`) and runs `ansible-playbook` against Lima's
+  generated `ansible-inventory.yaml`.
+- `DVM_ANSIBLE_EXTRA_VARS` entries are rejected if their name looks like
+  a secret (`token`, `password`, `secret`, or `key=…`). DVM no longer
+  stages secrets — Ansible Vault and env lookups belong in the playbook.
+- New commands: `dvm base build`, `dvm base rm` (optional reusable base
+  VM cloned via `limactl clone`); `dvm ansible <vm> -- args…` (extra args
+  forwarded to `ansible-playbook`); `dvm doctor` (diagnostic check of
+  Lima, Ansible, repo, playbook, inventory).
+- Removed commands: `dvm ssh-key`, `dvm gpg-key`, `dvm recipes`. Identity
+  belongs to the Ansible `keys` role; the recipe engine no longer exists.
+- Removed: `share/dvm/lima.yaml.in`, `share/dvm/prelude.sh`,
+  `share/dvm/recipes/*`. `docs/recipes.md`, `docs/ai.md`,
+  `docs/services.md`, `docs/dotfiles.md`. Key backup/restore on `dvm rm`.
+- Added: `docs/ansible.md` (external repo contract);
+  `docs/ansible/examples/{base,agent_user,chezmoi,keys,codex,claude,tailscale,cloudflared,llama}.yml`
+  as reference roles.
+- Locking switched from `flock` to atomic `mkdir` with `trap` cleanup.
+- Host dependencies: `bash`, `lima` 2.0+, `ansible-playbook`, `git`,
+  `$EDITOR`. No more `envsubst`, `flock`, or `jq`.
+
+## v2
 
 Greenfield rewrite. No migration path from v1.
 
@@ -26,34 +62,3 @@ Greenfield rewrite. No migration path from v1.
 - Commands dropped: `dvm stop --inactive`, dirty git-check on `dvm rm`,
   per-port host IP overrides (the 3-part `host:port:guest` syntax — bind IP
   is global `DVM_HOST_IP` only), `DVM_NO_BASELINE` flag.
-
-### Post-review fixes
-
-- Fixed: `dvm` launched through an absolute-target symlink (the default
-  install path) prefixed the link's directory to the absolute target and
-  failed at startup. Symlink resolution now handles absolute and relative
-  targets separately.
-- Fixed: the project hook check (`<DVM_CODE_DIR>/.dvm/sync.sh`) was run on
-  the host, never the guest, so the hook never executed. The check is now
-  emitted verbatim into the guest script.
-- Hardened: `DVM_SECRETS` entries must match `[A-Za-z_][A-Za-z0-9_]*`
-  before indirect expansion or use in the staged filename.
-- Hardened: `dvm cp` requires the VM side to match a real VM-name pattern
-  before treating a path as `vm:path`, so local paths containing `:` are
-  not misparsed. Cross-VM copies are rejected explicitly.
-- Improved: `dvm stop --all` aggregates per-VM failures and exits non-zero
-  when any stop failed.
-- Moved: the guest helper prelude now lives in `share/dvm/prelude.sh` and
-  is `cat`-ed at sync time. `bin/dvm` shrinks from 477 to 410 LOC; the
-  prelude is easier to read and shellcheck independently.
-- Improved: `envsubst` and `flock` are checked only inside the commands
-  that need them (`sync`, `rm`), so `help`, `recipes`, `ls`, `config show`,
-  and `config edit` work without them on `PATH`.
-- Added: `dvm rm <vm> --yes` backs up the VM's `id_ed25519_dvm*` SSH keys
-  and GPG signing key (armored) to `~/.config/dvm/backups/<vm>/` before
-  deleting. `dvm sync <vm>` restores them when the in-VM file is missing,
-  so recreated VMs keep the same identity without re-adding keys to the
-  Git host. Pass `--no-backup` to skip. Trust model: keys now live on the
-  host disk (mode `0600`); document discusses the implications.
-- Fixed shellcheck warnings SC2088/2015/2089/2090 with intent-documenting
-  inline disables and one `if`/`then` rewrite.

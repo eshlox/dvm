@@ -1,48 +1,59 @@
 # Lima
 
-DVM renders one Lima YAML per VM and lets Lima do the rest.
+DVM drives Lima with `limactl` flags. No YAML rendering, no `envsubst`.
 
-## Template
+## How `dvm sync` calls Lima
 
-`share/dvm/lima.yaml.in` is a tiny `envsubst` template with placeholders
-for `${DVM_CPUS}`, `${DVM_MEMORY}`, `${DVM_DISK}`, `${DVM_USER}`,
-`${DVM_NAME}`, `${DVM_CODE_DIR_GUEST}`, and `${DVM_PORT_FORWARDS}`.
-`bin/dvm` substitutes those vars at sync time and writes the result to
-`~/.cache/dvm/<vm>.yaml`. Requires Lima 1.0+.
+For a fresh VM:
 
-User override: copy to `~/.config/dvm/lima.yaml.in` if you need structural
-Lima changes. `bin/dvm` will prefer that file when it exists.
+```bash
+limactl start \
+  --name dvm-app \
+  --cpus 4 --memory 8 --disk 60 \
+  --port-forward 127.0.0.1:3000:3000 \
+  --port-forward 127.0.0.1:5173:5173 \
+  template:fedora
+```
 
-Defaults baked in:
+For an existing VM, only `limactl start dvm-app` is run.
 
-- Fedora 41 cloud images for `aarch64` and `x86_64`. Lima picks the
-  matching arch automatically.
-- No `vmType` / `arch` keys — Lima detects them (`vz` on macOS,
-  `qemu` on Linux).
-- `mounts: []`. Host code is **not** mounted into the guest.
-- `containerd: { system: false, user: false }`.
-- `ssh.loadDotSSHPubKeys: false` and `forwardAgent: false`. Host SSH
-  config never bleeds in.
-- Port forwards rendered from `DVM_PORTS` with bind IP `DVM_HOST_IP`.
-- One `provision` step (system mode): set hostname to `<vm>.dvm`,
-  install bootstrap packages, create the primary user, write a
-  `NOPASSWD` sudoers entry, create `DVM_CODE_DIR` owned by that user.
+With `DVM_USE_BASE=1` and the base VM already built:
 
-The guest prelude in `bin/dvm` repeats the user/code_dir steps as
-idempotent shell on every sync, so changes to those values pick up
-without recreating the VM.
+```bash
+limactl clone \
+  --cpus 4 --memory 8 --disk 60 \
+  --port-forward 127.0.0.1:3000:3000 \
+  dvm-base dvm-app
+```
+
+Requires Lima 2.0+ (for `--port-forward` on `start` and the `clone`
+subcommand). Tested against Lima 2.1.1.
+
+## Templates
+
+`DVM_TEMPLATE` defaults to `template:fedora`, which tracks Lima's current
+Fedora release. Pin a versioned template (e.g. `template:fedora-44`) if
+reproducibility matters more than tracking upstream. Any template Lima
+ships works.
 
 ## No host mounts
 
-Project code lives **inside** the VM. Clone from your remote with
-`dvm sh app` and the recipes you installed. This is the isolation
-choice. Add a recipe and a `mounts:` block to the user-override
-template only if you really need host code in a specific VM.
+Project code lives **inside** the VM at `/home/<DVM_USER>/code/<vm>`. Your
+Ansible role is responsible for cloning the project repository there. DVM
+intentionally does not pass `--mount` so a compromised guest cannot reach
+back into the host checkout. See
+[security-standards.md](security-standards.md).
+
+## Inventory
+
+Every Lima instance writes `~/.lima/dvm-<vm>/ansible-inventory.yaml`. DVM
+uses that file directly — there is no DVM-managed SSH config or inventory.
+`dvm doctor` checks for this file's existence for each VM.
 
 ## VM-to-VM names
 
 Lima exposes each instance at `lima-<name>.internal` from other Lima
-instances. From an app VM:
+instances. From an app VM to a service VM:
 
 ```bash
 curl http://lima-dvm-llama.internal:8080
@@ -56,19 +67,8 @@ curl http://host.lima.internal:3000
 
 ## Updating
 
-- Editing `DVM_PORTS` and re-syncing rewrites the YAML and starts the
-  instance with new port forwards. Lima edits the running config.
-- Editing the template after a VM exists does **not** rewrite structural
-  fields (CPUs, memory, disk, arch, vmType). For those changes:
-  `dvm rm <vm> --yes && dvm sync <vm>`.
-
-## Troubleshooting
-
-A failed first boot leaving stale `cloud-final.service`:
-
-```bash
-dvm ssh app -- sudo systemctl reset-failed cloud-final.service cloud-init-main.service
-```
-
-A Lima instance that exists on disk but `limactl list` doesn't show:
-look under `~/.lima/dvm-<vm>/` and clean it up or `limactl delete --force`.
+- Editing `DVM_PORTS` and re-syncing only takes effect when the instance is
+  recreated. Lima does not edit running port forwards. Run
+  `dvm rm <vm> --yes && dvm sync <vm>` to apply.
+- The same is true for CPUs, memory, disk, and template — those land on
+  fresh instances only. The base-VM clone path makes this cheaper.

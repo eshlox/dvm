@@ -1,0 +1,27 @@
+# Example: roles/cloudflared/tasks/main.yml
+#
+# Installs a Cloudflare Tunnel runner as a systemd service. The token comes
+# from the host env so it never appears in DVM config or argv.
+
+- name: Add cloudflared repo
+  ansible.builtin.yum_repository:
+    name: cloudflared
+    description: cloudflared
+    baseurl: "https://pkg.cloudflare.com/cloudflared/rpm"
+    gpgkey: "https://pkg.cloudflare.com/cloudflare-main.gpg"
+    gpgcheck: true
+  become: true
+
+- name: Install cloudflared
+  ansible.builtin.package:
+    name: cloudflared
+    state: present
+  become: true
+
+- name: Install service with token
+  ansible.builtin.command:
+    cmd: cloudflared service install {{ lookup('env', 'DVM_CLOUDFLARED_TOKEN') }}
+  no_log: true
+  become: true
+  changed_when: false
+  when: lookup('env', 'DVM_CLOUDFLARED_TOKEN') | length > 0

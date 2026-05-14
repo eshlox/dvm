@@ -8,62 +8,52 @@ DVM config is plain Bash sourced on the host. There are two files:
 Global is sourced first, then the per-VM file. A typo raises a Bash error
 on the next `dvm sync`; re-open `$EDITOR` and fix.
 
-## Three nouns
-
-| Variable | What it is |
-|---|---|
-| `DVM_PACKAGES` | Distro package names. Installed via `dvm_pkg "${DVM_PACKAGES[@]}"` once per sync, before recipes run. |
-| `DVM_RECIPES` | Recipe names. Each maps to a `<name>.sh` under `share/dvm/recipes/` (built-in) or `~/.config/dvm/recipes/` (user override). Array order = execution order. |
-| `DVM_SECRETS` | Env-var names. For each name, the host process value is piped to `/tmp/dvm-secret-<NAME>` (mode 0600) inside the guest before recipes run. Recipes read via `dvm_secret <NAME>`. |
-
-The per-VM `DVM_PACKAGES`/`DVM_RECIPES` arrays are **appended** to the
-corresponding `DVM_DEFAULT_*` from global. Use the appended form to
-inherit globals:
-
-```bash
-DVM_PACKAGES=("${DVM_DEFAULT_PACKAGES[@]}" bat fzf helix)
-DVM_RECIPES=("${DVM_DEFAULT_RECIPES[@]}" node-corepack)
-```
-
-To replace instead of append, just don't expand the default.
-
-## All variables
-
-### Global (`~/.config/dvm/config.sh`)
+## Global (`~/.config/dvm/config.sh`)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DVM_CPUS` | `2` | Default vCPUs for new VMs |
-| `DVM_MEMORY` | `"2GiB"` | Default memory (passed to Lima as-is) |
-| `DVM_DISK` | `"10GiB"` | Default disk |
-| `DVM_CODE_ROOT` | `"~/code"` | Guest-side root; per-VM `DVM_CODE_DIR` defaults to `$DVM_CODE_ROOT/$DVM_NAME` |
+| `DVM_TEMPLATE` | `"template:fedora"` | Lima template name; pin a versioned template if reproducibility matters |
+| `DVM_CPUS` | `2` | Default vCPUs |
+| `DVM_MEMORY` | `4` | Default memory in GiB (integer) |
+| `DVM_DISK` | `30` | Default disk in GiB (integer) |
 | `DVM_HOST_IP` | `127.0.0.1` | Bind IP for forwarded ports |
 | `DVM_USER` | `developer` | Primary guest user |
-| `DVM_AGENT_USER` | `dvm-agent` | Account used by the AI tool sandbox |
-| `DVM_DEFAULT_PACKAGES` | `()` | Packages every VM gets |
-| `DVM_DEFAULT_RECIPES` | `()` | Recipes every VM runs |
+| `DVM_ANSIBLE_REPO` | _(required)_ | Absolute path to the external Ansible repo |
+| `DVM_ANSIBLE_PLAYBOOK` | `"site.yml"` | Relative path of the playbook inside the repo |
+| `DVM_ANSIBLE_EXTRA_ARGS` | `()` | Extra args appended to every `ansible-playbook` call |
+| `DVM_USE_BASE` | `0` | Set to `1` to clone from `dvm-<DVM_BASE_NAME>` instead of starting a fresh template |
+| `DVM_BASE_NAME` | `"dvm-base"` | Name of the optional base VM |
+| `DVM_BASE_TAGS` | `(base)` | Ansible tags applied when running `dvm base build` |
 
-### Per VM (`~/.config/dvm/vms/<vm>.sh`)
+## Per VM (`~/.config/dvm/vms/<vm>.sh`)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DVM_CPUS` | (global) | Override CPUs for this VM |
-| `DVM_MEMORY` | (global) | Override memory |
-| `DVM_DISK` | (global) | Override disk |
-| `DVM_USER` | (global) | Primary guest user |
-| `DVM_CODE_DIR` | `$DVM_CODE_ROOT/$DVM_NAME` | Guest project path; `~` = guest user's home |
-| `DVM_PORTS` | `()` | Two-part `host:guest` forwards; bind IP is `DVM_HOST_IP` |
-| `DVM_PACKAGES` | `()` | Appended to globals |
-| `DVM_RECIPES` | `()` | Appended to globals |
-| `DVM_SECRETS` | `()` | Env-var names to stage |
+| `DVM_CPUS` / `DVM_MEMORY` / `DVM_DISK` | (global) | Per-VM overrides |
+| `DVM_PORTS` | `()` | `host:guest` forwards; bind IP comes from global `DVM_HOST_IP` |
+| `DVM_ANSIBLE_TAGS` | `()` | Tags selecting which roles in `site.yml` apply to this VM |
+| `DVM_ANSIBLE_EXTRA_VARS` | `()` | Non-secret `key=value` strings passed as `-e key=value` to `ansible-playbook` |
 
-VM names match `^[a-z][a-z0-9-]*$`.
+VM names match `^[a-z][a-z0-9-]*$`. The Lima instance is `dvm-<name>`; the
+guest code dir is hardcoded to `/home/$DVM_USER/code/<name>`.
 
-## Tilde expansion
+## What ends up in the vars file
 
-`~` in any DVM path means the **guest** user's home. The script rewrites
-`~/foo` to `/home/$DVM_USER/foo` before passing it to the guest. Use `~`
-or `$DVM_CODE_ROOT`, not `$HOME`, when referencing guest paths.
+`dvm sync` writes `~/.cache/dvm/<vm>.vars.yml` and passes it to Ansible:
+
+```yaml
+dvm_name: app
+dvm_lima_name: dvm-app
+dvm_user: developer
+dvm_code_dir: /home/developer/code/app
+dvm_host_ip: 127.0.0.1
+dvm_ports:
+  - host: 3000
+    guest: 3000
+```
+
+These are the only DVM-managed variables. They contain no secrets. See
+[ansible.md](ansible.md) for how to consume them in roles.
 
 ## Examples
 
@@ -72,35 +62,42 @@ Minimal app VM:
 ```bash
 # ~/.config/dvm/vms/app.sh
 DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=30GiB
-DVM_PORTS=(3000:3000)
-DVM_PACKAGES=(git tmux nodejs npm)
+DVM_MEMORY=8
+DVM_DISK=60
+DVM_PORTS=(3000:3000 5173:5173)
+DVM_ANSIBLE_TAGS=(base agent-user node chezmoi)
 ```
 
-App VM that inherits a global toolset:
+App VM with non-secret profile vars:
 
 ```bash
-# ~/.config/dvm/config.sh
-DVM_DEFAULT_PACKAGES=(git tmux helix bat fzf)
-DVM_DEFAULT_RECIPES=(zsh-login-shell agent-user codex)
-
-# ~/.config/dvm/vms/app.sh
-DVM_PORTS=(3000:3000)
-DVM_PACKAGES=("${DVM_DEFAULT_PACKAGES[@]}" nodejs npm)
-DVM_RECIPES=("${DVM_DEFAULT_RECIPES[@]}" node-corepack)
+DVM_CPUS=4
+DVM_MEMORY=8
+DVM_ANSIBLE_TAGS=(base agent-user codex node chezmoi)
+DVM_ANSIBLE_EXTRA_VARS=(
+  "dvm_profile=app"
+  "chezmoi_repo=git@github.com:me/dotfiles.git"
+)
 ```
 
-Service VM with a secret:
+Service VM (tailscale auth lives in the env, not the config):
 
 ```bash
-# ~/.config/dvm/vms/cloud.sh
 DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_RECIPES=(cloudflared)
-DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+DVM_MEMORY=2
+DVM_ANSIBLE_TAGS=(base tailscale)
 ```
 
 ```bash
-DVM_CLOUDFLARED_TOKEN="$(op read op://Personal/cf/token)" dvm sync cloud
+DVM_TAILSCALE_AUTHKEY="tskey-..." dvm sync tailscale
 ```
+
+The Ansible role reads `lookup('env', 'DVM_TAILSCALE_AUTHKEY')` with
+`no_log: true`. DVM never sees the token.
+
+## Secrets
+
+DVM rejects `DVM_ANSIBLE_EXTRA_VARS` entries whose name contains `token`,
+`password`, `secret`, or matches `key=…`. This is a guard against accidents.
+The right home for secrets is Ansible Vault or env lookups inside the
+playbook — see [ansible.md](ansible.md).

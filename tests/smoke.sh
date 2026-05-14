@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test for dvm with a fake limactl.
+# End-to-end smoke test for dvm with fake limactl and ansible-playbook.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -7,17 +7,18 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 LIMACTL_LOG="$TMP/limactl.log"
-STDIN_LOG="$TMP/stdin.log"
+ANSIBLE_LOG="$TMP/ansible.log"
+HOME_DIR="$TMP/home"
+mkdir -p "$HOME_DIR/.lima"
 
-# Fake limactl: logs argv, drains stdin on `shell`, returns no instances on list.
+# --- fake limactl: logs argv, simulates list/inventory ----------------------
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/limactl" <<EOF
 #!/usr/bin/env bash
 { printf '%q ' "\$@"; printf '\n'; } >> "$LIMACTL_LOG"
 case "\$1" in
-    --version) echo "limactl version 1.0.0 (fake)" ;;
+    --version) echo "limactl version 2.1.1 (fake)" ;;
     list)
-        # Simulate one running VM when DVM_FAKE_HAS_VM is set.
         if [ "\${DVM_FAKE_HAS_VM:-0}" = "1" ]; then
             case "\$2" in
                 -q) printf 'dvm-app\n' ;;
@@ -25,32 +26,89 @@ case "\$1" in
             esac
         fi
         ;;
-    shell) cat > "$STDIN_LOG" ;;
+    start)
+        # First non-flag positional after 'start' is the instance name or template.
+        # If we see --name, create the inventory file Lima would generate.
+        shift
+        name=""
+        while [ \$# -gt 0 ]; do
+            case "\$1" in
+                --name) name="\$2"; shift 2 ;;
+                --cpus|--memory|--disk|--port-forward) shift 2 ;;
+                template:*) [ -z "\$name" ] && name="\$2"; shift ;;
+                *) shift ;;
+            esac
+        done
+        if [ -n "\$name" ]; then
+            mkdir -p "$HOME_DIR/.lima/\$name"
+            printf 'all:\n  hosts:\n    %s:\n' "\$name" > "$HOME_DIR/.lima/\$name/ansible-inventory.yaml"
+        fi
+        ;;
+    clone)
+        # Last positional is the new name.
+        shift
+        prev=""
+        for a in "\$@"; do prev="\$a"; done
+        mkdir -p "$HOME_DIR/.lima/\$prev"
+        printf 'all:\n  hosts:\n    %s:\n' "\$prev" > "$HOME_DIR/.lima/\$prev/ansible-inventory.yaml"
+        ;;
 esac
 exit 0
 EOF
 chmod +x "$TMP/bin/limactl"
 
+# --- fake ansible-playbook: logs argv (one arg per line, no escaping) ------
+cat > "$TMP/bin/ansible-playbook" <<EOF
+#!/usr/bin/env bash
+printf -- '--- ansible-playbook ---\n' >> "$ANSIBLE_LOG"
+for a in "\$@"; do printf '%s\n' "\$a" >> "$ANSIBLE_LOG"; done
+case "\$1" in
+    --version) echo "ansible-playbook 2.16.0 (fake)" ;;
+esac
+exit 0
+EOF
+chmod +x "$TMP/bin/ansible-playbook"
+
+# --- fake Ansible repo ------------------------------------------------------
+mkdir -p "$TMP/ansible"
+cat > "$TMP/ansible/site.yml" <<'EOF'
+- hosts: all
+  tasks: []
+EOF
+
+# --- dvm config ------------------------------------------------------------
 mkdir -p "$TMP/cfg/vms"
+cat > "$TMP/cfg/config.sh" <<EOF
+DVM_TEMPLATE="template:fedora"
+DVM_CPUS=2
+DVM_MEMORY=4
+DVM_DISK=30
+DVM_ANSIBLE_REPO="$TMP/ansible"
+DVM_ANSIBLE_PLAYBOOK="site.yml"
+EOF
+
 cat > "$TMP/cfg/vms/app.sh" <<'EOF'
 DVM_CPUS=4
-DVM_MEMORY=8GiB
-DVM_DISK=30GiB
+DVM_MEMORY=8
+DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_PACKAGES=(git tmux)
-DVM_RECIPES=(node-corepack)
+DVM_ANSIBLE_TAGS=(base agent-user codex node chezmoi)
+DVM_ANSIBLE_EXTRA_VARS=(
+  "dvm_profile=app"
+  "chezmoi_repo=git@github.com:me/dotfiles.git"
+)
 EOF
 
 cat > "$TMP/cfg/vms/cloud.sh" <<'EOF'
 DVM_CPUS=2
-DVM_MEMORY=2GiB
-DVM_DISK=10GiB
-DVM_RECIPES=(cloudflared)
-DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+DVM_MEMORY=2
+DVM_DISK=20
+DVM_ANSIBLE_TAGS=(base cloudflared)
 EOF
 
 run_dvm() {
     PATH="$TMP/bin:$PATH" \
+    HOME="$HOME_DIR" \
     DVM_CONFIG_DIR="$TMP/cfg" \
     DVM_SHARE_DIR="$ROOT/share/dvm" \
     DVM_CACHE_DIR="$TMP/cache" \
@@ -60,57 +118,96 @@ run_dvm() {
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 ok()   { printf 'ok: %s\n' "$*"; }
 
-# --- help -------------------------------------------------------------------
+# --- help -----------------------------------------------------------------
 out="$(run_dvm help)"
-case "$out" in *"sync"*"sh"*"recipes"*) ok "help lists commands" ;; *) fail "help" ;; esac
+case "$out" in *"sync"*"ansible"*"doctor"*) ok "help lists commands" ;; *) fail "help" ;; esac
 
-# --- sync renders YAML and pipes guest script ------------------------------
-: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
+# --- bash syntax of dvm itself --------------------------------------------
+bash -n "$ROOT/bin/dvm"
+ok "bin/dvm parses with bash -n"
+
+# --- sync app: limactl start argv ------------------------------------------
+: > "$LIMACTL_LOG"; : > "$ANSIBLE_LOG"
 run_dvm sync app >/dev/null
-grep -q "create --name dvm-app"     "$LIMACTL_LOG" || fail "no create call"
-grep -q "start dvm-app"             "$LIMACTL_LOG" || fail "no start call"
-grep -q "shell --workdir / dvm-app" "$LIMACTL_LOG" || fail "no shell call"
-ok "sync app issued create/start/shell"
+grep -q -- "start --name dvm-app"            "$LIMACTL_LOG" || fail "no start --name"
+grep -q -- "--cpus 4"                        "$LIMACTL_LOG" || fail "missing --cpus 4"
+grep -q -- "--memory 8"                      "$LIMACTL_LOG" || fail "missing --memory 8"
+grep -q -- "--disk 60"                       "$LIMACTL_LOG" || fail "missing --disk 60"
+grep -q -- "--port-forward 127.0.0.1:3000:3000" "$LIMACTL_LOG" || fail "missing port forward 3000"
+grep -q -- "--port-forward 127.0.0.1:5173:5173" "$LIMACTL_LOG" || fail "missing port forward 5173"
+grep -q -- "template:fedora"                 "$LIMACTL_LOG" || fail "missing template:fedora"
+ok "sync app issues limactl start with flags and template"
 
-# YAML content
-yaml="$TMP/cache/app.yaml"
-[ -f "$yaml" ] || fail "no rendered yaml"
-grep -q "cpus: 4"                "$yaml" || fail "yaml missing cpus"
-grep -q 'memory: "8GiB"'         "$yaml" || fail "yaml missing memory"
-grep -q "hostnamectl set-hostname app.dvm" "$yaml" || fail "yaml missing hostname"
-grep -q "hostPort: 3000"         "$yaml" || fail "yaml missing port"
-grep -q '/home/developer/code/app' "$yaml" || fail "yaml missing guest code_dir"
-ok "rendered yaml has resources, ports, hostname, code_dir"
+# --- vars file content -----------------------------------------------------
+vars="$TMP/cache/app.vars.yml"
+[ -f "$vars" ] || fail "no vars file"
+grep -q "^dvm_name: app$"           "$vars" || fail "vars missing dvm_name"
+grep -q "^dvm_lima_name: dvm-app$"  "$vars" || fail "vars missing dvm_lima_name"
+grep -q "^dvm_user: developer$"     "$vars" || fail "vars missing dvm_user"
+grep -q "^dvm_code_dir: /home/developer/code/app$" "$vars" || fail "vars missing code_dir"
+grep -q "host: 3000"                "$vars" || fail "vars missing port host"
+grep -q "guest: 3000"               "$vars" || fail "vars missing port guest"
+ok "vars file contains expected DVM-managed keys"
 
-# Guest script
-bash -n "$STDIN_LOG"
-grep -q 'export DVM_VM=app'         "$STDIN_LOG" || fail "stdin missing DVM_VM"
-grep -q 'dvm_pkg git tmux'          "$STDIN_LOG" || fail "stdin missing dvm_pkg call"
-grep -q '# >>> recipe: node-corepack' "$STDIN_LOG" || fail "stdin missing recipe header"
-ok "guest stdin passes bash -n and contains packages + recipe"
+# --- ansible-playbook argv -------------------------------------------------
+# The fake logs one arg per line, so each grep -Fxq matches an exact arg.
+grep -Fxq -- "-i" "$ANSIBLE_LOG" || fail "ansible argv missing -i"
+grep -Fxq -- "$HOME_DIR/.lima/dvm-app/ansible-inventory.yaml" "$ANSIBLE_LOG" \
+    || fail "ansible argv missing inventory path"
+grep -Fxq -- "$TMP/ansible/site.yml" "$ANSIBLE_LOG" || fail "ansible argv missing playbook"
+grep -Fxq -- "@$TMP/cache/app.vars.yml" "$ANSIBLE_LOG" || fail "ansible argv missing vars file"
+grep -Fxq -- "--tags" "$ANSIBLE_LOG" || fail "ansible argv missing --tags"
+grep -Fxq -- "base,agent-user,codex,node,chezmoi" "$ANSIBLE_LOG" || fail "ansible argv tags wrong"
+grep -Fxq -- "dvm_profile=app" "$ANSIBLE_LOG" || fail "ansible argv missing dvm_profile=app"
+grep -Fxq -- "chezmoi_repo=git@github.com:me/dotfiles.git" "$ANSIBLE_LOG" || fail "ansible argv missing chezmoi_repo"
+ok "ansible-playbook argv has inventory, playbook, vars file, tags, extra-vars"
 
-# --- secrets staging -------------------------------------------------------
-: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
-DVM_CLOUDFLARED_TOKEN="testtok" run_dvm sync cloud >/dev/null
-grep -q "install -m 600 -o developer /dev/stdin /tmp/dvm-secret-DVM_CLOUDFLARED_TOKEN" "$LIMACTL_LOG" \
-    || fail "secret not staged via limactl shell install"
-# Token value must NOT appear in argv log.
-if grep -q "testtok" "$LIMACTL_LOG"; then fail "secret value leaked to argv log"; fi
-ok "secret staged via install -m 600 with no argv leak"
+# --- no secret-looking values in vars file or ansible argv ----------------
+for needle in token password secret TOKEN PASSWORD SECRET; do
+    if grep -q "$needle" "$vars"; then fail "vars file contains '$needle'"; fi
+done
+ok "vars file contains no secret-looking values"
 
-# --- dry-run prints script without contacting Lima -------------------------
-: > "$LIMACTL_LOG"
-script="$(DVM_DRY_RUN=1 run_dvm sync app)"
-case "$script" in *"set -euo pipefail"*"node-corepack"*) ok "dry-run emits script" ;; *) fail "dry-run output" ;; esac
-case "$(cat "$LIMACTL_LOG")" in '') ok "dry-run did not call limactl" ;; *) fail "dry-run called limactl" ;; esac
+# --- dry-run prints argv and does NOT call limactl/ansible ----------------
+: > "$LIMACTL_LOG"; : > "$ANSIBLE_LOG"
+out="$(DVM_DRY_RUN=1 run_dvm sync app)"
+case "$out" in
+    *"limactl start argv"*"--cpus"*"template:fedora"*"ansible-playbook argv"*) ;;
+    *) fail "dry-run output missing argv blocks" ;;
+esac
+[ ! -s "$LIMACTL_LOG" ] || fail "dry-run called limactl"
+[ ! -s "$ANSIBLE_LOG" ] || fail "dry-run called ansible-playbook"
+ok "dry-run prints argv without calling limactl or ansible"
 
-# --- ls + filter ----------------------------------------------------------
+# --- reject secret-looking extra-var --------------------------------------
+cat > "$TMP/cfg/vms/bad.sh" <<'EOF'
+DVM_ANSIBLE_TAGS=(base)
+DVM_ANSIBLE_EXTRA_VARS=("github_token=ghp_xxx")
+EOF
+if run_dvm sync bad >/dev/null 2>&1; then
+    fail "should reject secret-looking extra-var"
+fi
+ok "rejects secret-looking DVM_ANSIBLE_EXTRA_VARS entry"
+
+# --- reject when DVM_ANSIBLE_REPO unset -----------------------------------
+cat > "$TMP/cfg/config.sh.empty" <<EOF
+# no DVM_ANSIBLE_REPO
+DVM_TEMPLATE="template:fedora"
+EOF
+if PATH="$TMP/bin:$PATH" HOME="$HOME_DIR" \
+       DVM_CONFIG_DIR="$TMP/cfg-empty" DVM_SHARE_DIR="$ROOT/share/dvm" \
+       DVM_CACHE_DIR="$TMP/cache" \
+       "$ROOT/bin/dvm" sync app >/dev/null 2>&1; then
+    fail "should require DVM_ANSIBLE_REPO and a config"
+fi
+ok "rejects sync when ansible repo is unconfigured"
+
+# --- ls / stop / rm --------------------------------------------------------
 : > "$LIMACTL_LOG"
 DVM_FAKE_HAS_VM=1 run_dvm ls | grep -q "^app " || fail "ls missing app"
 DVM_FAKE_HAS_VM=1 run_dvm ls app | grep -q "^app " || fail "ls <vm> filter"
 ok "ls and ls <vm> work"
 
-# --- stop, rm, sync --all --------------------------------------------------
 : > "$LIMACTL_LOG"
 run_dvm stop app >/dev/null
 grep -q "stop dvm-app" "$LIMACTL_LOG" || fail "stop didn't call limactl"
@@ -119,12 +216,16 @@ ok "stop forwards to limactl"
 : > "$LIMACTL_LOG"
 DVM_FAKE_HAS_VM=1 run_dvm rm app --yes >/dev/null
 grep -q "delete --force dvm-app" "$LIMACTL_LOG" || fail "rm didn't delete"
-ok "rm --yes deletes instance"
+[ ! -f "$TMP/cache/app.vars.yml" ] || fail "rm should delete cached vars file"
+ok "rm --yes deletes instance and cached vars file"
 
-: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
-DVM_CLOUDFLARED_TOKEN=tok run_dvm sync --all >/dev/null
-[ "$(grep -c "create --name " "$LIMACTL_LOG")" -ge 2 ] || fail "sync --all didn't iterate"
-ok "sync --all iterates over per-VM configs"
+# --- sync --all iterates ---------------------------------------------------
+rm -f "$TMP/cfg/vms/bad.sh"  # leftover from negative test above
+: > "$LIMACTL_LOG"; : > "$ANSIBLE_LOG"
+run_dvm sync --all >/dev/null
+[ "$(grep -c "start --name " "$LIMACTL_LOG")" -ge 2 ] || fail "sync --all didn't iterate"
+[ "$(grep -c "site.yml" "$ANSIBLE_LOG")" -ge 2 ] || fail "sync --all didn't run ansible twice"
+ok "sync --all iterates"
 
 # --- cp parsing ------------------------------------------------------------
 : > "$LIMACTL_LOG"
@@ -132,93 +233,103 @@ run_dvm cp ./local app:/guest >/dev/null
 grep -qE "copy ./local dvm-app:/guest" "$LIMACTL_LOG" || fail "cp host->guest rewrite"
 ok "cp rewrites vm:path to dvm-vm:path"
 
-# --- cp rejects two local paths -------------------------------------------
 if run_dvm cp ./a ./b >/dev/null 2>&1; then fail "cp should reject two local paths"; fi
 ok "cp rejects two local paths"
+
+if run_dvm cp app:/a other:/b >/dev/null 2>&1; then fail "cp should reject cross-VM"; fi
+ok "cp rejects cross-VM"
 
 # --- invalid VM name -------------------------------------------------------
 if run_dvm sync "Bad-Name" >/dev/null 2>&1; then fail "should reject invalid VM name"; fi
 ok "rejects invalid VM name"
 
-# --- recipes list ----------------------------------------------------------
-run_dvm recipes | grep -q "agent-user" || fail "recipes missing agent-user"
-ok "recipes lists agent-user"
+# --- base build + clone path ----------------------------------------------
+cat > "$TMP/cfg/config.sh" <<EOF
+DVM_TEMPLATE="template:fedora"
+DVM_CPUS=2 DVM_MEMORY=4 DVM_DISK=30
+DVM_ANSIBLE_REPO="$TMP/ansible"
+DVM_ANSIBLE_PLAYBOOK="site.yml"
+DVM_USE_BASE=1
+DVM_BASE_NAME=dvm-base
+DVM_BASE_TAGS=(base)
+EOF
+: > "$LIMACTL_LOG"; : > "$ANSIBLE_LOG"
+run_dvm base build >/dev/null
+grep -q "start --name dvm-dvm-base" "$LIMACTL_LOG" || fail "base build didn't start base VM"
+grep -Fxq -- "--tags" "$ANSIBLE_LOG" || fail "base build missing --tags flag"
+grep -Fxq -- "base"   "$ANSIBLE_LOG" || fail "base build missing base tag value"
+ok "base build starts base VM and runs ansible with base tags"
 
-# --- key backup on rm (default) -----------------------------------
-rm -rf "$TMP/cfg/backups"
-: > "$LIMACTL_LOG"
-DVM_FAKE_HAS_VM=1 run_dvm rm app --yes >/dev/null
-grep -q 'id_ed25519_dvm_signing.pub' "$LIMACTL_LOG" \
-    || fail "rm did not attempt to back up SSH keys"
-[ -d "$TMP/cfg/backups/app" ] || fail "no backup dir created"
-ok "rm backs up keys and creates backup dir"
+# Now sync the app VM with DVM_USE_BASE=1 — should clone, not start template.
+rm -rf "$HOME_DIR/.lima/dvm-app"
+: > "$LIMACTL_LOG"; : > "$ANSIBLE_LOG"
+# Mark base as existing in fake limactl list.
+cat > "$TMP/bin/limactl" <<EOF
+#!/usr/bin/env bash
+{ printf '%q ' "\$@"; printf '\n'; } >> "$LIMACTL_LOG"
+case "\$1" in
+    list)
+        case "\$2" in
+            -q) printf 'dvm-dvm-base\n' ;;
+            --format) printf 'dvm-dvm-base\tStopped\t2\t4GiB\n' ;;
+        esac
+        ;;
+    clone)
+        shift
+        prev=""
+        for a in "\$@"; do prev="\$a"; done
+        mkdir -p "$HOME_DIR/.lima/\$prev"
+        printf 'all:\n  hosts:\n    %s:\n' "\$prev" > "$HOME_DIR/.lima/\$prev/ansible-inventory.yaml"
+        ;;
+esac
+exit 0
+EOF
+chmod +x "$TMP/bin/limactl"
 
-# --- --no-backup skips backup ---------------------------------------
-rm -rf "$TMP/cfg/backups"
-: > "$LIMACTL_LOG"
-DVM_FAKE_HAS_VM=1 run_dvm rm app --yes --no-backup >/dev/null
-if grep -q 'id_ed25519_dvm_signing.pub' "$LIMACTL_LOG"; then
-    fail "--no-backup should skip backup_keys"
-fi
-ok "rm --no-backup skips backup"
-
-# --- sync restores keys from backup --------------------------------
-mkdir -p "$TMP/cfg/backups/app/ssh"
-echo "fake-priv-key-content" > "$TMP/cfg/backups/app/ssh/id_ed25519_dvm"
-chmod 0600 "$TMP/cfg/backups/app/ssh/id_ed25519_dvm"
-: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
 run_dvm sync app >/dev/null
-grep -q 'install -m 0600 /dev/stdin' "$LIMACTL_LOG" \
-    || fail "sync did not call install -m 0600 for restore"
-ok "sync restores keys from backup dir on recreate"
+grep -q -- "clone" "$LIMACTL_LOG" || fail "sync with DVM_USE_BASE=1 didn't clone"
+grep -q "dvm-dvm-base dvm-app" "$LIMACTL_LOG" || fail "clone argv missing source/dest"
+ok "DVM_USE_BASE=1 clones from base instead of fresh start"
 
-# --- absolute-target symlink to bin/dvm works (regression: install.sh path) -
+# --- doctor ---------------------------------------------------------------
+# Restore working limactl (so doctor doesn't fail on missing VMs).
+cat > "$TMP/bin/limactl" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+    --version) echo "limactl version 2.1.1 (fake)" ;;
+    list) ;;
+esac
+exit 0
+EOF
+chmod +x "$TMP/bin/limactl"
+out="$(run_dvm doctor 2>&1)" || true
+case "$out" in
+    *"limactl"*"ok"*"ansible-playbook"*"ok"*) ok "doctor reports limactl and ansible-playbook ok" ;;
+    *) fail "doctor output unexpected: $out" ;;
+esac
+case "$out" in *"$TMP/ansible"*) ok "doctor reports DVM_ANSIBLE_REPO" ;; *) fail "doctor missing repo" ;; esac
+
+# --- dvm ansible <vm> -- forwards args ------------------------------------
+mkdir -p "$HOME_DIR/.lima/dvm-app"
+printf 'all:\n  hosts:\n    dvm-app:\n' > "$HOME_DIR/.lima/dvm-app/ansible-inventory.yaml"
+: > "$ANSIBLE_LOG"
+run_dvm ansible app -- --check --diff
+grep -q -- "--check" "$ANSIBLE_LOG" || fail "ansible passthrough missing --check"
+grep -q -- "--diff" "$ANSIBLE_LOG" || fail "ansible passthrough missing --diff"
+ok "dvm ansible forwards extra args"
+
+# --- absolute-target symlink to bin/dvm works ------------------------------
 ln -sfn "$ROOT/bin/dvm" "$TMP/bin/dvm-link"
-PATH="$TMP/bin:$PATH" \
-DVM_CONFIG_DIR="$TMP/cfg" \
-DVM_SHARE_DIR="$ROOT/share/dvm" \
-DVM_CACHE_DIR="$TMP/cache" \
-"$TMP/bin/dvm-link" help >/dev/null 2>&1 \
+PATH="$TMP/bin:$PATH" HOME="$HOME_DIR" \
+    DVM_CONFIG_DIR="$TMP/cfg" DVM_SHARE_DIR="$ROOT/share/dvm" \
+    DVM_CACHE_DIR="$TMP/cache" \
+    "$TMP/bin/dvm-link" help >/dev/null 2>&1 \
     || fail "dvm broken when launched through absolute-target symlink"
 ok "works through absolute-target symlink"
 
-# --- project hook is emitted in the guest script -------------------------
-: > "$LIMACTL_LOG"; : > "$STDIN_LOG"
-run_dvm sync app >/dev/null
-grep -q '/.dvm/sync.sh' "$STDIN_LOG" || fail "project hook missing from guest script"
-ok "project hook check appears in guest stdin"
-
-# --- secret name validation ---------------------------------------------
-cat > "$TMP/cfg/vms/bad.sh" <<'EOF'
-DVM_RECIPES=()
-DVM_SECRETS=("bad name")
-EOF
-if BAD_SECRET=x run_dvm sync bad >/dev/null 2>&1; then
-    fail "should reject malformed secret name"
-fi
-ok "rejects malformed DVM_SECRETS entry"
-
-# --- cp does not misparse local paths with colons -----------------------
-: > "$LIMACTL_LOG"
-# Source has a colon but is not a VM ref (uppercase, no valid VM prefix);
-# treated as local, so cp must reject for missing VM side.
-if run_dvm cp ./Foo:bar ./baz >/dev/null 2>&1; then
-    fail "cp should reject when neither path looks like a VM ref"
-fi
-ok "cp does not misparse local paths containing :"
-
-# --- cp rejects cross-VM ------------------------------------------------
-if run_dvm cp app:/a other:/b >/dev/null 2>&1; then
-    fail "cp should reject cross-VM"
-fi
-ok "cp rejects cross-VM"
-
-# --- help and recipes do not invoke flock/envsubst -------------------
-# bash -x traces show which external tools each command touches at dispatch.
+# --- help / ls do not invoke envsubst or flock ----------------------------
 trace="$(bash -x "$ROOT/bin/dvm" help 2>&1 >/dev/null || true)"
-case "$trace" in *flock*|*envsubst*) fail "help triggered flock/envsubst" ;; esac
-trace="$(bash -x "$ROOT/bin/dvm" recipes 2>&1 >/dev/null || true)"
-case "$trace" in *flock*|*envsubst*) fail "recipes triggered flock/envsubst" ;; esac
-ok "help/recipes don't invoke flock or envsubst"
+case "$trace" in *envsubst*|*flock*) fail "help triggered envsubst/flock" ;; esac
+ok "help does not invoke envsubst or flock"
 
 printf '\nall tests passed\n'
