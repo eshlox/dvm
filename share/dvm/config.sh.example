@@ -2,36 +2,29 @@
 # Global DVM defaults. Copied to ~/.config/dvm/config.sh by `dvm config edit`
 # on first run. Uncomment lines to override built-ins.
 
-# Lima template used as the base for every VM. `template:fedora` tracks Lima's
-# current Fedora default; pin a versioned template (e.g. `template:fedora-44`)
-# if reproducibility matters more than tracking upstream.
+# Lima template used as the base for every VM. DVM supports only Lima's latest
+# Fedora template and dnf5 inside the guest.
 # DVM_TEMPLATE="template:fedora"
 
-# Default VM resources. Memory and disk are GiB integers — Lima's CLI flags
-# accept plain numbers as GiB. Per-VM configs may override.
+# Default VM resources. Memory and disk are GiB integers.
 # DVM_CPUS=2
 # DVM_MEMORY=4
 # DVM_DISK=30
 
-# Bind IP for forwarded ports. Loopback by default; change only if you want
-# the guest reachable from other hosts on your network.
-# DVM_HOST_IP=127.0.0.1
-
-# Primary guest user; matches the Lima default for `template:fedora`.
+# Primary guest user and optional AI/agent user created by the agent-user
+# recipe. Names must start with a lowercase letter and contain only lowercase
+# letters, numbers, and hyphens.
 # DVM_USER=developer
+# DVM_AGENT_USER=dvm-agent
 
-# External Ansible repo that owns all guest configuration. DVM runs
-# `ansible-playbook` from this directory against Lima's generated inventory.
-# DVM_ANSIBLE_REPO="$HOME/code/ansible"
-# DVM_ANSIBLE_PLAYBOOK="site.yml"
-
-# Extra arguments appended to every ansible-playbook invocation. Useful for
-# `--check --diff` or `-K` workflows; do not put secrets here.
-# DVM_ANSIBLE_EXTRA_ARGS=()
+# Defaults prepended to every VM. Packages are plain distro package names.
+# Recipes are files from share/dvm/recipes or ~/.config/dvm/recipes.
+# DVM_DEFAULT_PACKAGES=(git ripgrep fd-find tmux)
+# DVM_DEFAULT_RECIPES=(zsh fzf starship)
 
 # Optional base VM reuse. With DVM_USE_BASE=1, `dvm sync <vm>` clones from
-# `dvm-<DVM_BASE_NAME>` instead of starting a fresh template. Build the base
-# first with `dvm base build`.
+# dvm-<DVM_BASE_NAME> instead of starting from the template.
 # DVM_USE_BASE=0
-# DVM_BASE_NAME=base          # Lima instance becomes dvm-<DVM_BASE_NAME>, i.e. dvm-base
-# DVM_BASE_TAGS=(base)
+# DVM_BASE_NAME=base
+# DVM_BASE_PACKAGES=(git ripgrep fd-find)
+# DVM_BASE_RECIPES=(zsh fzf starship)

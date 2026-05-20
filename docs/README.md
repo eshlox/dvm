@@ -1,17 +1,14 @@
-# Docs
+# DVM Docs
 
-Start in [README.md](../README.md) for install + quick start.
+| Need | Read |
+| --- | --- |
+| command reference | [commands.md](commands.md) |
+| config variables | [config.md](config.md) |
+| built-in recipes and overrides | [recipes.md](recipes.md) |
+| common workflows | [howto.md](howto.md) |
+| errors and recovery | [errors-and-recovery.md](errors-and-recovery.md) |
+| Lima behavior used by DVM | [lima.md](lima.md) |
+| security model | [security-standards.md](security-standards.md) |
+| future safety roadmap | [future-development.md](future-development.md) |
 
-**[howto.md](howto.md)** — short answers to common tasks (add packages,
-recreate without losing keys, per-VM toolchains, service VMs, …). Start
-here for "how do I X".
-
-| If you want to… | Read |
-|---|---|
-| do a specific task | [howto.md](howto.md) |
-| understand the command surface | [commands.md](commands.md) |
-| write a per-VM or global config | [config.md](config.md) |
-| structure your external Ansible repo | [ansible.md](ansible.md) |
-| see Ansible role examples | [ansible/examples/](ansible/examples) |
-| know how DVM drives Lima | [lima.md](lima.md) |
-| know what DVM protects and what it doesn't | [security-standards.md](security-standards.md) |
+DVM is a Lima wrapper plus Bash recipes. It does not require Ansible.

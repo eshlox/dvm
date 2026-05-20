@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# dvm: tiny Lima + Ansible conductor. One VM per project; Ansible owns guest config.
+# dvm: tiny Lima wrapper with built-in shell recipes.
 set -euo pipefail
 
 # --- discovery -------------------------------------------------------------
@@ -16,12 +16,31 @@ DVM_SHARE="${DVM_SHARE_DIR:-$DVM_ROOT/share/dvm}"
 DVM_CONFIG_DIR="${DVM_CONFIG_DIR:-$HOME/.config/dvm}"
 DVM_CACHE_DIR="${DVM_CACHE_DIR:-$HOME/.cache/dvm}"
 LIMACTL="${DVM_LIMACTL:-limactl}"
-ANSIBLE_PLAYBOOK="${DVM_ANSIBLE_PLAYBOOK_BIN:-ansible-playbook}"
 
 die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+validate_identity_names() {
+    valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
+    valid_name "$DVM_AGENT_USER" || die "invalid DVM_AGENT_USER: $DVM_AGENT_USER"
+    valid_name "$DVM_BASE_NAME" || die "invalid DVM_BASE_NAME: $DVM_BASE_NAME"
+}
+editor_cmd() {
+    if [ -n "${VISUAL:-}" ]; then
+        printf '%s\n' "$VISUAL"
+    elif [ -n "${EDITOR:-}" ]; then
+        printf '%s\n' "$EDITOR"
+    else
+        die 'set VISUAL or EDITOR before editing config'
+    fi
+}
+run_editor() {
+    local ed; ed="$(editor_cmd)"
+    # Allow standard EDITOR/VISUAL values with arguments, e.g. "code --wait".
+    # shellcheck disable=SC2086
+    $ed "$1"
+}
 
 # --- config loading --------------------------------------------------------
 load_global() {
@@ -29,15 +48,17 @@ load_global() {
     DVM_CPUS=2
     DVM_MEMORY=4
     DVM_DISK=30
-    DVM_HOST_IP=127.0.0.1
     DVM_USER=developer
-    DVM_ANSIBLE_REPO=""
-    DVM_ANSIBLE_PLAYBOOK="site.yml"
-    DVM_ANSIBLE_EXTRA_ARGS=()
+    DVM_AGENT_USER=dvm-agent
+    DVM_DEFAULT_PACKAGES=()
+    DVM_DEFAULT_RECIPES=()
+    DVM_BASE_NAME=base
+    DVM_BASE_PACKAGES=()
+    DVM_BASE_RECIPES=()
     DVM_USE_BASE=0
-    DVM_BASE_NAME="base"
-    DVM_BASE_TAGS=(base)
     [ -f "$DVM_CONFIG_DIR/config.sh" ] && . "$DVM_CONFIG_DIR/config.sh"
+    validate_identity_names
+    return 0
 }
 
 load_vm() {
@@ -46,23 +67,28 @@ load_vm() {
     [ -f "$f" ] || die "no config for VM \"$1\" at $f"
     load_global
     DVM_NAME="$1"
-    DVM_PORTS=()
-    DVM_ANSIBLE_TAGS=()
-    DVM_ANSIBLE_EXTRA_VARS=()
-    . "$f"
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
+    DVM_PORTS=()
+    DVM_PACKAGES=()
+    DVM_RECIPES=()
+    DVM_SECRETS=()
+    DVM_GIT_REPO=
+    DVM_GIT_BRANCH=
+    . "$f"
+    validate_identity_names
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
+    DVM_PACKAGES=("${DVM_DEFAULT_PACKAGES[@]}" "${DVM_PACKAGES[@]}")
+    DVM_RECIPES=("${DVM_DEFAULT_RECIPES[@]}" "${DVM_RECIPES[@]}")
     validate_ports
 }
 
-# Reject ports config that Lima would reject later, but with a clearer error.
 validate_ports() {
     local p host guest extra
     for p in "${DVM_PORTS[@]:-}"; do
         [ -n "$p" ] || continue
         IFS=: read -r host guest extra <<<"$p"
-        [ -z "$extra" ] || die "bad port spec (extra ':'): $p"
-        [ -n "$host" ] && [ -n "$guest" ] || die "bad port spec: $p"
+        [ -z "${extra:-}" ] || die "bad port spec (extra ':'): $p"
+        [ -n "${host:-}" ] && [ -n "${guest:-}" ] || die "bad port spec: $p"
         case "$host$guest" in *[!0-9]*) die "port must be numeric: $p" ;; esac
         [ "$host" -ge 1 ] && [ "$host" -le 65535 ] || die "port out of range 1-65535: $p"
         [ "$guest" -ge 1 ] && [ "$guest" -le 65535 ] || die "port out of range 1-65535: $p"
@@ -70,43 +96,16 @@ validate_ports() {
 }
 
 # --- lock ------------------------------------------------------------------
-# mkdir is atomic across POSIX filesystems; trap removes the dir on exit.
 lock_vm() {
     mkdir -p "$DVM_CACHE_DIR"
     local d="$DVM_CACHE_DIR/$1.lock"
     if ! mkdir "$d" 2>/dev/null; then
         die "VM \"$1\" busy: another dvm operation is in progress (rm $d if stale)"
     fi
-    trap 'rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
-}
-
-# --- vars file -------------------------------------------------------------
-# Non-secret only. Secrets must be handled inside the Ansible repo via Vault
-# or env lookups, never passed through here.
-write_vars_file() {
-    mkdir -p "$DVM_CACHE_DIR"
-    local out="$DVM_CACHE_DIR/$DVM_NAME.vars.yml" p host guest
-    {
-        printf 'dvm_name: %s\n' "$DVM_NAME"
-        printf 'dvm_lima_name: %s\n' "$DVM_LIMA_NAME"
-        printf 'dvm_user: %s\n' "$DVM_USER"
-        printf 'dvm_code_dir: %s\n' "$DVM_CODE_DIR"
-        printf 'dvm_host_ip: %s\n' "$DVM_HOST_IP"
-        if [ "${#DVM_PORTS[@]}" -eq 0 ]; then
-            printf 'dvm_ports: []\n'
-        else
-            printf 'dvm_ports:\n'
-            for p in "${DVM_PORTS[@]}"; do
-                IFS=: read -r host guest <<<"$p"
-                printf '  - host: %s\n    guest: %s\n' "$host" "$guest"
-            done
-        fi
-    } > "$out"
-    printf '%s\n' "$out"
+    trap 'cleanup_secrets; rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
 }
 
 # --- lima command builders -------------------------------------------------
-# Populate the global DVM_ARGV array with the Lima command to run.
 DVM_ARGV=()
 
 port_forward_args() {
@@ -114,13 +113,14 @@ port_forward_args() {
     for p in "${DVM_PORTS[@]:-}"; do
         [ -n "$p" ] || continue
         IFS=: read -r host guest <<<"$p"
-        DVM_ARGV+=(--port-forward "$DVM_HOST_IP:$host:$guest")
+        DVM_ARGV+=(--port-forward "$host:$guest")
     done
 }
 
 build_lima_start() {
     DVM_ARGV=("$LIMACTL" start --name "$DVM_LIMA_NAME"
-        --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK")
+        --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
+        --mount-none)
     port_forward_args
     DVM_ARGV+=("$DVM_TEMPLATE")
 }
@@ -128,7 +128,8 @@ build_lima_start() {
 build_lima_clone() {
     local from="$1"
     DVM_ARGV=("$LIMACTL" clone
-        --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK")
+        --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
+        --mount-none)
     port_forward_args
     DVM_ARGV+=("$from" "$DVM_LIMA_NAME")
 }
@@ -138,39 +139,101 @@ print_argv() {
     for x in "${DVM_ARGV[@]}"; do printf '  %q\n' "$x"; done
 }
 
-# --- ansible invocation ----------------------------------------------------
-ansible_invoke() {
-    local inventory="$1" vars="$2"
-    shift 2
-    [ -n "$DVM_ANSIBLE_REPO" ] || die "DVM_ANSIBLE_REPO is not set"
-    local playbook="$DVM_ANSIBLE_REPO/$DVM_ANSIBLE_PLAYBOOK"
-    [ -f "$playbook" ] || die "playbook not found: $playbook"
-    local -a cmd=("$ANSIBLE_PLAYBOOK" -i "$inventory" "$playbook" -e "@$vars")
-    if [ "${#DVM_ANSIBLE_TAGS[@]}" -gt 0 ]; then
-        local tags
-        tags="$(IFS=,; printf '%s' "${DVM_ANSIBLE_TAGS[*]}")"
-        cmd+=(--tags "$tags")
-    fi
-    local v
-    for v in "${DVM_ANSIBLE_EXTRA_VARS[@]:-}"; do
-        [ -n "$v" ] || continue
-        case "$v" in *[Tt][Oo][Kk][Ee][Nn]*|*[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]*|*[Ss][Ee][Cc][Rr][Ee][Tt]*|*[Kk][Ee][Yy]=*)
-            die "DVM_ANSIBLE_EXTRA_VARS entry looks like a secret: $v" ;;
-        esac
-        cmd+=(-e "$v")
-    done
-    cmd+=("$@")
-    [ "${#DVM_ANSIBLE_EXTRA_ARGS[@]}" -gt 0 ] && cmd+=("${DVM_ANSIBLE_EXTRA_ARGS[@]}")
-    if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
-        printf 'ansible-playbook argv:\n'
-        printf '  %q' "${cmd[@]}"
-        printf '\n'
-        return 0
-    fi
-    "${cmd[@]}"
+lima_has() { "$LIMACTL" list -q 2>/dev/null | grep -Fxq "$1"; }
+
+# --- recipes ---------------------------------------------------------------
+recipe_file() {
+    local name="$1"
+    case "$name" in
+        ai-user|ai-agent) name=agent-user ;;
+        cloudflare|cloudflare-tunnel) name=cloudflared ;;
+        gpg-key) name=gpg-keys ;;
+        ssh-key) name=ssh-keys ;;
+    esac
+    [ -f "$DVM_CONFIG_DIR/recipes/$name.sh" ] && { printf '%s\n' "$DVM_CONFIG_DIR/recipes/$name.sh"; return; }
+    [ -f "$DVM_SHARE/recipes/$name.sh" ] && { printf '%s\n' "$DVM_SHARE/recipes/$name.sh"; return; }
+    die "unknown recipe: $name"
 }
 
-inventory_for() { printf '%s/.lima/%s/ansible-inventory.yaml\n' "$HOME" "$1"; }
+print_recipe_aliases() {
+    cat <<'EOF'
+
+Aliases:
+  ai-user, ai-agent          -> agent-user
+  cloudflare, cloudflare-tunnel -> cloudflared
+  ssh-key                   -> ssh-keys
+  gpg-key                   -> gpg-keys
+EOF
+}
+
+stage_secrets() {
+    local s
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ -n "${s:-}" ] || continue
+        [[ "$s" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "DVM_SECRETS entry \"$s\" must match [A-Za-z_][A-Za-z0-9_]*"
+        [ -n "${!s:-}" ] || die "secret env var \"$s\" is empty or unset"
+    done
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ -n "${s:-}" ] || continue
+        printf '%s' "${!s}" \
+            | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" \
+              sudo install -m 600 -o "$DVM_USER" /dev/stdin "/tmp/dvm-secret-$s" \
+            || { cleanup_secrets; die "failed to stage secret $s"; }
+    done
+}
+
+cleanup_secrets() {
+    local s
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ -n "${s:-}" ] || continue
+        "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo rm -f "/tmp/dvm-secret-$s" >/dev/null 2>&1 || true
+    done
+}
+
+guest_script() {
+    printf 'export DVM_NAME=%q DVM_VM=%q DVM_LIMA_NAME=%q DVM_USER=%q DVM_AGENT_USER=%q DVM_CODE_DIR=%q DVM_PORTS=%q DVM_GIT_REPO=%q DVM_GIT_BRANCH=%q\n' \
+        "$DVM_NAME" "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" "$DVM_AGENT_USER" "$DVM_CODE_DIR" "$(IFS=,; printf '%s' "${DVM_PORTS[*]:-}")" "$DVM_GIT_REPO" "$DVM_GIT_BRANCH"
+    cat "$DVM_SHARE/prelude.sh"
+    printf 'sudo install -d -o "$DVM_USER" -g "$DVM_USER" "$DVM_CODE_DIR"\n'
+    if [ "${#DVM_PACKAGES[@]}" -gt 0 ]; then
+        printf 'dvm_pkg'
+        printf ' %q' "${DVM_PACKAGES[@]}"
+        printf '\n'
+    fi
+    local r f
+    for r in "${DVM_RECIPES[@]:-}"; do
+        [ -n "${r:-}" ] || continue
+        f="$(recipe_file "$r")"
+        printf '\n# >>> recipe: %s\nexport DVM_RECIPE=%q\n' "$r" "$r"
+        cat "$f"
+        printf '\n# <<< recipe: %s\n' "$r"
+    done
+    printf '\nif [ -n "$DVM_GIT_REPO" ] && [ ! -d "$DVM_CODE_DIR/.git" ]; then\n'
+    printf '  dvm_pkg git\n'
+    printf '  if [ -n "$DVM_GIT_BRANCH" ]; then\n'
+    printf '    dvm_as_user git clone --branch "$DVM_GIT_BRANCH" "$DVM_GIT_REPO" "$DVM_CODE_DIR"\n'
+    printf '  else\n'
+    printf '    dvm_as_user git clone "$DVM_GIT_REPO" "$DVM_CODE_DIR"\n'
+    printf '  fi\n'
+    printf 'fi\n'
+    printf '\nif [ -f "$DVM_CODE_DIR/.dvm/sync.sh" ]; then ( cd "$DVM_CODE_DIR" && bash .dvm/sync.sh ); fi\n'
+}
+
+run_guest_script() {
+    if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
+        printf -- '--- guest script ---\n'
+        guest_script
+        printf -- '--- /guest script ---\n'
+        return 0
+    fi
+    stage_secrets
+    set +e
+    guest_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
+    local rc=$?
+    set -e
+    cleanup_secrets
+    return $rc
+}
 
 # --- commands --------------------------------------------------------------
 cmd_sync() {
@@ -186,7 +249,6 @@ cmd_sync() {
     fi
     [ "$#" -eq 1 ] || die "usage: dvm sync <vm> | --all"
     load_vm "$1"
-    local vars; vars="$(write_vars_file)"
 
     if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
         printf 'VM: %s (lima: %s)\n' "$DVM_NAME" "$DVM_LIMA_NAME"
@@ -198,9 +260,7 @@ cmd_sync() {
             printf 'limactl start argv:\n'
         fi
         print_argv
-        printf 'vars file: %s\n' "$vars"
-        printf -- '--- vars ---\n'; cat "$vars"; printf -- '--- /vars ---\n'
-        ansible_invoke "$(inventory_for "$DVM_LIMA_NAME")" "$vars"
+        run_guest_script
         return 0
     fi
 
@@ -216,13 +276,8 @@ cmd_sync() {
         "${DVM_ARGV[@]}"
     fi
     "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-
-    local inv; inv="$(inventory_for "$DVM_LIMA_NAME")"
-    [ -f "$inv" ] || die "Lima inventory missing: $inv"
-    ansible_invoke "$inv" "$vars"
+    run_guest_script
 }
-
-lima_has() { "$LIMACTL" list -q 2>/dev/null | grep -Fxq "$1"; }
 
 cmd_sh() {
     [ "$#" -eq 1 ] || die "usage: dvm sh <vm>"
@@ -285,7 +340,9 @@ cmd_stop() {
         return $rc
     fi
     [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
-    "$LIMACTL" stop "$(lima_name "$1")"
+    local name; name="$(lima_name "$1")"
+    lima_has "$name" || return 0
+    "$LIMACTL" stop "$name"
 }
 
 cmd_rm() {
@@ -300,14 +357,17 @@ cmd_rm() {
         shift
     done
     [ "$yes" = "1" ] || die "dvm rm requires --yes"
-    load_vm "$name"
+    valid_name "$name" || die "invalid VM name: $name"
+    DVM_NAME="$name"
+    DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     lock_vm "$DVM_NAME"
     if lima_has "$DVM_LIMA_NAME"; then
         "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
         "$LIMACTL" delete --force "$DVM_LIMA_NAME"
+        printf 'removed %s\n' "$DVM_NAME"
+    else
+        printf 'no Lima instance: %s\n' "$DVM_NAME"
     fi
-    rm -f "$DVM_CACHE_DIR/$DVM_NAME.vars.yml"
-    printf 'removed %s\n' "$DVM_NAME"
 }
 
 cmd_new() {
@@ -324,27 +384,36 @@ DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 
-# Host-to-guest port forwards. Bind IP comes from global DVM_HOST_IP.
+# Host-to-guest localhost port forwards.
 # DVM_PORTS=(3000:3000 5173:5173)
 
-# Ansible tags selecting which roles to apply for this VM.
-DVM_ANSIBLE_TAGS=(base agent-user sandbox chezmoi)
+# Built-in or user recipes. Global DVM_DEFAULT_RECIPES are prepended.
+DVM_RECIPES=(zsh fzf node codex)
 
-# Non-secret variables passed to ansible-playbook via -e. Never put tokens
-# or keys here — use Ansible Vault or env lookups inside the playbook.
-# DVM_ANSIBLE_EXTRA_VARS=(
-#   "dvm_profile=$1"
-#   "chezmoi_repo=git@github.com:me/dotfiles.git"
-# )
+# Extra distro packages with no custom behavior.
+# DVM_PACKAGES=(git tmux)
+
+# Optional project clone. Code stays inside the VM at /home/<user>/code/<vm>.
+# DVM_GIT_REPO="git@github.com:me/app.git"
+# DVM_GIT_BRANCH=main
+
+# Optional chezmoi source used by the chezmoi recipe.
+# DVM_CHEZMOI_REPO="https://github.com/me/dotfiles.git"
+
+# Optional base reuse, usually set globally after running dvm base build.
+# DVM_USE_BASE=1
+
+# Env var names staged into /tmp/dvm-secret-<NAME> for recipes.
+# DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
 EOF
-    "${EDITOR:-${VISUAL:-vi}}" "$f"
+    run_editor "$f"
 }
 
 cmd_edit() {
     [ "$#" -eq 1 ] || die "usage: dvm edit <vm>"
     local f="$DVM_CONFIG_DIR/vms/$1.sh"
     [ -f "$f" ] || die "no config for VM \"$1\""
-    exec "${EDITOR:-${VISUAL:-vi}}" "$f"
+    run_editor "$f"
 }
 
 cmd_config() {
@@ -353,7 +422,7 @@ cmd_config() {
             mkdir -p "$DVM_CONFIG_DIR"
             local f="$DVM_CONFIG_DIR/config.sh"
             [ -e "$f" ] || cp "$DVM_SHARE/config.sh.example" "$f" 2>/dev/null || : > "$f"
-            exec "${EDITOR:-${VISUAL:-vi}}" "$f"
+            run_editor "$f"
             ;;
         show)
             cat "$DVM_CONFIG_DIR/config.sh" 2>/dev/null || die "no config at $DVM_CONFIG_DIR/config.sh"
@@ -367,29 +436,28 @@ cmd_base() {
     local base; base="$(lima_name "$DVM_BASE_NAME")"
     case "${1:-}" in
         build)
-            local vars="$DVM_CACHE_DIR/$DVM_BASE_NAME.vars.yml"
-            mkdir -p "$DVM_CACHE_DIR"
-            {
-                printf 'dvm_name: %s\n' "$DVM_BASE_NAME"
-                printf 'dvm_lima_name: %s\n' "$base"
-                printf 'dvm_user: %s\n' "$DVM_USER"
-                printf 'dvm_code_dir: /home/%s/code\n' "$DVM_USER"
-                printf 'dvm_host_ip: %s\n' "$DVM_HOST_IP"
-                printf 'dvm_ports: []\n'
-            } > "$vars"
+            DVM_NAME="$DVM_BASE_NAME"
+            DVM_LIMA_NAME="$base"
+            DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_BASE_NAME"
+            DVM_PORTS=()
+            DVM_PACKAGES=("${DVM_BASE_PACKAGES[@]}")
+            DVM_RECIPES=("${DVM_BASE_RECIPES[@]}")
+            DVM_SECRETS=()
+            DVM_GIT_REPO=
+            DVM_GIT_BRANCH=
+            if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
+                build_lima_start
+                printf 'limactl start argv:\n'
+                print_argv
+                run_guest_script
+                return 0
+            fi
             if ! lima_has "$base"; then
-                DVM_PORTS=()
-                DVM_LIMA_NAME="$base"
                 build_lima_start
                 "${DVM_ARGV[@]}"
             fi
             "$LIMACTL" start "$base" >/dev/null 2>&1 || "$LIMACTL" start "$base"
-            local inv; inv="$(inventory_for "$base")"
-            [ -f "$inv" ] || die "Lima inventory missing: $inv"
-            DVM_NAME="$DVM_BASE_NAME"
-            DVM_ANSIBLE_TAGS=("${DVM_BASE_TAGS[@]}")
-            DVM_ANSIBLE_EXTRA_VARS=()
-            ansible_invoke "$inv" "$vars"
+            run_guest_script
             "$LIMACTL" stop "$base"
             ;;
         rm)
@@ -403,62 +471,58 @@ cmd_base() {
     esac
 }
 
-cmd_ansible() {
-    [ "$#" -ge 1 ] || die "usage: dvm ansible <vm> -- ansible-playbook-args..."
-    local name="$1"; shift
-    load_vm "$name"
-    [ "${1:-}" = "--" ] && shift
-    lima_has "$DVM_LIMA_NAME" || die "VM \"$DVM_NAME\" does not exist (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    local vars; vars="$(write_vars_file)"
-    local inv; inv="$(inventory_for "$DVM_LIMA_NAME")"
-    [ -f "$inv" ] || die "Lima inventory missing: $inv"
-    ansible_invoke "$inv" "$vars" "$@"
+cmd_recipes() {
+    local d f n
+    printf '%-18s %s\n' RECIPE SOURCE
+    for d in "$DVM_SHARE/recipes" "$DVM_CONFIG_DIR/recipes"; do
+        [ -d "$d" ] || continue
+        for f in "$d"/*.sh; do
+            [ -f "$f" ] || continue
+            n="$(basename "$f" .sh)"
+            printf '%-18s %s\n' "$n" "$f"
+        done
+    done
+    print_recipe_aliases
+}
+
+lima_version_ok() {
+    local v="$1" major minor
+    [[ "$v" =~ ([0-9]+)\.([0-9]+) ]] || return 1
+    major="${BASH_REMATCH[1]}"
+    minor="${BASH_REMATCH[2]}"
+    [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 0 ]; }
 }
 
 cmd_doctor() {
     load_global
-    local rc=0
-    check() { printf '%-40s %s\n' "$1" "$2"; }
+    local rc=0 version
+    check() { printf '%-36s %s\n' "$1" "$2"; }
     if have "$LIMACTL"; then
-        check "limactl" "ok ($("$LIMACTL" --version 2>/dev/null | head -1))"
+        version="$("$LIMACTL" --version 2>/dev/null | head -1 || true)"
+        if lima_version_ok "$version"; then
+            check "limactl" "ok ($version)"
+        else
+            check "limactl" "OLD or unparsable ($version; need 2.0+)"; rc=1
+        fi
     else
         check "limactl" "MISSING"; rc=1
     fi
-    if have "$ANSIBLE_PLAYBOOK"; then
-        check "ansible-playbook" "ok ($("$ANSIBLE_PLAYBOOK" --version 2>/dev/null | head -1))"
+    if [ -n "${VISUAL:-}${EDITOR:-}" ]; then
+        check "VISUAL/EDITOR" "ok"
     else
-        check "ansible-playbook" "MISSING"; rc=1
+        check "VISUAL/EDITOR" "MISSING"; rc=1
     fi
-    if [ -n "$DVM_ANSIBLE_REPO" ]; then
-        check "DVM_ANSIBLE_REPO" "$DVM_ANSIBLE_REPO"
-        if [ -d "$DVM_ANSIBLE_REPO" ]; then
-            check "  exists" "ok"
-        else
-            check "  exists" "MISSING"; rc=1
-        fi
-        if [ -f "$DVM_ANSIBLE_REPO/$DVM_ANSIBLE_PLAYBOOK" ]; then
-            check "  playbook" "ok ($DVM_ANSIBLE_PLAYBOOK)"
-        else
-            check "  playbook" "MISSING ($DVM_ANSIBLE_PLAYBOOK)"; rc=1
-        fi
+    if have git; then
+        check "git" "ok"
     else
-        check "DVM_ANSIBLE_REPO" "unset"; rc=1
+        check "git" "WARN missing (needed for DVM_GIT_REPO and some recipes)"
     fi
+    [ -d "$DVM_SHARE/recipes" ] && check "built-in recipes" "ok" || { check "built-in recipes" "MISSING"; rc=1; }
     if [ -d "$DVM_CONFIG_DIR/vms" ]; then
         check "VM configs" "$(find "$DVM_CONFIG_DIR/vms" -maxdepth 1 -name '*.sh' | wc -l) found"
     else
         check "VM configs" "no $DVM_CONFIG_DIR/vms directory"
     fi
-    local n
-    while IFS= read -r n; do
-        case "$n" in dvm-*) ;; *) continue ;; esac
-        if [ -f "$HOME/.lima/$n/ansible-inventory.yaml" ]; then
-            check "  $n inventory" "ok"
-        else
-            check "  $n inventory" "MISSING"; rc=1
-        fi
-    done < <("$LIMACTL" list -q 2>/dev/null || true)
     return $rc
 }
 
@@ -466,7 +530,7 @@ cmd_doctor() {
 usage() {
     cat <<'EOF'
 dvm <command> [args]
-  sync <vm> | --all       create/start VM and run ansible-playbook
+  sync <vm> | --all       create/start VM and run packages + recipes
   sh <vm>                 interactive limactl shell
   ssh <vm> -- cmd...      non-interactive limactl shell command
   cp src dst              copy; one side may be vm:path
@@ -478,8 +542,8 @@ dvm <command> [args]
   edit <vm>               edit per-VM config
   config edit | show      edit/show global config
   base build | rm         build or delete the optional base VM
-  ansible <vm> -- args... run ansible-playbook with extra arguments
-  doctor                  check Lima, Ansible, repo, playbook, inventory
+  recipes                 list built-in and user recipes
+  doctor                  check Lima and DVM paths
 EOF
 }
 
@@ -497,7 +561,7 @@ case "$cmd" in
     edit) cmd_edit "$@" ;;
     config) cmd_config "$@" ;;
     base) cmd_base "$@" ;;
-    ansible) cmd_ansible "$@" ;;
+    recipes) cmd_recipes "$@" ;;
     doctor) cmd_doctor "$@" ;;
     help|-h|--help) usage ;;
     *) usage >&2; die "unknown command: $cmd" ;;

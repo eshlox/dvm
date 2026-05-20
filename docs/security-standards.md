@@ -1,120 +1,70 @@
 # Security Standards
 
-The operating rules. Short because the implementation is small.
+DVM is a convenience wrapper, not a security boundary beyond what Lima, the
+guest OS, SSH, Linux permissions, and your recipes provide.
 
-## Isolation
+## Isolation Defaults
 
-- One project, one VM.
-- Host code is **never** mounted into a guest. Code lives at
-  `/home/$DVM_USER/code/<vm>` and is cloned by Ansible.
-- A compromised guest or AI agent cannot directly rewrite the host checkout.
-  Recreate is `dvm rm <vm> --yes && dvm sync <vm>`; no on-host state to
-  preserve.
+- host directories are not mounted into guests (`--mount-none`)
+- code lives inside the VM at `/home/<user>/code/<vm>`
+- DVM only configures Lima localhost-style `host_port:guest_port` forwards
+- secrets are not stored in config files
+- recipes are plain Bash and should be reviewed like any shell script
 
 ## Secrets
 
-DVM does not handle secrets. It never reads them, stages them, or passes
-them on command lines. Handle secrets inside the external Ansible repo:
+List secret env var names in `DVM_SECRETS`:
 
-- **Ansible Vault** for long-lived material (signing keys, persistent
-  tokens).
-- `lookup('env', 'NAME')` for one-shot secrets you `export` before
-  `dvm sync`.
-- `no_log: true` on every task that touches a secret value.
+```bash
+DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY DVM_CLOUDFLARED_TOKEN)
+```
 
-DVM rejects entries in `DVM_ANSIBLE_EXTRA_VARS` whose name contains
-`token`, `password`, `secret`, or that look like `key=…`. That check is a
-guard against accidents, not a security boundary.
+At sync time, DVM reads those host env vars and pipes each value into the guest:
 
-`DVM_ANSIBLE_EXTRA_ARGS` is **not** filtered — it's an escape hatch for
-flags like `--check --diff`, `-K`, `--ask-vault-pass`. Do not put secret
-values there; they'd land directly in the `ansible-playbook` argv.
+```text
+/tmp/dvm-secret-<NAME>
+```
 
-### Shell history is still a leak vector
+The file is mode `0600`, owned by `DVM_USER`, and removed after sync. The
+secret value is not placed in the `limactl` argv by DVM. Individual tools may
+still expose secrets inside the guest while authenticating; review service
+recipes before use.
 
-`DVM_TAILSCALE_AUTHKEY="actualsecret" dvm sync vm` puts the value in your
-shell history if it reaches a child of dvm. Same three options apply as
-before DVM:
+Do not put tokens, passwords, private keys, or long-lived credentials directly
+in `config.sh` or VM config files.
 
-1. **macOS Keychain (no plaintext on disk):**
-   ```bash
-   security add-generic-password -a "$USER" -s dvm-ts -w "$TOKEN"
-   DVM_TAILSCALE_AUTHKEY="$(security find-generic-password \
-       -a "$USER" -s dvm-ts -w)" dvm sync tail
-   ```
+## Agent User
 
-2. **1Password CLI or similar:**
-   ```bash
-   DVM_TAILSCALE_AUTHKEY="$(op read op://Personal/ts/key)" dvm sync tail
-   ```
+The `agent-user` recipe creates `DVM_AGENT_USER` and installs `dvm-agent`.
+When Bubblewrap works in the guest, `dvm-agent <cmd>` runs the command as the
+agent user with:
 
-3. **Leading-space + `HISTCONTROL=ignorespace`:** type ` DVM_X="..." dvm
-   sync vm` (note the leading space).
+- read-only root filesystem
+- hidden `/home`
+- writable project directory
+- writable agent user home
+- network access preserved
 
-## VM identity
+If Bubblewrap cannot run, the wrapper falls back to a plain `sudo -u
+DVM_AGENT_USER` command. That fallback is less isolated.
 
-SSH and GPG identity belong to the Ansible repo, not DVM.
+This is a guardrail, not a complete sandbox. Guest root, sudo mistakes, broad
+filesystem permissions, or a VM escape can bypass it.
 
-- `dvm_keys_mode: generate` (recommended): the Ansible `keys` role makes
-  ed25519 keys inside the VM if missing, prints the public material,
-  configures git signing. Private keys never leave the VM.
-- `dvm_keys_mode: vault`: the role restores encrypted private keys from
-  Ansible Vault with strict file modes and `no_log: true`.
+## Guest-Local Keys
 
-DVM does not back up keys, copy host SSH/GPG keys into the guest, or
-re-import on recreate. Recreating a VM either generates a fresh identity
-(register the new key with your git host) or restores the vaulted key
-material. See [ansible/examples/keys.yml](ansible/examples/keys.yml).
+The `ssh-keys` and `gpg-keys` recipes generate keys inside the VM. DVM does
+not copy host private keys into guests and does not back up guest keys on
+`dvm rm`.
 
-## AI tooling
+## Ports And Service Sharing
 
-AI tools (Codex, Claude, OpenCode, …) run as the unprivileged
-`dvm-agent` account inside a Bubblewrap sandbox. Two roles, separated
-on purpose:
-
-- **`agent_user`** owns identity: it creates the `dvm-agent` user, adds
-  it to `{{ dvm_user }}`'s group (so the sandbox can write to project
-  code), and writes a sudo rule allowing `dvm_user → dvm-agent` (one
-  direction only).
-- **`sandbox`** owns runtime: it installs `bubblewrap` and writes
-  `/usr/local/bin/dvm-agent`, a wrapper that runs an arbitrary command
-  as the agent user inside bwrap.
-
-What the bwrap wrapper actually guarantees:
-
-- `/workspace` (= `dvm_code_dir`) is the only writable path on the
-  project side. Code lives there; the agent can edit it.
-- The agent's own `$HOME` is private and writable. Tool state
-  (`~/.codex`, `~/.claude`, …) lives there.
-- Everything else is read-only.
-- `/tmp`, `/var/tmp`, `/run` are tmpfs — nothing leaks between calls.
-- PID, IPC, and UTS namespaces are unshared.
-- Network is shared so AI APIs are reachable. Switch to
-  `--unshare-net` for offline-only roles.
-
-The sudo edge runs through `dvm-agent` → bwrap, never the reverse, so a
-compromised agent process cannot become `{{ dvm_user }}` and cannot read
-the developer's home outside `dvm_code_dir`. Treat AI output as
-untrusted code until reviewed.
-
-## Networking
-
-- Forwarded ports bind to `DVM_HOST_IP` (default `127.0.0.1`).
-- `0.0.0.0` only when you actually want LAN exposure.
-- Service VMs (`llama`, `cloudflared`, `tailscale`) are separate VMs
-  reached by other VMs via `lima-dvm-<name>.internal`.
+Lima's short `--port-forward host:guest` form is localhost-oriented. Prefer
+Tailscale or Cloudflare Tunnel when teammates need access. For direct VM IP
+access, configure Lima networking/YAML outside DVM.
 
 ## Deletion
 
-- `dvm rm <vm> --yes` stops and deletes the Lima instance. No dirty check.
-- The per-VM config in `~/.config/dvm/vms/` is **not** deleted; remove by
-  hand.
-- The cached vars file `~/.cache/dvm/<vm>.vars.yml` is removed.
-
-## Host dependencies
-
-Kept small: `bash`, `lima`, `ansible-playbook`, `git`, an `$EDITOR`. No
-`envsubst`, no `flock`, no `jq`. Install from a reviewed checkout:
-`install.sh` writes one symlink; `git pull` is the update.
-
-Run `bash tests/smoke.sh` before merging changes.
+`dvm rm <vm> --yes` deletes the Lima instance even if the VM config file is
+already gone. DVM does not run a dirty-git check. Inspect the VM first if
+uncommitted work matters.

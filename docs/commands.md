@@ -1,121 +1,91 @@
 # Commands
 
-DVM is a thin wrapper around `limactl` and `ansible-playbook`. Most commands
-forward straight through. None of them mount host code or touch secrets.
+Running `dvm` with no arguments is the same as `dvm ls`.
 
-```
-dvm sync <vm> | --all       create/start the Lima VM and run ansible-playbook
+```text
+dvm sync <vm> | --all       create/start VM and run packages + recipes
 dvm sh <vm>                 interactive limactl shell
-dvm ssh <vm> -- cmd...      non-interactive shell command
+dvm ssh <vm> -- cmd...      non-interactive limactl shell command
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f] [args]    guest journalctl
-dvm ls [<vm>]               list running Lima instances (optional name filter)
+dvm ls [<vm>]               list DVM Lima instances
 dvm stop <vm> | --all       stop running VMs
-dvm rm <vm> --yes           stop and delete the Lima instance
-dvm new <vm>                write stub config and open $EDITOR
+dvm rm <vm> --yes           delete a Lima instance
+dvm new <vm>                write stub config and open editor
 dvm edit <vm>               edit per-VM config
 dvm config edit | show      edit/show global config
-dvm base build | rm         build or delete the optional reusable base VM
-dvm ansible <vm> -- args... run ansible-playbook with extra arguments
-dvm doctor                  check Lima, Ansible, repo, playbook, inventory
+dvm base build | rm         optional reusable base VM
+dvm recipes                 list built-in and user recipes
+dvm doctor                  check Lima and DVM paths
 ```
 
 ## `dvm sync`
 
-1. Sources `~/.config/dvm/config.sh` and `~/.config/dvm/vms/<vm>.sh`.
-2. Writes `~/.cache/dvm/<vm>.vars.yml` (non-secret only).
-3. If the Lima instance does not exist, runs `limactl start --name dvm-<vm>
-   --cpus N --memory N --disk N --port-forward …  $DVM_TEMPLATE`. When
-   `DVM_USE_BASE=1`, runs `limactl clone dvm-base dvm-<vm>` instead.
-4. Runs `limactl start dvm-<vm>` (no-op if already running).
-5. Runs `ansible-playbook -i ~/.lima/dvm-<vm>/ansible-inventory.yaml
-   $DVM_ANSIBLE_REPO/$DVM_ANSIBLE_PLAYBOOK --tags <DVM_ANSIBLE_TAGS>
-   -e @<vars> [extra-vars] [extra-args]`.
+`dvm sync <vm>`:
 
-A `mkdir`-based lock on `~/.cache/dvm/<vm>.lock` is held for the duration of
-the sync; the lock dir is removed on exit. Concurrent calls on the same VM
-fail fast with a `VM busy` message.
+1. loads `~/.config/dvm/config.sh`
+2. loads `~/.config/dvm/vms/<vm>.sh`
+3. starts `dvm-<vm>` from `DVM_TEMPLATE`, or clones `dvm-<DVM_BASE_NAME>`
+   when `DVM_USE_BASE=1`
+4. stages any `DVM_SECRETS`
+5. runs the guest script: packages, recipes, optional `DVM_GIT_REPO` clone,
+   then `$DVM_CODE_DIR/.dvm/sync.sh` if present
+6. removes staged secrets
 
-`DVM_DRY_RUN=1 dvm sync <vm>` prints the resolved config, the limactl argv,
-the vars file contents, and the ansible-playbook argv without contacting
-Lima or running Ansible.
+`DVM_DRY_RUN=1 dvm sync <vm>` prints the Lima argv and generated guest script
+without contacting Lima.
 
-`DVM_ANSIBLE_EXTRA_ARGS=(--check --diff) dvm sync <vm>` invokes Ansible's
-own dry run.
+`dvm sync --all` syncs every `~/.config/dvm/vms/*.sh` config in filename
+order and exits non-zero if any VM fails.
 
-`dvm sync --all` continues past per-VM failures and exits non-zero if any
-VM failed.
+## Shell And Copy
 
-## `dvm sh` / `ssh` / `cp` / `log`
+`dvm sh <vm>` opens an interactive Lima shell.
 
-Thin wrappers over `limactl`. `dvm sh` uses `exec`, so the dvm process is
-replaced by `limactl shell`. `dvm ssh <vm> -- cmd` runs a non-interactive
-command; the `--` is required to separate dvm flags from guest command args.
+`dvm ssh <vm> -- cmd...` runs a non-interactive command through
+`limactl shell`. The name is kept for muscle memory; it is not raw `ssh`.
 
-`dvm cp` rewrites `vm:path` arguments to `dvm-vm:path` and forwards to
-`limactl copy`. Cross-VM copy is rejected. Paths must start with a valid
-VM-name prefix to count as `vm:path`, so local paths containing `:` are not
-misparsed.
+`dvm cp ./file app:/tmp/file` and `dvm cp app:/tmp/file ./file` copy between
+host and guest. Cross-VM copy is not supported.
 
-`dvm log <vm> -f` follows the guest systemd journal. Extra args after the VM
-name are passed straight to `journalctl`, so `dvm log app -u nginx -f` works.
+## Logs And Status
 
-## `dvm ls`
+`dvm ls` lists DVM-created Lima instances by reading `limactl list`.
 
-Pulls `limactl list --format '{{.Name}}\t{{.Status}}\t{{.CPUs}}\t{{.Memory}}'`,
-filters to `dvm-*`, strips the prefix, and prints a four-column table.
-`dvm ls <vm>` shows just that one row. Only Lima-known instances are
-listed; a VM you've defined with `dvm new` but not yet synced will not
-appear until `dvm sync` creates the instance.
+`dvm log <vm> [-f] [journalctl args...]` runs guest `journalctl`.
 
-## `dvm rm`
+## Stop And Remove
 
-`dvm rm <vm> --yes` stops the Lima instance (force if needed) and deletes
-it. The per-VM config file in `~/.config/dvm/vms/` is left in place; remove
-it by hand if you want. No backup logic — identity belongs to Ansible.
+`dvm stop <vm>` stops the Lima instance and exits successfully when the
+instance is already missing. `dvm stop --all` stops every `dvm-*` instance and
+continues after per-VM failures.
 
-## `dvm new` / `edit` / `config`
+`dvm rm <vm> --yes` force-stops and deletes the Lima instance. It does not
+need the VM config file to still exist.
 
-- `dvm new <vm>` writes `~/.config/dvm/vms/<vm>.sh` from a stub and opens
-  `$EDITOR`. Fails if the file already exists.
-- `dvm edit <vm>` opens that file in `$EDITOR`.
-- `dvm config edit` opens `~/.config/dvm/config.sh`, copying the example
-  from `share/dvm/config.sh.example` if it does not exist yet.
-- `dvm config show` prints the global config.
+## Config Editing
 
-No validation framework. If you save invalid Bash, the next `dvm sync` fails
-with a Bash line number; re-open the editor and fix.
+`dvm new <vm>` writes a starter config and opens `$VISUAL` or `$EDITOR`.
 
-## `dvm base build` / `dvm base rm`
+`dvm edit <vm>` opens one per-VM config.
 
-Optional. When you create many similar VMs, building a base once and cloning
-from it is much faster than running the full playbook from scratch.
+`dvm config edit` creates the global config from `share/dvm/config.sh.example`
+if needed and opens it. `dvm config show` prints it.
 
-- `dvm base build` starts `dvm-<DVM_BASE_NAME>` from `$DVM_TEMPLATE`, runs
-  Ansible with `--tags <DVM_BASE_TAGS>`, then stops the VM.
-- Set `DVM_USE_BASE=1` and subsequent `dvm sync <vm>` clones the base
-  instead of starting fresh.
-- `dvm base rm` deletes the base instance.
+## Base VM
 
-The base must contain no per-VM material: no SSH/GPG identity, no
-tailscale/cloudflared auth, no per-project config.
+`dvm base build` starts `dvm-<DVM_BASE_NAME>`, runs `DVM_BASE_PACKAGES` and
+`DVM_BASE_RECIPES`, then stops it. With `DVM_USE_BASE=1`, new VMs clone that
+base with `limactl clone`.
 
-## `dvm ansible`
+Use this only for slow, stable setup. VM-specific recipes and secrets should
+stay in the per-VM sync.
 
-Forwards extra arguments to `ansible-playbook` after the inventory, playbook,
-tags, and vars file:
+`DVM_DRY_RUN=1 dvm base build` prints the Lima argv and generated base guest
+script without contacting Lima.
 
-```
-dvm ansible app -- --tags chezmoi --check
-```
+## Doctor
 
-The base argv (inventory, playbook, vars file, tags from the VM config) is
-always included. Use this for one-off runs with different tags or flags.
-
-## `dvm doctor`
-
-Reports whether `limactl` and `ansible-playbook` exist, whether
-`$DVM_ANSIBLE_REPO/$DVM_ANSIBLE_PLAYBOOK` resolves, how many VM configs are
-in `~/.config/dvm/vms/`, and whether each existing Lima instance has an
-`ansible-inventory.yaml` next to it. Exit code is non-zero if anything is
-missing. Diagnostic only — no auto-fixes.
+`dvm doctor` checks Lima availability and version, `$VISUAL`/`$EDITOR`, Git,
+the built-in recipe directory, and VM config count. Missing Git is reported as
+a warning because only `DVM_GIT_REPO` and some recipes need it.
