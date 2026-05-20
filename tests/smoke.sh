@@ -162,6 +162,7 @@ case "$out" in *"agent-user"*"codex"*"tailscale"*) ok "recipes lists built-ins" 
 case "$out" in *"Aliases:"*"cloudflare"*"cloudflared"*"ssh-key"*"ssh-keys"*) ok "recipes lists aliases" ;; *) fail "recipes output missing aliases" ;; esac
 
 out="$(DVM_DRY_RUN=1 run_dvm sync app)"
+git_clone_literal="git clone \"\$DVM_GIT_REPO\""
 case "$out" in
     *"limactl start argv"*"--mount-none"*"--port-forward"*"3000:3000"*"template:fedora"*) ;;
     *) fail "dry-run missing Lima argv" ;;
@@ -170,7 +171,7 @@ case "$out" in
     *"# >>> recipe: zsh"*"# >>> recipe: fzf"*"# >>> recipe: node"*"# >>> recipe: codex"*) ;;
     *) fail "dry-run missing recipes" ;;
 esac
-case "$out" in *"dvm_pkg git tmux"*'git clone "$DVM_GIT_REPO"'*) ok "dry-run prints guest script" ;; *) fail "dry-run guest script wrong" ;; esac
+case "$out" in *"dvm_pkg git tmux"*"$git_clone_literal"*) ok "dry-run prints guest script" ;; *) fail "dry-run guest script wrong" ;; esac
 case "$out" in *"sudo dnf5 install -y"*) ok "guest script uses dnf5 only" ;; *) fail "guest script missing dnf5 package helper" ;; esac
 case "$out" in *"apt-get"*|*"sudo dnf install"*) fail "guest script contains non-dnf5 package-manager fallback" ;; *) ok "guest script has no apt/dnf fallback" ;; esac
 [ ! -s "$DVM_TEST_LOG" ] || fail "dry-run called limactl"
@@ -189,7 +190,7 @@ grep -Fxq -- "dvm-app" "$DVM_TEST_LOG" || fail "start argv missing dvm-app"
 grep -Fxq -- "template:fedora" "$DVM_TEST_LOG" || fail "start argv missing template"
 grep -Fxq -- "5173:5173" "$DVM_TEST_LOG" || fail "start argv missing second port"
 grep -Fq -- "# >>> recipe: codex" "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest script missing codex"
-grep -Fq -- 'git clone "$DVM_GIT_REPO"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest script missing git clone"
+grep -Fq -- "$git_clone_literal" "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest script missing git clone"
 ok "sync starts VM and renders package/recipe script"
 
 DVM_TAILSCALE_AUTHKEY=tskey-test DVM_CLOUDFLARED_TOKEN=cf-test run_dvm sync cloud
@@ -207,7 +208,8 @@ DVM_RECIPES=(chezmoi ssh-keys gpg-keys)
 DVM_CHEZMOI_REPO="https://example.invalid/dotfiles.git"
 EOF
 DVM_DRY_RUN=1 run_dvm sync chezmoi >"$TMP/chezmoi.out"
-grep -Fq -- '[ ! -d "$home/.local/share/chezmoi" ]' "$TMP/chezmoi.out" || fail "chezmoi init guard missing"
+chezmoi_guard="[ ! -d \"\$home/.local/share/chezmoi\" ]"
+grep -Fq -- "$chezmoi_guard" "$TMP/chezmoi.out" || fail "chezmoi init guard missing"
 grep -Fq -- 'ssh-keygen' "$TMP/chezmoi.out" || fail "ssh key recipe missing"
 grep -Fq -- 'created=1' "$TMP/chezmoi.out" || fail "gpg key creation flag missing"
 ok "stateful recipes render idempotent guards"

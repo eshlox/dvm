@@ -87,11 +87,19 @@ validate_ports() {
     for p in "${DVM_PORTS[@]:-}"; do
         [ -n "$p" ] || continue
         IFS=: read -r host guest extra <<<"$p"
-        [ -z "${extra:-}" ] || die "bad port spec (extra ':'): $p"
-        [ -n "${host:-}" ] && [ -n "${guest:-}" ] || die "bad port spec: $p"
+        if [ -n "${extra:-}" ]; then
+            die "bad port spec (extra ':'): $p"
+        fi
+        if [ -z "${host:-}" ] || [ -z "${guest:-}" ]; then
+            die "bad port spec: $p"
+        fi
         case "$host$guest" in *[!0-9]*) die "port must be numeric: $p" ;; esac
-        [ "$host" -ge 1 ] && [ "$host" -le 65535 ] || die "port out of range 1-65535: $p"
-        [ "$guest" -ge 1 ] && [ "$guest" -le 65535 ] || die "port out of range 1-65535: $p"
+        if [ "$host" -lt 1 ] || [ "$host" -gt 65535 ]; then
+            die "port out of range 1-65535: $p"
+        fi
+        if [ "$guest" -lt 1 ] || [ "$guest" -gt 65535 ]; then
+            die "port out of range 1-65535: $p"
+        fi
     done
 }
 
@@ -194,7 +202,7 @@ guest_script() {
     printf 'export DVM_NAME=%q DVM_VM=%q DVM_LIMA_NAME=%q DVM_USER=%q DVM_AGENT_USER=%q DVM_CODE_DIR=%q DVM_PORTS=%q DVM_GIT_REPO=%q DVM_GIT_BRANCH=%q\n' \
         "$DVM_NAME" "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" "$DVM_AGENT_USER" "$DVM_CODE_DIR" "$(IFS=,; printf '%s' "${DVM_PORTS[*]:-}")" "$DVM_GIT_REPO" "$DVM_GIT_BRANCH"
     cat "$DVM_SHARE/prelude.sh"
-    printf 'sudo install -d -o "$DVM_USER" -g "$DVM_USER" "$DVM_CODE_DIR"\n'
+    printf "sudo install -d -o \"\$DVM_USER\" -g \"\$DVM_USER\" \"\$DVM_CODE_DIR\"\n"
     if [ "${#DVM_PACKAGES[@]}" -gt 0 ]; then
         printf 'dvm_pkg'
         printf ' %q' "${DVM_PACKAGES[@]}"
@@ -208,15 +216,15 @@ guest_script() {
         cat "$f"
         printf '\n# <<< recipe: %s\n' "$r"
     done
-    printf '\nif [ -n "$DVM_GIT_REPO" ] && [ ! -d "$DVM_CODE_DIR/.git" ]; then\n'
+    printf "\nif [ -n \"\$DVM_GIT_REPO\" ] && [ ! -d \"\$DVM_CODE_DIR/.git\" ]; then\n"
     printf '  dvm_pkg git\n'
-    printf '  if [ -n "$DVM_GIT_BRANCH" ]; then\n'
-    printf '    dvm_as_user git clone --branch "$DVM_GIT_BRANCH" "$DVM_GIT_REPO" "$DVM_CODE_DIR"\n'
+    printf "  if [ -n \"\$DVM_GIT_BRANCH\" ]; then\n"
+    printf "    dvm_as_user git clone --branch \"\$DVM_GIT_BRANCH\" \"\$DVM_GIT_REPO\" \"\$DVM_CODE_DIR\"\n"
     printf '  else\n'
-    printf '    dvm_as_user git clone "$DVM_GIT_REPO" "$DVM_CODE_DIR"\n'
+    printf "    dvm_as_user git clone \"\$DVM_GIT_REPO\" \"\$DVM_CODE_DIR\"\n"
     printf '  fi\n'
     printf 'fi\n'
-    printf '\nif [ -f "$DVM_CODE_DIR/.dvm/sync.sh" ]; then ( cd "$DVM_CODE_DIR" && bash .dvm/sync.sh ); fi\n'
+    printf "\nif [ -f \"\$DVM_CODE_DIR/.dvm/sync.sh\" ]; then ( cd \"\$DVM_CODE_DIR\" && bash .dvm/sync.sh ); fi\n"
 }
 
 run_guest_script() {
@@ -517,7 +525,11 @@ cmd_doctor() {
     else
         check "git" "WARN missing (needed for DVM_GIT_REPO and some recipes)"
     fi
-    [ -d "$DVM_SHARE/recipes" ] && check "built-in recipes" "ok" || { check "built-in recipes" "MISSING"; rc=1; }
+    if [ -d "$DVM_SHARE/recipes" ]; then
+        check "built-in recipes" "ok"
+    else
+        check "built-in recipes" "MISSING"; rc=1
+    fi
     if [ -d "$DVM_CONFIG_DIR/vms" ]; then
         check "VM configs" "$(find "$DVM_CONFIG_DIR/vms" -maxdepth 1 -name '*.sh' | wc -l) found"
     else
