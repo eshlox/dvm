@@ -252,6 +252,7 @@ guest_core_exports() {
 guest_user_setup_script() {
     guest_core_exports
     cat "$DVM_SHARE/prelude.sh"
+    # shellcheck disable=SC2016 # Emit literal guest-side variable expansion.
     printf 'dvm_ensure_user "$DVM_USER"\n'
 }
 
@@ -263,6 +264,7 @@ guest_script() {
     guest_core_exports
     guest_env_exports
     cat "$DVM_SHARE/prelude.sh"
+    # shellcheck disable=SC2016 # Emit literal guest-side variable expansion.
     printf 'dvm_ensure_user "$DVM_USER"\n'
     printf "sudo install -d -o \"\$DVM_USER\" -g \"\$(dvm_user_group \"\$DVM_USER\")\" \"\$DVM_CODE_DIR\"\n"
     if [ "${#DVM_PACKAGES[@]}" -gt 0 ]; then
@@ -360,8 +362,11 @@ cmd_sh() {
     load_vm "$1"
     require_lima
     ensure_guest_user
+    local sh_script
+    # shellcheck disable=SC2016 # Guest-side bash receives and expands $1.
+    sh_script='cd "$1" 2>/dev/null || cd; exec bash -l'
     exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
-        'cd "$1" 2>/dev/null || cd; exec bash -l' bash "$DVM_CODE_DIR"
+        "$sh_script" bash "$DVM_CODE_DIR"
 }
 
 cmd_ssh() {
@@ -372,8 +377,11 @@ cmd_ssh() {
     [ "${1:-}" = "--" ] && shift
     [ "$#" -gt 0 ] || die "usage: dvm ssh <vm> -- cmd..."
     ensure_guest_user
+    local sh_script
+    # shellcheck disable=SC2016 # Guest-side bash receives and expands $1/$@.
+    sh_script='cd "$1" 2>/dev/null || cd; shift; exec "$@"'
     exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
-        'cd "$1" 2>/dev/null || cd; shift; exec "$@"' bash "$DVM_CODE_DIR" "$@"
+        "$sh_script" bash "$DVM_CODE_DIR" "$@"
 }
 
 cmd_cp() {

@@ -175,6 +175,7 @@ case "$out" in
     *) fail "dry-run missing recipes" ;;
 esac
 case "$out" in *"dvm_pkg git tmux"*"$git_clone_literal"*) ok "dry-run prints guest script" ;; *) fail "dry-run guest script wrong" ;; esac
+# shellcheck disable=SC2016 # Match literal guest-side variable expansion.
 case "$out" in *'dvm_ensure_user "$DVM_USER"'*) ok "guest script ensures DVM_USER exists" ;; *) fail "guest script does not ensure DVM_USER" ;; esac
 case "$out" in *"sudo dnf5 install -y"*) ok "guest script uses dnf5 only" ;; *) fail "guest script missing dnf5 package helper" ;; esac
 case "$out" in *"apt-get"*|*"sudo dnf install"*) fail "guest script contains non-dnf5 package-manager fallback" ;; *) ok "guest script has no apt/dnf fallback" ;; esac
@@ -230,7 +231,9 @@ ok "stateful recipes render idempotent guards"
 DVM_DRY_RUN=1 run_dvm sync cloud >"$TMP/cloud.out"
 grep -Fq -- 'sudo tee /etc/yum.repos.d/tailscale.repo' "$TMP/cloud.out" || fail "tailscale Fedora repo missing"
 grep -Fq -- 'sudo tee /etc/yum.repos.d/cloudflared.repo' "$TMP/cloud.out" || fail "cloudflared Fedora repo missing"
+# shellcheck disable=SC2016 # Match literal guest-side variable expansion.
 ! grep -Fq -- '--hostname "${DVM_TAILSCALE_HOSTNAME:-$DVM_NAME}" || true' "$TMP/cloud.out" || fail "tailscale auth failure is swallowed"
+# shellcheck disable=SC2016 # Match literal guest-side command substitution.
 ! grep -Fq -- 'sudo cloudflared service install "$(cat /tmp/dvm-secret-DVM_CLOUDFLARED_TOKEN)" || true' "$TMP/cloud.out" || fail "cloudflared auth failure is swallowed"
 ! grep -Fq -- 'apt-get' "$TMP/cloud.out" || fail "cloud recipe contains apt fallback"
 ok "service recipes target Fedora/dnf5"
@@ -249,8 +252,11 @@ DVM_GIT_REPO="https://example.invalid/app.git"
 EOF
 DVM_DRY_RUN=1 run_dvm sync secret-hook >"$TMP/secret-hook.out"
 cleanup_line="$(grep -n -- 'sudo rm -f /tmp/dvm-secret-DVM_TEST_TOKEN' "$TMP/secret-hook.out" | cut -d: -f1)"
+# shellcheck disable=SC2016 # Match literal guest-side variable expansion.
 clone_line="$(grep -n -- 'git clone "$DVM_GIT_REPO"' "$TMP/secret-hook.out" | cut -d: -f1 | head -1)"
-[ -n "$cleanup_line" ] && [ -n "$clone_line" ] && [ "$cleanup_line" -lt "$clone_line" ] || fail "secrets are not cleaned before project clone"
+if [ -z "$cleanup_line" ] || [ -z "$clone_line" ] || [ "$cleanup_line" -ge "$clone_line" ]; then
+    fail "secrets are not cleaned before project clone"
+fi
 ok "secrets are cleaned before project-controlled hooks"
 
 cat >"$DVM_CONFIG_DIR/vms/bad-env.sh" <<'EOF'
@@ -291,6 +297,7 @@ DVM_RECIPES=(agent-user)
 EOF
 DVM_DRY_RUN=1 run_dvm sync agent >"$TMP/agent.out"
 grep -Fq -- '/usr/local/bin/dvm-agent-shell' "$TMP/agent.out" || fail "agent shell helper missing"
+# shellcheck disable=SC2016 # Match literal generated guest script line.
 [ "$(grep -Fc -- 'sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" "$DVM_CODE_DIR"' "$TMP/agent.out")" -eq 1 ] || fail "agent-user repeats code dir creation"
 ok "agent-user installs a restricted shell helper"
 
