@@ -21,10 +21,14 @@ die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+valid_env_name() { [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
 validate_identity_names() {
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     valid_name "$DVM_AGENT_USER" || die "invalid DVM_AGENT_USER: $DVM_AGENT_USER"
     valid_name "$DVM_BASE_NAME" || die "invalid DVM_BASE_NAME: $DVM_BASE_NAME"
+}
+require_lima() {
+    have "$LIMACTL" || die "limactl not found: $LIMACTL"
 }
 editor_cmd() {
     if [ -n "${VISUAL:-}" ]; then
@@ -52,10 +56,12 @@ load_global() {
     DVM_AGENT_USER=dvm-agent
     DVM_DEFAULT_PACKAGES=()
     DVM_DEFAULT_RECIPES=()
+    DVM_ENV=()
     DVM_BASE_NAME=base
     DVM_BASE_PACKAGES=()
     DVM_BASE_RECIPES=()
     DVM_USE_BASE=0
+    # shellcheck source=/dev/null
     [ -f "$DVM_CONFIG_DIR/config.sh" ] && . "$DVM_CONFIG_DIR/config.sh"
     validate_identity_names
     return 0
@@ -74,6 +80,7 @@ load_vm() {
     DVM_SECRETS=()
     DVM_GIT_REPO=
     DVM_GIT_BRANCH=
+    # shellcheck source=/dev/null
     . "$f"
     validate_identity_names
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
@@ -147,7 +154,15 @@ print_argv() {
     for x in "${DVM_ARGV[@]}"; do printf '  %q\n' "$x"; done
 }
 
-lima_has() { "$LIMACTL" list -q 2>/dev/null | grep -Fxq "$1"; }
+lima_list_quiet() {
+    "$LIMACTL" list -q
+}
+
+lima_has() {
+    local list
+    list="$(lima_list_quiet)" || die "failed to list Lima instances"
+    printf '%s\n' "$list" | grep -Fxq "$1"
+}
 
 # --- recipes ---------------------------------------------------------------
 recipe_file() {
@@ -174,11 +189,41 @@ Aliases:
 EOF
 }
 
+is_secret_name() {
+    local s
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ "$s" = "$1" ] && return 0
+    done
+    return 1
+}
+
+guest_env_exports() {
+    local n emitted=' '
+    local builtins=(DVM_CHEZMOI_REPO DVM_TAILSCALE_HOSTNAME)
+    for n in "${builtins[@]}" "${DVM_ENV[@]:-}"; do
+        [ -n "${n:-}" ] || continue
+        valid_env_name "$n" || die "DVM_ENV entry \"$n\" must match [A-Za-z_][A-Za-z0-9_]*"
+        is_secret_name "$n" && die "DVM_ENV must not include secret \"$n\"; use DVM_SECRETS"
+        case "$emitted" in *" $n "*) continue ;; esac
+        emitted="$emitted$n "
+        [ -n "${!n+x}" ] || continue
+        printf 'export %s=%q\n' "$n" "${!n}"
+    done
+}
+
+guest_secret_cleanup() {
+    local s
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ -n "${s:-}" ] || continue
+        printf 'sudo rm -f %q\n' "/tmp/dvm-secret-$s"
+    done
+}
+
 stage_secrets() {
     local s
     for s in "${DVM_SECRETS[@]:-}"; do
         [ -n "${s:-}" ] || continue
-        [[ "$s" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "DVM_SECRETS entry \"$s\" must match [A-Za-z_][A-Za-z0-9_]*"
+        valid_env_name "$s" || die "DVM_SECRETS entry \"$s\" must match [A-Za-z_][A-Za-z0-9_]*"
         [ -n "${!s:-}" ] || die "secret env var \"$s\" is empty or unset"
     done
     for s in "${DVM_SECRETS[@]:-}"; do
@@ -198,11 +243,27 @@ cleanup_secrets() {
     done
 }
 
-guest_script() {
+guest_core_exports() {
     printf 'export DVM_NAME=%q DVM_VM=%q DVM_LIMA_NAME=%q DVM_USER=%q DVM_AGENT_USER=%q DVM_CODE_DIR=%q DVM_PORTS=%q DVM_GIT_REPO=%q DVM_GIT_BRANCH=%q\n' \
         "$DVM_NAME" "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" "$DVM_AGENT_USER" "$DVM_CODE_DIR" "$(IFS=,; printf '%s' "${DVM_PORTS[*]:-}")" "$DVM_GIT_REPO" "$DVM_GIT_BRANCH"
+}
+
+guest_user_setup_script() {
+    guest_core_exports
     cat "$DVM_SHARE/prelude.sh"
-    printf "sudo install -d -o \"\$DVM_USER\" -g \"\$DVM_USER\" \"\$DVM_CODE_DIR\"\n"
+    printf 'dvm_ensure_user "$DVM_USER"\n'
+}
+
+ensure_guest_user() {
+    guest_user_setup_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
+}
+
+guest_script() {
+    guest_core_exports
+    guest_env_exports
+    cat "$DVM_SHARE/prelude.sh"
+    printf 'dvm_ensure_user "$DVM_USER"\n'
+    printf "sudo install -d -o \"\$DVM_USER\" -g \"\$(dvm_user_group \"\$DVM_USER\")\" \"\$DVM_CODE_DIR\"\n"
     if [ "${#DVM_PACKAGES[@]}" -gt 0 ]; then
         printf 'dvm_pkg'
         printf ' %q' "${DVM_PACKAGES[@]}"
@@ -216,6 +277,10 @@ guest_script() {
         cat "$f"
         printf '\n# <<< recipe: %s\n' "$r"
     done
+    if [ "${#DVM_SECRETS[@]}" -gt 0 ]; then
+        printf '\n# Remove staged secrets before project-controlled clone/hooks.\n'
+        guest_secret_cleanup
+    fi
     printf "\nif [ -n \"\$DVM_GIT_REPO\" ] && [ ! -d \"\$DVM_CODE_DIR/.git\" ]; then\n"
     printf '  dvm_pkg git\n'
     printf "  if [ -n \"\$DVM_GIT_BRANCH\" ]; then\n"
@@ -234,6 +299,7 @@ run_guest_script() {
         printf -- '--- /guest script ---\n'
         return 0
     fi
+    ensure_guest_user
     stage_secrets
     set +e
     guest_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
@@ -273,6 +339,7 @@ cmd_sync() {
     fi
 
     lock_vm "$DVM_NAME"
+    require_lima
     if ! lima_has "$DVM_LIMA_NAME"; then
         if [ "$DVM_USE_BASE" = "1" ]; then
             local base; base="$(lima_name "$DVM_BASE_NAME")"
@@ -290,15 +357,22 @@ cmd_sync() {
 cmd_sh() {
     [ "$#" -eq 1 ] || die "usage: dvm sh <vm>"
     load_vm "$1"
-    exec "$LIMACTL" shell "$DVM_LIMA_NAME"
+    require_lima
+    ensure_guest_user
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
+        'cd "$1" 2>/dev/null || cd; exec bash -l' bash "$DVM_CODE_DIR"
 }
 
 cmd_ssh() {
     [ "$#" -ge 1 ] || die "usage: dvm ssh <vm> -- cmd..."
     local name="$1"; shift
     load_vm "$name"
+    require_lima
     [ "${1:-}" = "--" ] && shift
-    exec "$LIMACTL" shell "$DVM_LIMA_NAME" -- "$@"
+    [ "$#" -gt 0 ] || die "usage: dvm ssh <vm> -- cmd..."
+    ensure_guest_user
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
+        'cd "$1" 2>/dev/null || cd; shift; exec "$@"' bash "$DVM_CODE_DIR" "$@"
 }
 
 cmd_cp() {
@@ -315,6 +389,7 @@ cmd_cp() {
     fi
     [ $((src_is_vm + dst_is_vm)) -ge 1 ] || die "at least one path must be <vm>:<path>"
     [ $((src_is_vm + dst_is_vm)) -le 1 ] || die "cross-VM copy is not supported"
+    require_lima
     exec "$LIMACTL" copy "$src" "$dst"
 }
 
@@ -322,32 +397,40 @@ cmd_log() {
     [ "$#" -ge 1 ] || die "usage: dvm log <vm> [-f] [args]"
     local name="$1"; shift
     load_vm "$name"
+    require_lima
     exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo journalctl "$@"
 }
 
 cmd_ls() {
+    require_lima
     local filter="${1:-}"
     local fmt='{{.Name}}	{{.Status}}	{{.CPUs}}	{{.Memory}}'
     local name status cpus mem short
+    local rows
+    rows="$("$LIMACTL" list --format "$fmt")" || die "failed to list Lima instances"
     printf '%-20s %-10s %-5s %-10s\n' VM STATE CPU MEMORY
     while IFS=$'\t' read -r name status cpus mem; do
+        [ -n "$name" ] || continue
         case "$name" in dvm-*) short="${name#dvm-}" ;; *) continue ;; esac
         if [ -n "$filter" ] && [ "$short" != "$filter" ]; then continue; fi
         printf '%-20s %-10s %-5s %-10s\n' "$short" "$status" "$cpus" "$mem"
-    done < <("$LIMACTL" list --format "$fmt" 2>/dev/null)
+    done <<<"$rows"
 }
 
 cmd_stop() {
     if [ "${1:-}" = "--all" ]; then
-        local rc=0 n
+        require_lima
+        local rc=0 n rows
+        rows="$(lima_list_quiet)" || die "failed to list Lima instances"
         while IFS= read -r n; do
             case "$n" in
                 dvm-*) "$LIMACTL" stop "$n" || { rc=1; printf 'dvm: stop %s failed\n' "$n" >&2; } ;;
             esac
-        done < <("$LIMACTL" list -q)
+        done <<<"$rows"
         return $rc
     fi
     [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
+    require_lima
     local name; name="$(lima_name "$1")"
     lima_has "$name" || return 0
     "$LIMACTL" stop "$name"
@@ -368,6 +451,7 @@ cmd_rm() {
     valid_name "$name" || die "invalid VM name: $name"
     DVM_NAME="$name"
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
+    require_lima
     lock_vm "$DVM_NAME"
     if lima_has "$DVM_LIMA_NAME"; then
         "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
@@ -413,6 +497,9 @@ DVM_RECIPES=(zsh fzf node codex)
 
 # Env var names staged into /tmp/dvm-secret-<NAME> for recipes.
 # DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+
+# Non-secret variable names exported into the guest script for recipes.
+# DVM_ENV=(MY_TOOL_CHANNEL)
 EOF
     run_editor "$f"
 }
@@ -460,6 +547,7 @@ cmd_base() {
                 run_guest_script
                 return 0
             fi
+            require_lima
             if ! lima_has "$base"; then
                 build_lima_start
                 "${DVM_ARGV[@]}"
@@ -469,6 +557,7 @@ cmd_base() {
             "$LIMACTL" stop "$base"
             ;;
         rm)
+            require_lima
             if lima_has "$base"; then
                 "$LIMACTL" stop --force "$base" >/dev/null 2>&1 || true
                 "$LIMACTL" delete --force "$base"
@@ -543,8 +632,8 @@ usage() {
     cat <<'EOF'
 dvm <command> [args]
   sync <vm> | --all       create/start VM and run packages + recipes
-  sh <vm>                 interactive limactl shell
-  ssh <vm> -- cmd...      non-interactive limactl shell command
+  sh <vm>                 interactive shell as DVM_USER
+  ssh <vm> -- cmd...      non-interactive command as DVM_USER
   cp src dst              copy; one side may be vm:path
   log <vm> [-f] [args]    guest journalctl
   ls [<vm>]               list running Lima instances (optional name filter)

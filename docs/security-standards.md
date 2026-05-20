@@ -30,10 +30,21 @@ secret value is not placed in the `limactl` argv by DVM. Individual tools may
 still expose secrets inside the guest while authenticating; review service
 recipes before use.
 
+DVM removes staged secret files before it runs the optional `DVM_GIT_REPO`
+clone or `$DVM_CODE_DIR/.dvm/sync.sh` project hook. Keep secrets in recipes,
+not in project-controlled hooks.
+
 Do not put tokens, passwords, private keys, or long-lived credentials directly
 in `config.sh` or VM config files.
 
 ## Agent User
+
+For normal VM-contained development, it is acceptable to run AI tools directly
+as `DVM_USER` when the VM contains only project-scoped keys and local or sandbox
+credentials. This gives the tool access to the same shells, runtimes, databases,
+test setup, and editor state you use inside the VM. Do not forward host
+SSH/GPG agents into that VM, and do not store broad personal or production keys
+there.
 
 The `agent-user` recipe creates `DVM_AGENT_USER` and installs `dvm-agent`.
 When Bubblewrap works in the guest, `dvm-agent <cmd>` runs the command as the
@@ -48,6 +59,7 @@ agent user with:
 If Bubblewrap cannot run, the wrapper falls back to a plain `sudo -u
 DVM_AGENT_USER` command. That fallback is less isolated.
 
+Use `dvm-agent-shell` to debug or work inside that restricted environment.
 This is a guardrail, not a complete sandbox. Guest root, sudo mistakes, broad
 filesystem permissions, or a VM escape can bypass it.
 

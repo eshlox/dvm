@@ -1,7 +1,7 @@
 dvm_pkg gnupg2
 
 home="$(dvm_user_home)"
-sudo install -d -o "$DVM_USER" -g "$DVM_USER" -m 0700 "$home/.gnupg"
+sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" -m 0700 "$home/.gnupg"
 
 created=0
 if ! dvm_as_user gpg --list-secret-keys --with-colons | grep -q '^sec'; then

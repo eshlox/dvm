@@ -23,7 +23,8 @@ limactl clone --cpus 4 --memory 8 --disk 60 --mount-none dvm-base dvm-app
 
 `--mount-none` is deliberate: Lima otherwise mounts the host home read-only by
 default. Then DVM starts the instance and pipes the generated Bash guest script
-through `limactl shell`.
+through `limactl shell`. Before staging secrets, DVM runs a small guest setup
+step to create `DVM_USER` when the template does not already provide it.
 
 ## Names
 

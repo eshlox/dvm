@@ -11,7 +11,7 @@ Built-ins live in `share/dvm/recipes`. User overrides live in
 | Recipe | Purpose | Source |
 | --- | --- | --- |
 | `age` | install age | [age.sh](../share/dvm/recipes/age.sh) |
-| `agent-user` | create `DVM_AGENT_USER` and the `dvm-agent` wrapper | [agent-user.sh](../share/dvm/recipes/agent-user.sh) |
+| `agent-user` | create `DVM_AGENT_USER`, `dvm-agent`, and `dvm-agent-shell` | [agent-user.sh](../share/dvm/recipes/agent-user.sh) |
 | `bat` | install bat | [bat.sh](../share/dvm/recipes/bat.sh) |
 | `chezmoi` | install chezmoi; apply `DVM_CHEZMOI_REPO` when set | [chezmoi.sh](../share/dvm/recipes/chezmoi.sh) |
 | `claude` | install Claude Code with npm | [claude.sh](../share/dvm/recipes/claude.sh) |
@@ -56,6 +56,8 @@ Available helpers:
 | `dvm_pkg <pkg...>` | install packages with `dnf5` |
 | `dvm_as_user <cmd...>` | run a command as `DVM_USER` |
 | `dvm_as_agent <cmd...>` | run a command as `DVM_AGENT_USER` |
+| `dvm_ensure_user <user>` | create a guest user when missing |
+| `dvm_user_group <user>` | print a user's primary group |
 | `dvm_secret <NAME>` | print `/tmp/dvm-secret-<NAME>` or fail |
 | `dvm_append_once <file> <line>` | append a line to a user-owned file once |
 | `dvm_download_verified <name> <url> <sha256> <dest>` | download and install a verified binary |

@@ -78,7 +78,26 @@ DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
 
 For direct VM IP access, configure Lima networking outside DVM.
 
-## Run AI Tools As The Agent User
+## Run AI Tools Inside The VM
+
+For normal project work, run AI tools as the main VM user inside your existing
+shell, tmux, or zellij session:
+
+```bash
+dvm sh app
+zellij
+claude
+codex
+```
+
+This trusted-dev mode gives the tool the same access you have inside the VM:
+installed runtimes, local databases, test dependencies, project files, and
+per-project SSH/signing keys. Keep those keys narrowly scoped to the project,
+do not forward broad host SSH/GPG agents into the VM, and do not store
+production credentials there.
+
+Use the restricted agent user only when you specifically want to hide the main
+user home from the AI tool:
 
 ```bash
 DVM_RECIPES=(agent-user codex claude opencode)
@@ -92,8 +111,16 @@ dvm-agent claude
 dvm-agent opencode
 ```
 
+Or open an interactive restricted shell:
+
+```bash
+dvm-agent-shell
+```
+
 The wrapper uses Bubblewrap when available to hide the main user's home and
-expose only the project directory plus the agent user's home.
+expose only the project directory plus the agent user's home. This mode is less
+convenient when your development setup depends on tools, auth, or database
+credentials stored under the main user's home.
 
 ## Guest-Local Keys
 

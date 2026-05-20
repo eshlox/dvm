@@ -15,7 +15,7 @@ if sudo tailscale status >/dev/null 2>&1; then
     printf 'dvm recipe tailscale: already authenticated\n'
 elif [ -r /tmp/dvm-secret-DVM_TAILSCALE_AUTHKEY ]; then
     sudo tailscale up --auth-key "$(cat /tmp/dvm-secret-DVM_TAILSCALE_AUTHKEY)" \
-        --hostname "${DVM_TAILSCALE_HOSTNAME:-$DVM_NAME}" || true
+        --hostname "${DVM_TAILSCALE_HOSTNAME:-$DVM_NAME}"
 else
     printf 'dvm recipe tailscale: no auth key staged; skipping tailscale up\n'
 fi

@@ -4,8 +4,8 @@ Running `dvm` with no arguments is the same as `dvm ls`.
 
 ```text
 dvm sync <vm> | --all       create/start VM and run packages + recipes
-dvm sh <vm>                 interactive limactl shell
-dvm ssh <vm> -- cmd...      non-interactive limactl shell command
+dvm sh <vm>                 interactive shell as DVM_USER
+dvm ssh <vm> -- cmd...      non-interactive command as DVM_USER
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f] [args]    guest journalctl
 dvm ls [<vm>]               list DVM Lima instances
@@ -27,10 +27,12 @@ dvm doctor                  check Lima and DVM paths
 2. loads `~/.config/dvm/vms/<vm>.sh`
 3. starts `dvm-<vm>` from `DVM_TEMPLATE`, or clones `dvm-<DVM_BASE_NAME>`
    when `DVM_USE_BASE=1`
-4. stages any `DVM_SECRETS`
-5. runs the guest script: packages, recipes, optional `DVM_GIT_REPO` clone,
-   then `$DVM_CODE_DIR/.dvm/sync.sh` if present
-6. removes staged secrets
+4. ensures `DVM_USER` exists in the guest
+5. stages any `DVM_SECRETS`
+6. runs the guest script: packages and recipes
+7. removes staged secrets before project-controlled code runs
+8. optionally clones `DVM_GIT_REPO`, then runs `$DVM_CODE_DIR/.dvm/sync.sh`
+   if present
 
 `DVM_DRY_RUN=1 dvm sync <vm>` prints the Lima argv and generated guest script
 without contacting Lima.
@@ -40,10 +42,12 @@ order and exits non-zero if any VM fails.
 
 ## Shell And Copy
 
-`dvm sh <vm>` opens an interactive Lima shell.
+`dvm sh <vm>` opens an interactive shell as `DVM_USER`, starting in
+`$DVM_CODE_DIR` when it exists and falling back to the user's home directory.
 
-`dvm ssh <vm> -- cmd...` runs a non-interactive command through
-`limactl shell`. The name is kept for muscle memory; it is not raw `ssh`.
+`dvm ssh <vm> -- cmd...` runs a non-interactive command as `DVM_USER`, also
+preferring `$DVM_CODE_DIR` as the working directory. The name is kept for muscle
+memory; it is not raw `ssh`.
 
 `dvm cp ./file app:/tmp/file` and `dvm cp app:/tmp/file ./file` copy between
 host and guest. Cross-VM copy is not supported.

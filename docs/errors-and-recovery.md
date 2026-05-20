@@ -57,3 +57,5 @@ DVM_TAILSCALE_AUTHKEY=tskey-... dvm sync demo
 ```
 
 If a single-use key was already consumed, create a new key and re-run sync.
+When a secret is staged and the service authentication command fails, `dvm sync`
+fails so the broken setup is visible.

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- DVM now ensures `DVM_USER` exists in the guest before staging secrets or
+  creating the project directory.
+- Added `DVM_ENV` for explicit non-secret variable passthrough into guest
+  recipes, and automatically pass built-in recipe settings such as
+  `DVM_CHEZMOI_REPO` and `DVM_TAILSCALE_HOSTNAME`.
+- Staged secret files are now removed before optional project clone and
+  `$DVM_CODE_DIR/.dvm/sync.sh` hooks run.
+- Tailscale and Cloudflared recipes now fail the sync when a staged auth secret
+  is used but service authentication fails.
+- Commands that contact Lima now fail clearly when `limactl` is missing instead
+  of treating the instance list as empty.
+- `dvm sh` and `dvm ssh` now run as `DVM_USER` and prefer the project directory,
+  making the normal in-VM AI workflow use the same user state as development.
+- Added `dvm-agent-shell` for an interactive restricted agent environment and
+  documented trusted-dev AI mode for running AI tools directly as `DVM_USER`
+  inside project VMs with scoped keys.
+- Added `scripts/check` as a local development entrypoint for smoke tests and
+  optional ShellCheck.
 - Removed Ansible from the default architecture. DVM is again a small Bash
   wrapper around Lima plus repo-owned Bash recipes.
 - `dvm sync <vm>` now starts or clones the Lima VM, stages optional secrets,

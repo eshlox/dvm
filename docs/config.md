@@ -20,6 +20,7 @@ DVM config is Bash. Global config is sourced first, then per-VM config.
 | `DVM_AGENT_USER` | `dvm-agent` | user created by the `agent-user` recipe |
 | `DVM_DEFAULT_PACKAGES` | `()` | packages prepended to every VM |
 | `DVM_DEFAULT_RECIPES` | `()` | recipes prepended to every VM |
+| `DVM_ENV` | `()` | non-secret variable names exported into the guest script |
 | `DVM_USE_BASE` | `0` | clone from the base VM when set to `1` |
 | `DVM_BASE_NAME` | `base` | base Lima instance suffix |
 | `DVM_BASE_PACKAGES` | `()` | packages installed by `dvm base build` |
@@ -41,6 +42,7 @@ lowercase letter and contain only lowercase letters, numbers, and hyphens.
 | `DVM_PACKAGES` | plain distro packages |
 | `DVM_RECIPES` | built-in or user recipe names |
 | `DVM_SECRETS` | host env var names staged into guest temp files |
+| `DVM_ENV` | non-secret config/env var names exported into the guest script |
 | `DVM_GIT_REPO` | optional repo cloned into `/home/<user>/code/<vm>` |
 | `DVM_GIT_BRANCH` | optional branch for the first clone |
 
@@ -64,6 +66,23 @@ DVM_RECIPES=(node codex claude opencode)
 DVM_GIT_REPO="git@github.com:me/app.git"
 ```
 
+## Guest Environment
+
+DVM always exports core variables such as `DVM_NAME`, `DVM_USER`, and
+`DVM_CODE_DIR` into the guest script. Some built-in recipe config is exported
+automatically when set, including `DVM_CHEZMOI_REPO` and
+`DVM_TAILSCALE_HOSTNAME`.
+
+For user recipes, list additional non-secret variable names in `DVM_ENV`:
+
+```bash
+MY_TOOL_CHANNEL=nightly
+DVM_ENV=(MY_TOOL_CHANNEL)
+```
+
+Do not put tokens or passwords in `DVM_ENV`; DVM rejects names that are also
+listed in `DVM_SECRETS`.
+
 ## Secrets
 
 Secrets are not stored in config. List env var names in `DVM_SECRETS` and pass
@@ -82,3 +101,6 @@ dvm sync demo
 
 Inside recipes, use `dvm_secret DVM_TAILSCALE_AUTHKEY` to get the staged file.
 Secret names must match `[A-Za-z_][A-Za-z0-9_]*`.
+
+Staged secret files are removed before DVM runs the optional project clone or
+`$DVM_CODE_DIR/.dvm/sync.sh` hook.

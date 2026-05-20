@@ -129,13 +129,38 @@ dvm sync demo
 ```
 
 The secret values travel over stdin to the guest and are removed after sync.
+They are removed before optional project clone/hooks run.
+
+## AI Workflow
+
+For normal project work, run AI tools inside the VM as the main VM user:
+
+```bash
+dvm sh app
+zellij
+claude
+codex
+```
+
+This gives the tool access to the same local runtimes, databases, test setup,
+and project-scoped SSH/signing keys you use. Keep those keys scoped to the
+project, do not forward broad host SSH/GPG agents into the VM, and do not store
+production credentials there.
+
+When you want a more restricted mode, add `agent-user` and use the wrapper:
+
+```bash
+DVM_RECIPES=(agent-user codex claude opencode)
+dvm-agent claude
+dvm-agent-shell
+```
 
 ## Commands
 
 ```text
 dvm sync <vm> | --all       create/start VM and run packages + recipes
-dvm sh <vm>                 interactive limactl shell
-dvm ssh <vm> -- cmd...      non-interactive limactl shell command
+dvm sh <vm>                 interactive shell as DVM_USER
+dvm ssh <vm> -- cmd...      non-interactive command as DVM_USER
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f] [args]    guest journalctl
 dvm ls [<vm>]               list DVM Lima instances
@@ -156,7 +181,8 @@ Future safety ideas are tracked in
 ## Development
 
 ```bash
-bash tests/smoke.sh
+bash scripts/check
 ```
 
-The smoke test uses a fake `limactl`; it does not start real VMs.
+The smoke test uses a fake `limactl`; it does not start real VMs. `scripts/check`
+also runs ShellCheck when it is installed.

@@ -172,6 +172,7 @@ case "$out" in
     *) fail "dry-run missing recipes" ;;
 esac
 case "$out" in *"dvm_pkg git tmux"*"$git_clone_literal"*) ok "dry-run prints guest script" ;; *) fail "dry-run guest script wrong" ;; esac
+case "$out" in *'dvm_ensure_user "$DVM_USER"'*) ok "guest script ensures DVM_USER exists" ;; *) fail "guest script does not ensure DVM_USER" ;; esac
 case "$out" in *"sudo dnf5 install -y"*) ok "guest script uses dnf5 only" ;; *) fail "guest script missing dnf5 package helper" ;; esac
 case "$out" in *"apt-get"*|*"sudo dnf install"*) fail "guest script contains non-dnf5 package-manager fallback" ;; *) ok "guest script has no apt/dnf fallback" ;; esac
 [ ! -s "$DVM_TEST_LOG" ] || fail "dry-run called limactl"
@@ -193,6 +194,14 @@ grep -Fq -- "# >>> recipe: codex" "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest sc
 grep -Fq -- "$git_clone_literal" "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest script missing git clone"
 ok "sync starts VM and renders package/recipe script"
 
+: >"$DVM_TEST_LOG"
+run_dvm ssh app -- echo hi >/dev/null
+grep -Fxq -- "sudo" "$DVM_TEST_LOG" || fail "ssh command does not use sudo"
+grep -Fxq -- "-u" "$DVM_TEST_LOG" || fail "ssh command missing user flag"
+grep -Fxq -- "developer" "$DVM_TEST_LOG" || fail "ssh command does not run as DVM_USER"
+grep -Fxq -- "/home/developer/code/app" "$DVM_TEST_LOG" || fail "ssh command missing project workdir"
+ok "ssh commands run as DVM_USER in the project directory"
+
 DVM_TAILSCALE_AUTHKEY=tskey-test DVM_CLOUDFLARED_TOKEN=cf-test run_dvm sync cloud
 grep -Fq -- "# >>> recipe: cloudflare" "$DVM_TEST_GUEST/dvm-cloud.sh" || fail "alias recipe did not render"
 grep -Fq -- "tailscale up" "$DVM_TEST_GUEST/dvm-cloud.sh" || fail "tailscale recipe missing"
@@ -208,6 +217,7 @@ DVM_RECIPES=(chezmoi ssh-keys gpg-keys)
 DVM_CHEZMOI_REPO="https://example.invalid/dotfiles.git"
 EOF
 DVM_DRY_RUN=1 run_dvm sync chezmoi >"$TMP/chezmoi.out"
+grep -Fq -- "export DVM_CHEZMOI_REPO=https://example.invalid/dotfiles.git" "$TMP/chezmoi.out" || fail "chezmoi repo config not exported"
 chezmoi_guard="[ ! -d \"\$home/.local/share/chezmoi\" ]"
 grep -Fq -- "$chezmoi_guard" "$TMP/chezmoi.out" || fail "chezmoi init guard missing"
 grep -Fq -- 'ssh-keygen' "$TMP/chezmoi.out" || fail "ssh key recipe missing"
@@ -217,8 +227,29 @@ ok "stateful recipes render idempotent guards"
 DVM_DRY_RUN=1 run_dvm sync cloud >"$TMP/cloud.out"
 grep -Fq -- 'sudo tee /etc/yum.repos.d/tailscale.repo' "$TMP/cloud.out" || fail "tailscale Fedora repo missing"
 grep -Fq -- 'sudo tee /etc/yum.repos.d/cloudflared.repo' "$TMP/cloud.out" || fail "cloudflared Fedora repo missing"
+! grep -Fq -- '--hostname "${DVM_TAILSCALE_HOSTNAME:-$DVM_NAME}" || true' "$TMP/cloud.out" || fail "tailscale auth failure is swallowed"
+! grep -Fq -- 'sudo cloudflared service install "$(cat /tmp/dvm-secret-DVM_CLOUDFLARED_TOKEN)" || true' "$TMP/cloud.out" || fail "cloudflared auth failure is swallowed"
 ! grep -Fq -- 'apt-get' "$TMP/cloud.out" || fail "cloud recipe contains apt fallback"
 ok "service recipes target Fedora/dnf5"
+
+cat >"$DVM_CONFIG_DIR/vms/secret-hook.sh" <<'EOF'
+DVM_SECRETS=(DVM_TEST_TOKEN)
+DVM_GIT_REPO="https://example.invalid/app.git"
+EOF
+DVM_DRY_RUN=1 run_dvm sync secret-hook >"$TMP/secret-hook.out"
+cleanup_line="$(grep -n -- 'sudo rm -f /tmp/dvm-secret-DVM_TEST_TOKEN' "$TMP/secret-hook.out" | cut -d: -f1)"
+clone_line="$(grep -n -- 'git clone "$DVM_GIT_REPO"' "$TMP/secret-hook.out" | cut -d: -f1 | head -1)"
+[ -n "$cleanup_line" ] && [ -n "$clone_line" ] && [ "$cleanup_line" -lt "$clone_line" ] || fail "secrets are not cleaned before project clone"
+ok "secrets are cleaned before project-controlled hooks"
+
+cat >"$DVM_CONFIG_DIR/vms/bad-env.sh" <<'EOF'
+DVM_SECRETS=(DVM_TEST_TOKEN)
+DVM_ENV=(DVM_TEST_TOKEN)
+EOF
+if DVM_DRY_RUN=1 run_dvm sync bad-env >/dev/null 2>&1; then
+    fail "secret env var accepted in DVM_ENV"
+fi
+ok "DVM_ENV rejects staged secret names"
 
 cat >"$DVM_CONFIG_DIR/vms/bad-port.sh" <<'EOF'
 DVM_PORTS=(70000:3000)
@@ -243,6 +274,13 @@ if DVM_DRY_RUN=1 run_dvm sync bad-user >/dev/null 2>&1; then
     fail "invalid DVM_AGENT_USER accepted"
 fi
 ok "invalid DVM_AGENT_USER is rejected"
+
+cat >"$DVM_CONFIG_DIR/vms/agent.sh" <<'EOF'
+DVM_RECIPES=(agent-user)
+EOF
+DVM_DRY_RUN=1 run_dvm sync agent >"$TMP/agent.out"
+grep -Fq -- '/usr/local/bin/dvm-agent-shell' "$TMP/agent.out" || fail "agent shell helper missing"
+ok "agent-user installs a restricted shell helper"
 
 run_dvm base build
 grep -Fxq -- "dvm-base" "$DVM_TEST_LOG" || fail "base build did not touch dvm-base"
@@ -280,5 +318,10 @@ ok "rm works without a VM config file"
 
 out="$(run_dvm doctor)"
 case "$out" in *"limactl"*"ok"*"VISUAL/EDITOR"*"ok"*"git"*"built-in recipes"*) ok "doctor reports basic checks" ;; *) fail "doctor output wrong" ;; esac
+
+if DVM_LIMACTL=/no/such/limactl run_dvm ls >/dev/null 2>&1; then
+    fail "missing limactl accepted"
+fi
+ok "commands fail clearly when limactl is missing"
 
 printf 'all smoke tests passed\n'

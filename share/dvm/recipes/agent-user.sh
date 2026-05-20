@@ -4,7 +4,7 @@ if ! id "$DVM_AGENT_USER" >/dev/null 2>&1; then
     sudo useradd -m -s /bin/bash "$DVM_AGENT_USER"
 fi
 
-sudo install -d -o "$DVM_USER" -g "$DVM_USER" "$DVM_CODE_DIR"
+sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" "$DVM_CODE_DIR"
 sudo setfacl -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 sudo setfacl -d -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 
@@ -40,3 +40,12 @@ cd "$DVM_CODE_DIR"
 exec sudo -u "$DVM_AGENT_USER" -H bash -lc 'exec "\$@"' bash "\$@"
 EOF
 sudo chmod 0755 /usr/local/bin/dvm-agent
+
+sudo tee /usr/local/bin/dvm-agent-shell >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/local/bin/dvm-agent bash -l
+EOF
+sudo chmod 0755 /usr/local/bin/dvm-agent-shell
+
+printf 'dvm recipe agent-user: restricted runner installed; use dvm-agent <cmd> or dvm-agent-shell inside the VM\n'

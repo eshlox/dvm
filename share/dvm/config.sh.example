@@ -22,6 +22,10 @@
 # DVM_DEFAULT_PACKAGES=(git ripgrep fd-find tmux)
 # DVM_DEFAULT_RECIPES=(zsh fzf starship)
 
+# Optional non-secret variable names exported into the guest script for recipes.
+# Do not list tokens or passwords here; use DVM_SECRETS in per-VM config.
+# DVM_ENV=(MY_TOOL_CHANNEL)
+
 # Optional base VM reuse. With DVM_USE_BASE=1, `dvm sync <vm>` clones from
 # dvm-<DVM_BASE_NAME> instead of starting from the template.
 # DVM_USE_BASE=0

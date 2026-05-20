@@ -32,6 +32,22 @@ dvm_as_agent() {
     sudo -u "$DVM_AGENT_USER" -H "$@"
 }
 
+dvm_user_group() {
+    id -gn "$1"
+}
+
+dvm_ensure_user() {
+    local user="$1" home group
+    if ! id "$user" >/dev/null 2>&1; then
+        dvm_has useradd || dvm_pkg shadow-utils
+        sudo useradd -m -s /bin/bash "$user"
+    fi
+    home="$(getent passwd "$user" | cut -d: -f6)"
+    [ -n "$home" ] || dvm_die "user $user has no passwd entry"
+    group="$(dvm_user_group "$user")" || dvm_die "user $user has no primary group"
+    sudo install -d -o "$user" -g "$group" "$home"
+}
+
 dvm_user_home() {
     getent passwd "$DVM_USER" | cut -d: -f6
 }

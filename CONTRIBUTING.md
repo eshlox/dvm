@@ -1,28 +1,29 @@
 # Contributing
 
-DVM is intentionally small. The entire host program is one Bash script
-(`bin/dvm`) that conducts `limactl` and `ansible-playbook`. Guest setup
-behavior belongs in the user's external Ansible repo, not here.
+DVM is intentionally small. The host program is one Bash script (`bin/dvm`)
+that conducts `limactl` and renders a small guest-side Bash script. Guest setup
+behavior belongs in repo-owned or user-owned recipes, not in a large framework.
 
 Good fits:
 
 - small fixes to the wrapper commands
-- improvements to Lima command construction or Ansible invocation
-- docs that explain the external Ansible repo contract more clearly
+- improvements to Lima command construction or recipe execution
+- focused built-in recipes for common development tools
+- docs that explain the config, recipe, VM, and security model clearly
 - shell tests for wrapper behavior
 
 Avoid:
 
-- adding runtime recipes, role collections, or bundled provisioning
+- adding role collections or bundled provisioning frameworks
 - typed schemas, catalogs, planners, or metadata registries
 - host code mounts by default
-- secret-store abstractions inside DVM
-- features better handled by the user's Ansible playbook or `dvm ssh <name>`
+- broad secret-store abstractions inside DVM
+- features better handled by a user recipe or `dvm ssh <name> -- ...`
 
-Run the smoke test before handing work back:
+Run the local check before handing work back:
 
 ```bash
-bash tests/smoke.sh
+bash scripts/check
 ```
 
 For every user-facing change, update `README.md` and add an entry under the
