@@ -4,7 +4,6 @@ if ! id "$DVM_AGENT_USER" >/dev/null 2>&1; then
     sudo useradd -m -s /bin/bash "$DVM_AGENT_USER"
 fi
 
-sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" "$DVM_CODE_DIR"
 sudo setfacl -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 sudo setfacl -d -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 

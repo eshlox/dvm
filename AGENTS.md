@@ -15,3 +15,15 @@ After every change:
 
 Do not edit unrelated files or generated local notes. In particular, leave
 unrelated draft docs alone unless the user asks for them.
+
+Recipe helpers available inside guest recipes:
+
+- `dvm_pkg <pkg...>` installs Fedora packages with `dnf5`.
+- `dvm_as_user <cmd...>` runs a command as `DVM_USER`.
+- `dvm_as_agent <cmd...>` runs a command as `DVM_AGENT_USER`.
+- `dvm_ensure_user <user>` creates a guest user when missing.
+- `dvm_user_group <user>` prints a user's primary group.
+- `dvm_secret <NAME>` prints the staged secret path or fails.
+- `dvm_append_once <file> <line>` appends a user-owned line once.
+- `dvm_download_verified <name> <url> <sha256> <dest>` installs a verified
+  downloaded binary.

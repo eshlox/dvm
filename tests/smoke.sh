@@ -155,7 +155,10 @@ done
 ok "shell syntax is valid"
 
 out="$(run_dvm --help)"
-case "$out" in *"sync"*"recipes"*"doctor"*) ok "help lists current commands" ;; *) fail "help output is wrong" ;; esac
+case "$out" in *"sync"*"recipes"*"doctor"*"version"*) ok "help lists current commands" ;; *) fail "help output is wrong" ;; esac
+
+out="$(run_dvm version)"
+case "$out" in "dvm "*-dev) ok "version prints development version" ;; *) fail "version output is wrong" ;; esac
 
 out="$(run_dvm recipes)"
 case "$out" in *"agent-user"*"codex"*"tailscale"*) ok "recipes lists built-ins" ;; *) fail "recipes output missing built-ins" ;; esac
@@ -232,6 +235,14 @@ grep -Fq -- 'sudo tee /etc/yum.repos.d/cloudflared.repo' "$TMP/cloud.out" || fai
 ! grep -Fq -- 'apt-get' "$TMP/cloud.out" || fail "cloud recipe contains apt fallback"
 ok "service recipes target Fedora/dnf5"
 
+cat >"$DVM_CONFIG_DIR/vms/docker.sh" <<'EOF'
+DVM_RECIPES=(docker)
+EOF
+DVM_DRY_RUN=1 run_dvm sync docker >"$TMP/docker.out"
+grep -Fq -- 'dvm_pkg moby-engine docker-compose || dvm_pkg docker docker-compose-plugin' "$TMP/docker.out" || fail "docker recipe bypasses dvm_pkg"
+! grep -Fq -- 'sudo dnf5 install -y moby-engine' "$TMP/docker.out" || fail "docker recipe contains raw dnf5 install"
+ok "docker recipe uses dvm_pkg"
+
 cat >"$DVM_CONFIG_DIR/vms/secret-hook.sh" <<'EOF'
 DVM_SECRETS=(DVM_TEST_TOKEN)
 DVM_GIT_REPO="https://example.invalid/app.git"
@@ -280,6 +291,7 @@ DVM_RECIPES=(agent-user)
 EOF
 DVM_DRY_RUN=1 run_dvm sync agent >"$TMP/agent.out"
 grep -Fq -- '/usr/local/bin/dvm-agent-shell' "$TMP/agent.out" || fail "agent shell helper missing"
+[ "$(grep -Fc -- 'sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" "$DVM_CODE_DIR"' "$TMP/agent.out")" -eq 1 ] || fail "agent-user repeats code dir creation"
 ok "agent-user installs a restricted shell helper"
 
 run_dvm base build

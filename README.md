@@ -172,6 +172,7 @@ dvm config edit | show      edit/show global config
 dvm base build | rm         optional reusable base VM
 dvm recipes                 list built-in and user recipes
 dvm doctor                  check Lima and DVM paths
+dvm version                 print DVM version
 ```
 
 See `docs/` for command, config, recipe, Lima, and security details.

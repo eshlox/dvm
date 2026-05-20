@@ -67,7 +67,8 @@ filesystem permissions, or a VM escape can bypass it.
 
 The `ssh-keys` and `gpg-keys` recipes generate keys inside the VM. DVM does
 not copy host private keys into guests and does not back up guest keys on
-`dvm rm`.
+`dvm rm`. The generated GPG key uses an empty passphrase for disposable VM
+convenience; treat it as VM-local and do not reuse it outside the project VM.
 
 ## Ports And Service Sharing
 

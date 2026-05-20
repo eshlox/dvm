@@ -18,6 +18,11 @@
 - Added `dvm-agent-shell` for an interactive restricted agent environment and
   documented trusted-dev AI mode for running AI tools directly as `DVM_USER`
   inside project VMs with scoped keys.
+- Added `dvm version` for scripts and agent tooling.
+- Updated the Docker recipe to use the guarded `dvm_pkg` helper and removed
+  redundant project-directory creation from the `agent-user` recipe.
+- Documented guest recipe helpers in `AGENTS.md` and clarified that generated
+  GPG keys are empty-passphrase, VM-local convenience keys.
 - Added `scripts/check` as a local development entrypoint for smoke tests and
   optional ShellCheck.
 - Removed Ansible from the default architecture. DVM is again a small Bash

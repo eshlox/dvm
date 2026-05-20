@@ -16,6 +16,7 @@ DVM_SHARE="${DVM_SHARE_DIR:-$DVM_ROOT/share/dvm}"
 DVM_CONFIG_DIR="${DVM_CONFIG_DIR:-$HOME/.config/dvm}"
 DVM_CACHE_DIR="${DVM_CACHE_DIR:-$HOME/.cache/dvm}"
 LIMACTL="${DVM_LIMACTL:-limactl}"
+DVM_VERSION="0.1.0-dev"
 
 die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -645,6 +646,7 @@ dvm <command> [args]
   base build | rm         build or delete the optional base VM
   recipes                 list built-in and user recipes
   doctor                  check Lima and DVM paths
+  version                 print DVM version
 EOF
 }
 
@@ -664,6 +666,7 @@ case "$cmd" in
     base) cmd_base "$@" ;;
     recipes) cmd_recipes "$@" ;;
     doctor) cmd_doctor "$@" ;;
+    version) [ "$#" -eq 0 ] || die "usage: dvm version"; printf 'dvm %s\n' "$DVM_VERSION" ;;
     help|-h|--help) usage ;;
     *) usage >&2; die "unknown command: $cmd" ;;
 esac

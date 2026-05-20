@@ -17,6 +17,7 @@ dvm config edit | show      edit/show global config
 dvm base build | rm         optional reusable base VM
 dvm recipes                 list built-in and user recipes
 dvm doctor                  check Lima and DVM paths
+dvm version                 print DVM version
 ```
 
 ## `dvm sync`
@@ -93,3 +94,7 @@ script without contacting Lima.
 `dvm doctor` checks Lima availability and version, `$VISUAL`/`$EDITOR`, Git,
 the built-in recipe directory, and VM config count. Missing Git is reported as
 a warning because only `DVM_GIT_REPO` and some recipes need it.
+
+## Version
+
+`dvm version` prints the DVM version string for scripts and agent tooling.

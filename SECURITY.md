@@ -61,7 +61,8 @@ guest scripts or sudoers snippets.
 
 The `ssh-keys` and `gpg-keys` recipes generate keys inside the VM. DVM does
 not copy host private keys into guests and does not back up guest keys on
-`dvm rm`.
+`dvm rm`. The generated GPG key has an empty passphrase for disposable
+guest-local signing; do not reuse it outside that project VM.
 
 ## Removed Safeguards
 

@@ -1,4 +1,4 @@
-sudo dnf5 install -y moby-engine docker-compose || sudo dnf5 install -y docker docker-compose-plugin
+dvm_pkg moby-engine docker-compose || dvm_pkg docker docker-compose-plugin
 
 sudo systemctl enable --now docker || true
 sudo usermod -aG docker "$DVM_USER" || true
