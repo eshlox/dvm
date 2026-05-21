@@ -186,6 +186,12 @@ grep -Fq -- '.dvm-project' "$DVM_TEST_GUEST/dvm-app.sh" || fail "VM setup script
 ok "sync starts VM and runs bootstrap plus setup scripts"
 
 : >"$DVM_TEST_LOG"
+run_dvm sh app >/dev/null
+grep -Fq -- 'getent passwd "$USER"' "$DVM_TEST_LOG" || fail "sh command does not resolve login shell"
+grep -Fq -- 'exec "$shell" -l' "$DVM_TEST_LOG" || fail "sh command does not exec login shell"
+ok "sh opens DVM_USER login shell in the project directory"
+
+: >"$DVM_TEST_LOG"
 run_dvm ssh app -- echo hi >/dev/null
 grep -Fxq -- "sudo" "$DVM_TEST_LOG" || fail "ssh command does not use sudo"
 grep -Fxq -- "-u" "$DVM_TEST_LOG" || fail "ssh command missing user flag"

@@ -238,7 +238,7 @@ cmd_sh() {
     run_guest_bootstrap
     local sh_script
     # shellcheck disable=SC2016
-    sh_script='cd "$1" 2>/dev/null || cd; exec bash -l'
+    sh_script='cd "$1" 2>/dev/null || cd; shell="$(getent passwd "$USER" | cut -d: -f7)"; [ -n "$shell" ] || shell=/bin/bash; exec "$shell" -l'
     exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
         "$sh_script" bash "$DVM_CODE_DIR"
 }
