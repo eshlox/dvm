@@ -12,11 +12,11 @@ bash scripts/check
 A security-focused v1.0 release should include:
 
 - a clean `bash scripts/check` run with ShellCheck installed
-- at least one real Lima/Fedora lifecycle validation outside the fake smoke test
+- at least one real Lima lifecycle validation outside the fake smoke test
 - an updated changelog
 - a signed Git tag
 - published checksums for release archives or installer artifacts
-- release notes that list any recipes that intentionally track upstream latest
+- release notes that describe notable command/config behavior
 
 ## Tagging
 
@@ -32,4 +32,4 @@ sha256sum dvm-v1.0.0.tar.gz > dvm-v1.0.0.tar.gz.sha256
 ```
 
 Do not call a release security-hardened unless the threat model, security
-standards, and recipe supply-chain notes match the shipped code.
+standards, and setup-script guidance match the shipped code.

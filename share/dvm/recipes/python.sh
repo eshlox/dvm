@@ -1,1 +1,0 @@
-dvm_pkg python3 python3-pip python3-virtualenv pipx

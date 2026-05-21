@@ -8,8 +8,7 @@ bash tests/smoke.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
     shellcheck -s bash --severity=warning -e SC1090,SC1091,SC2034,SC2154 \
-        bin/dvm install.sh tests/smoke.sh \
-        share/dvm/prelude.sh share/dvm/recipes/*.sh
+        bin/dvm install.sh tests/smoke.sh
 else
     printf 'check: shellcheck not found; skipping\n' >&2
 fi

@@ -6,16 +6,25 @@
 dvm new app
 ```
 
-Edit `~/.config/dvm/vms/app.sh`:
+Edit `~/.config/dvm/vms/app/config.sh`:
 
 ```bash
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_PACKAGES=(git tmux ripgrep)
-DVM_RECIPES=(zsh fzf starship node)
 ```
+
+Edit `~/.config/dvm/vms/app/setup.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+sudo dnf5 install -y git ripgrep fd-find tmux
+```
+
+Run:
 
 ```bash
 DVM_DRY_RUN=1 dvm sync app
@@ -25,48 +34,43 @@ dvm sh app
 
 ## Private repo
 
-Generate a VM-local key only for VMs that need Git SSH access:
+Create a VM-local key in the setup script or manually after first sync:
 
 ```bash
-DVM_RECIPES=(zsh fzf starship node ssh-keys)
-dvm sync app
-dvm sh app
-cat ~/.ssh/id_ed25519.pub
+sudo -u "$DVM_USER" -H bash -lc '
+  install -d -m 700 ~/.ssh
+  test -f ~/.ssh/id_ed25519 ||
+    ssh-keygen -t ed25519 -N "" -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519
+  cat ~/.ssh/id_ed25519.pub
+'
 ```
 
 Add the public key to GitHub/GitLab, then clone inside the VM:
 
 ```bash
+dvm sh app
 git clone git@github.com:me/app.git ~/code/app
 cd ~/code/app
 ```
 
-`DVM_GIT_REPO` is useful for public HTTPS repos or VMs that already have Git
-credentials:
+DVM does not copy host private keys into guests.
+
+## AI tools
+
+Install AI tools deliberately in your setup script. Pin versions when the tool
+manager supports it.
 
 ```bash
-DVM_GIT_REPO="https://github.com/me/app.git"
+sudo dnf5 install -y nodejs npm
+sudo -u "$DVM_USER" -H bash -lc '
+  npm install --global --prefix "$HOME/.local/npm" --ignore-scripts \
+    @openai/codex@0.132.0
+  grep -Fqx "export PATH=\"\$HOME/.local/npm/bin:\$PATH\"" ~/.bashrc ||
+    printf "%s\n" "export PATH=\"\$HOME/.local/npm/bin:\$PATH\"" >>~/.bashrc
+'
 ```
 
-## Codex and Claude
-
-```bash
-DVM_RECIPES=(zsh fzf starship node codex claude)
-dvm sync app
-dvm sh app
-codex
-claude
-```
-
-## Guest keys
-
-```bash
-DVM_RECIPES=(ssh-keys gpg-keys)
-dvm sync app
-```
-
-The generated keys stay inside the VM. `gpg-keys` configures Git signing only
-for an existing project repo.
+See [examples.md](examples.md) for more secure setup patterns.
 
 ## Services
 
@@ -76,66 +80,13 @@ Local ports:
 DVM_PORTS=(3000:3000)
 ```
 
-Tailscale:
-
-```bash
-DVM_RECIPES=(tailscale)
-DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
-DVM_TAILSCALE_AUTHKEY=tskey-... dvm sync app
-```
-
-Cloudflare Tunnel:
-
-```bash
-DVM_RECIPES=(cloudflared)
-DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
-DVM_CLOUDFLARED_TOKEN=... dvm sync app
-```
-
-## Project hooks
-
-Hooks are disabled by default. To run `$DVM_CODE_DIR/.dvm/sync.sh` as
-`DVM_USER`:
-
-```bash
-DVM_PROJECT_HOOK=1
-```
-
-Require repo-local opt-in:
-
-```bash
-DVM_PROJECT_HOOK_GIT_CONFIG=1
-git config dvm.hook true
-```
-
-Privileged hooks are strongly discouraged:
-
-```bash
-DVM_PROJECT_HOOK_PRIVILEGED=1
-```
-
-## Base VM
-
-Use a base only for slow, stable setup:
-
-```bash
-DVM_BASE_PACKAGES=(git ripgrep fd-find)
-DVM_BASE_RECIPES=(zsh fzf starship)
-dvm base build
-```
-
-Then opt in:
-
-```bash
-DVM_USE_BASE=1
-dvm sync app
-```
+For Tailscale, Cloudflare Tunnel, Docker, or other services, write the commands
+in your setup script and review the trust boundary. Docker group access is
+root-equivalent inside the guest.
 
 ## Debug
 
 ```bash
 DVM_DRY_RUN=1 dvm sync app
-dvm doctor
-dvm doctor --probe app
-dvm log app -f
+dvm ssh app -- sudo journalctl -f
 ```
