@@ -1,22 +1,20 @@
 # Future development
 
-Keep DVM small. Prefer docs or recipes over framework code.
+Keep DVM small. Prefer docs and examples over runtime framework code.
 
-Possible next safety work:
+Possible future work:
 
-- outbound network policy per VM or recipe
-- host-side secret broker instead of guest files
-- ephemeral agent VM workflow
-- sync/session logs
-- documented VM roles: `dev`, `agent`, `service`
-- direct Lima networking docs for users who need VM IP access
+- better setup script examples
+- documented single-VM, per-project-user workflow
+- optional real-Lima integration test
+- release checksums and signed tags
 
 Non-goals:
 
-- arbitrary guest distro support
+- plugin framework
 - default host project mounts
-- plugin/package-manager framework
+- package-manager abstraction
 - managing production secrets
 
-Rule: add safety features only when they reduce exposure without making DVM
-hard to audit.
+Rule: add core behavior only when it preserves DVM's simple security story and
+does not turn setup examples into runtime policy.

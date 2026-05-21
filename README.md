@@ -1,20 +1,22 @@
 # DVM
 
-DVM is a small Bash wrapper around Lima for disposable Fedora development VMs.
-It creates Lima instances, runs Bash recipes, and keeps project code inside the
-guest by default.
+DVM is a small Bash wrapper around Lima for disposable development VMs.
+
+It creates and starts Lima instances, keeps host files out of the guest by
+default, creates a development user, and runs user-owned setup scripts. Tool
+installation lives in those scripts.
 
 Defaults:
 
 - no host mounts
-- code under `/home/<user>/code/<vm>`
-- config in `~/.config/dvm`
-- built-in recipes in `share/dvm/recipes`
-- project hooks disabled
+- VM names map to `dvm-<name>`
+- code directory is `/home/<user>/code/<vm>`
+- config is in `~/.config/dvm`
+- setup scripts are permission checked before execution
 
 ## Install
 
-Requirements: Bash, Lima 2.0+, and `$VISUAL` or `$EDITOR`.
+Requirements: Bash and Lima 2.0+.
 
 ```bash
 git clone <repo-url> dvm
@@ -25,20 +27,37 @@ cd dvm
 ## Create a VM
 
 ```bash
-dvm config edit
 dvm new app
 ```
 
-Example `~/.config/dvm/vms/app.sh`:
+`dvm new app` writes:
+
+```text
+~/.config/dvm/vms/app.sh
+~/.config/dvm/vms/app.setup.sh
+```
+
+Example VM config:
 
 ```bash
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
-
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_PACKAGES=(git tmux ripgrep)
-DVM_RECIPES=(zsh fzf starship node)
+DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
+```
+
+Example setup script:
+
+```bash
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+sudo dnf5 install -y git ripgrep fd-find tmux
+
+sudo -u "$DVM_USER" -H bash -lc '
+  mkdir -p "$HOME/.local/bin"
+'
 ```
 
 Run it:
@@ -49,92 +68,18 @@ dvm sync app
 dvm sh app
 ```
 
-## Clone a private repo
+## Security model
 
-Private repos usually need a VM-local SSH key first:
+DVM protects the host mainly by using a VM and passing `--mount-none` when it
+creates instances. Setup scripts are trusted provisioning code that you own and
+review. DVM refuses config and setup scripts that are not owned by the current
+host user or are group/world writable.
 
-```bash
-# add to app.sh only when needed
-DVM_RECIPES=(zsh fzf starship node ssh-keys)
-```
+Use the docs for secure examples:
 
-```bash
-dvm sync app
-dvm sh app
-cat ~/.ssh/id_ed25519.pub
-```
-
-Add that public key to GitHub/GitLab, then clone inside the VM:
-
-```bash
-git clone git@github.com:me/app.git ~/code/app
-cd ~/code/app
-```
-
-`DVM_GIT_REPO` exists for public repos or VMs that already have Git credentials.
-Manual clone is the normal private-repo path.
-
-## Use Codex or Claude
-
-Add recipes:
-
-```bash
-DVM_RECIPES=(zsh fzf starship node codex claude)
-```
-
-Then:
-
-```bash
-dvm sync app
-dvm sh app
-codex
-claude
-```
-
-npm tools are pinned and installed under the guest user's `~/.local/npm`, not
-with root-global npm.
-
-## Common recipes
-
-```bash
-DVM_RECIPES=(zsh fzf starship node codex claude ssh-keys gpg-keys)
-```
-
-Useful built-ins:
-
-```text
-agent-user bat chezmoi cloudflared codex docker fzf gpg-keys node
-python ssh-keys starship tailscale zellij zsh
-```
-
-For dotfiles, add `chezmoi` and set `DVM_CHEZMOI_REPO`. Fresh VMs get chezmoi
-`data.role` from `DVM_CHEZMOI_ROLE`, defaulting to the VM name.
-
-List everything:
-
-```bash
-dvm recipes
-```
-
-## Secrets and services
-
-Secrets are passed from host env vars during sync, staged in private guest
-runtime files, then cleaned up.
-
-```bash
-DVM_RECIPES=(tailscale)
-DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
-```
-
-```bash
-DVM_TAILSCALE_AUTHKEY=tskey-... dvm sync app
-```
-
-For local web apps:
-
-```bash
-DVM_PORTS=(3000:3000 5173:5173)
-```
+- [docs/security-standards.md](docs/security-standards.md)
+- [docs/examples.md](docs/examples.md)
+- [docs/threat-model.md](docs/threat-model.md)
 
 ## Commands
 
@@ -143,26 +88,21 @@ dvm sync <vm> | --all
 dvm sh <vm>
 dvm ssh <vm> -- cmd...
 dvm cp src dst
-dvm log <vm> [-f] [args]
 dvm ls [--only-config] [<vm>]
 dvm stop <vm> | --all [--only-config]
 dvm rm <vm> --yes [--config]
 dvm new <vm>
-dvm edit <vm>
-dvm config edit | show
-dvm base build | rm
-dvm recipes
-dvm doctor [--probe <vm>]
 dvm version
 ```
 
 ## Docs
 
 - [docs/howto.md](docs/howto.md): common workflows
-- [docs/config.md](docs/config.md): config variables
-- [docs/recipes.md](docs/recipes.md): built-in recipes and helper API
+- [docs/config.md](docs/config.md): config variables and setup scripts
+- [docs/examples.md](docs/examples.md): secure setup script examples
 - [docs/commands.md](docs/commands.md): command reference
-- [docs/security-standards.md](docs/security-standards.md): trust boundaries
+- [docs/lima.md](docs/lima.md): Lima behavior and limits
+- [docs/security-standards.md](docs/security-standards.md): secure usage guide
 
 Development check:
 

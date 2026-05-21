@@ -6,10 +6,10 @@ Start with [README.md](../README.md).
 | --- | --- |
 | common workflows | [howto.md](howto.md) |
 | config variables | [config.md](config.md) |
-| recipes | [recipes.md](recipes.md) |
+| setup examples | [examples.md](examples.md) |
 | commands | [commands.md](commands.md) |
-| security model | [security-standards.md](security-standards.md) |
+| security guide | [security-standards.md](security-standards.md) |
+| threat model | [threat-model.md](threat-model.md) |
 | errors | [errors-and-recovery.md](errors-and-recovery.md) |
 | Lima notes | [lima.md](lima.md) |
-| threat model | [threat-model.md](threat-model.md) |
 | release process | [release.md](release.md) |

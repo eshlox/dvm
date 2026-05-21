@@ -3,102 +3,148 @@
 DVM is not a sandbox beyond Lima, the guest OS, Linux permissions, and the code
 you run inside the VM.
 
+Its main host-protection default is simple: create Lima VMs with no host mounts
+and keep project code inside the guest.
+
 ## Defaults
 
-- no host mounts
+- no host mounts in the DVM create path
 - project code lives inside the guest
-- only localhost-style Lima port forwards
-- secrets come from env vars, not config files
-- project hooks are disabled
-- recipes are Bash and should be reviewed
+- only explicit localhost-style port forwards
+- setup scripts must be current-user-owned and not group/world writable
+- no automatic repo clone
+- no secret broker
+
+## Trust boundaries
+
+| Boundary | Meaning |
+| --- | --- |
+| macOS host | DVM tries not to expose host files to guest code |
+| Lima VM | guest compromise should not directly read host home |
+| guest root | root inside the VM can read all guest users and projects |
+| `DVM_USER` | normal development user for commands and project work |
+| setup script | trusted host-owned provisioning code |
+| project code | untrusted unless you reviewed it |
+
+If setup scripts install malicious tools, DVM cannot make those tools safe.
+DVM can only make the boundary explicit and avoid mounting the host.
+
+## Setup script review
+
+Before running a setup script, check:
+
+- Does it use `set -Eeuo pipefail`?
+- Does it install exact versions where possible?
+- Does it avoid `curl | sh`?
+- Does it verify downloaded binaries with SHA-256?
+- Does it avoid copying host private keys into the guest?
+- Does it avoid adding `DVM_USER` to the Docker group unless needed?
+- Does it keep secrets out of config files?
+
+Use dry-run to confirm which scripts will run:
+
+```bash
+DVM_DRY_RUN=1 dvm sync app
+```
+
+## Packages
+
+Distro packages come from the guest OS repositories. That is usually acceptable
+for baseline tools such as Git, ripgrep, fd, tmux, or Helix.
+
+Example:
+
+```bash
+sudo dnf5 install -y git ripgrep fd-find tmux
+```
+
+For Ubuntu templates:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git ripgrep fd-find tmux
+```
+
+## npm and AI tools
+
+Prefer pinned versions and user-owned prefixes:
+
+```bash
+sudo -u "$DVM_USER" -H npm install --global \
+  --prefix "$HOME/.local/npm" \
+  --ignore-scripts \
+  @openai/codex@0.132.0
+```
+
+Some npm packages require lifecycle scripts. If you allow them, understand that
+the package runs code during install as the target user.
+
+Do not store API tokens in DVM config. Configure tool auth inside the VM, under
+the project VM or user that should own that credential.
+
+## Downloads
+
+Avoid live installers when possible. Prefer:
+
+1. HTTPS download.
+2. Pinned versioned URL.
+3. Published SHA-256 checked before install.
+4. Root-owned install destination.
+
+Pattern:
+
+```bash
+tmp="$(mktemp)"
+curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$tmp"
+printf '%s  %s\n' "$sha256" "$tmp" | sha256sum -c -
+sudo install -m 0755 "$tmp" /usr/local/bin/tool
+rm -f "$tmp"
+```
 
 ## Secrets
 
-List secret names:
+DVM does not stage secrets. Use deliberate external flows:
+
+- sign in to tools inside the VM
+- use VM-local SSH keys
+- use `sops` or `age` inside the VM
+- inject env vars for one command when needed
+- use a password manager CLI only after reviewing what it exposes
+
+Do not put long-lived secrets in `~/.config/dvm/*.sh`.
+
+## SSH and GPG keys
+
+Prefer VM-local keys:
 
 ```bash
-DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
+install -d -m 700 ~/.ssh
+ssh-keygen -t ed25519 -N "" -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519
 ```
 
-Run sync with values in the host environment:
+Add only the public key to GitHub/GitLab. Do not copy host private keys into the
+guest.
+
+## Docker
+
+Docker group access is root-equivalent inside the guest. If `DVM_USER` can talk
+to the Docker daemon, assume that user can become guest root and read all guest
+projects.
+
+Use a throwaway VM for Docker-heavy or untrusted work when isolation matters.
+
+## Throwaway VMs
+
+Use a separate disposable VM for:
+
+- unknown repositories
+- random installer scripts
+- root-heavy experiments
+- Docker-heavy projects
+- projects with especially sensitive credentials
+
+Remove it when done:
 
 ```bash
-DVM_TAILSCALE_AUTHKEY=tskey-... dvm sync app
+dvm rm risky --yes --config
 ```
-
-DVM stages each secret under randomized root-owned `/run/dvm-secrets` paths,
-exports only the path, and cleans secrets before clone/hooks. Tool-specific
-auth commands may still expose secrets inside the guest.
-
-## Project hooks
-
-Hooks are off by default:
-
-```bash
-DVM_PROJECT_HOOK=0
-```
-
-When enabled, `.dvm/sync.sh` runs as `DVM_USER`. Privileged hooks require:
-
-```bash
-DVM_PROJECT_HOOK_PRIVILEGED=1
-```
-
-Require repo-local opt-in with:
-
-```bash
-DVM_PROJECT_HOOK_GIT_CONFIG=1
-git config dvm.hook true
-```
-
-## Config
-
-Config and user recipes are Bash code. DVM rejects files or config directories
-that are not owned by the current user or are group/world writable.
-
-```bash
-chmod go-w ~/.config/dvm ~/.config/dvm/config.sh ~/.config/dvm/vms/app.sh
-```
-
-`DVM_ENV` rejects secrets and dangerous names such as `PATH`, `BASH_ENV`,
-`LD_*`, and `GIT_*`.
-
-## Recipes
-
-- npm tools are pinned and installed as `DVM_USER`
-- `curl | sh` is rejected in built-ins
-- direct binary recipes require HTTPS plus SHA-256
-- Fedora packages track configured Fedora repos
-
-## Agent user
-
-`agent-user` installs `dvm-agent`. With Bubblewrap, it hides the main home,
-binds the project directory and agent home, uses minimal `/dev`, and preserves
-network by default.
-
-If Bubblewrap is missing, `dvm-agent` refuses to run unless:
-
-```bash
-DVM_AGENT_ALLOW_UNSANDBOXED=1
-```
-
-Disable network for one run:
-
-```bash
-DVM_AGENT_NETWORK=0 dvm-agent codex
-```
-
-This is a guardrail, not a complete sandbox.
-
-Docker group access is root-equivalent inside the guest. `docker` conflicts
-with `agent-user`, and the agent user is not added to Docker unless:
-
-```bash
-DVM_DOCKER_AGENT_ACCESS=1
-```
-
-## Guest keys
-
-`ssh-keys` and `gpg-keys` create VM-local keys. DVM does not copy host private
-keys into guests. `gpg-keys` configures signing repo-locally only when a Git
-repo already exists.

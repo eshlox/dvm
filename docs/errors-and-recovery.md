@@ -2,48 +2,54 @@
 
 ## Stale lock
 
-Locks live in:
-
-```text
-~/.cache/dvm/<vm>.lock
-```
-
-Base operations use `~/.cache/dvm/<DVM_BASE_NAME>.lock`. If a process was
-killed and no `dvm` command is running, remove the stale lock:
+DVM uses `~/.cache/dvm/<vm>.lock` to avoid overlapping operations. If a process
+was interrupted and no DVM command is running, remove the stale directory:
 
 ```bash
-rm -r ~/.cache/dvm/app.lock
+rmdir ~/.cache/dvm/app.lock
 ```
 
-## Failed sync
+## Failed setup
 
-DVM does not roll back partial setup. Fix the package, recipe, config, or env
-var, then rerun:
-
-```bash
-dvm sync app
-```
-
-Inspect the VM:
-
-```bash
-dvm sh app
-dvm log app -f
-```
-
-Preview generated commands:
+DVM does not roll back partial setup. Fix the setup script and run sync again:
 
 ```bash
 DVM_DRY_RUN=1 dvm sync app
+dvm sync app
 ```
 
-## Secrets
-
-Secrets are cleaned by the guest script and host wrapper. After a hard
-interruption, stale guest files may remain under `/run/dvm-secrets`:
+Setup scripts should be idempotent. Use guards such as:
 
 ```bash
-sudo rm -r /run/dvm-secrets/<stale-dir>
+test -x /usr/local/bin/tool || sudo install -m 0755 tool /usr/local/bin/tool
 ```
 
-If a one-use service key was consumed, create a new one and rerun sync.
+## Missing setup script
+
+Configured setup script paths must be absolute and must exist:
+
+```bash
+DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
+```
+
+If DVM reports unsafe permissions:
+
+```bash
+chmod go-w ~/.config/dvm ~/.config/dvm/config.sh
+chmod go-w ~/.config/dvm/vms/app.sh ~/.config/dvm/vms/app.setup.sh
+```
+
+## Debug
+
+```bash
+dvm ls --only-config
+dvm ssh app -- true
+dvm ssh app -- sudo journalctl -f
+```
+
+Use Lima directly for deeper VM inspection:
+
+```bash
+limactl list
+limactl shell dvm-app
+```
