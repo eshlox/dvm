@@ -87,7 +87,7 @@ Helpers:
 | `dvm_pkg <pkg...>` | install Fedora packages |
 | `dvm_as_user <cmd...>` | run as `DVM_USER` |
 | `dvm_as_agent <cmd...>` | run as `DVM_AGENT_USER` |
-| `dvm_ensure_user <user>` | create a guest user |
+| `dvm_ensure_user <user>` | create a guest user without subordinate ID allocation |
 | `dvm_user_group <user>` | print primary group |
 | `dvm_secret <NAME>` | print staged secret path |
 | `dvm_has_secret <NAME>` | test staged secret availability |

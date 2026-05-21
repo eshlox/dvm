@@ -1,8 +1,6 @@
 dvm_pkg acl bubblewrap shadow-utils sudo
 
-if ! id "$DVM_AGENT_USER" >/dev/null 2>&1; then
-    sudo useradd -m -s /bin/bash "$DVM_AGENT_USER"
-fi
+dvm_ensure_user "$DVM_AGENT_USER"
 
 sudo setfacl -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 sudo setfacl -d -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true

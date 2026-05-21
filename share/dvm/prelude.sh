@@ -40,7 +40,7 @@ dvm_ensure_user() {
     local user="$1" home group
     if ! id "$user" >/dev/null 2>&1; then
         dvm_has useradd || dvm_pkg shadow-utils
-        sudo useradd -m -s /bin/bash "$user"
+        sudo useradd -m -s /bin/bash -K SUB_UID_COUNT=0 -K SUB_GID_COUNT=0 "$user"
     fi
     home="$(getent passwd "$user" | cut -d: -f6)"
     [ -n "$home" ] || dvm_die "user $user has no passwd entry"

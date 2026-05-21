@@ -147,6 +147,10 @@ DVM_RECIPES=(tailscale cloudflare)
 DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY DVM_CLOUDFLARED_TOKEN)
 EOF
 
+cat >"$DVM_CONFIG_DIR/vms/defaults-only.sh" <<'EOF'
+DVM_RECIPES=(bat)
+EOF
+
 run_dvm() {
     "$ROOT/bin/dvm" "$@"
 }
@@ -218,6 +222,9 @@ mkdir -p "$NO_GLOBAL/vms"
 printf 'DVM_RECIPES=(bat)\n' >"$NO_GLOBAL/vms/tiny.sh"
 DVM_CONFIG_DIR="$NO_GLOBAL" DVM_DRY_RUN=1 run_dvm sync tiny >/dev/null
 ok "sync works without a global config file"
+
+out="$(DVM_DRY_RUN=1 run_dvm sync defaults-only)"
+case "$out" in *"dvm_pkg git"*) ok "sync handles default packages without VM packages" ;; *) fail "sync missing default packages without VM packages" ;; esac
 
 run_dvm sync app
 grep -Fxq -- "--name" "$DVM_TEST_LOG" || fail "start argv missing --name"
@@ -384,6 +391,7 @@ DVM_DRY_RUN=1 run_dvm sync agent >"$TMP/agent.out"
 grep -Fq -- '/usr/local/bin/dvm-agent-shell' "$TMP/agent.out" || fail "agent shell helper missing"
 grep -Fq -- 'bwrap missing; refusing to run without guardrail' "$TMP/agent.out" || fail "agent runner does not fail closed"
 grep -Fq -- '--dev /dev' "$TMP/agent.out" || fail "agent runner does not use minimal dev"
+grep -Fq -- '-K SUB_UID_COUNT=0 -K SUB_GID_COUNT=0' "$TMP/agent.out" || fail "user creation does not disable subordinate ID allocation"
 ! grep -Fq -- '--dev-bind /dev /dev' "$TMP/agent.out" || fail "agent runner exposes full dev bind"
 # shellcheck disable=SC2016 # Match literal generated guest script line.
 [ "$(grep -Fc -- 'sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" "$DVM_CODE_DIR"' "$TMP/agent.out")" -eq 1 ] || fail "agent-user repeats code dir creation"

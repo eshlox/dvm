@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed `dvm sync` on Bash versions that treat empty arrays as unset under
+  nounset when a VM inherits default packages or recipes without defining its
+  own list.
+- `dvm_ensure_user` and the `agent-user` recipe now create guest users without
+  allocating subordinate UID/GID ranges, avoiding sync failures on templates
+  where no subordinate ID range is available.
 - Shortened the README and docs around task-first workflows, and removed
   low-value code comments while keeping ShellCheck directives and non-obvious
   safety metadata.
