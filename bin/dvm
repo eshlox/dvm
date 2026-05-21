@@ -306,6 +306,7 @@ guest_env_exports() {
     local n emitted=' ' source
     local builtins=(
         DVM_CHEZMOI_REPO
+        DVM_CHEZMOI_ROLE
         DVM_TAILSCALE_HOSTNAME
         DVM_DOCKER_AGENT_ACCESS
         DVM_CODEX_VERSION
@@ -727,6 +728,7 @@ DVM_RECIPES=(zsh fzf)
 # DVM_GIT_BRANCH=main
 
 # DVM_CHEZMOI_REPO="https://github.com/me/dotfiles.git"
+# DVM_CHEZMOI_ROLE="\$DVM_NAME"
 
 # DVM_USE_BASE=1
 

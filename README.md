@@ -107,6 +107,9 @@ agent-user bat chezmoi cloudflared codex docker fzf gpg-keys node
 python ssh-keys starship tailscale zellij zsh
 ```
 
+For dotfiles, add `chezmoi` and set `DVM_CHEZMOI_REPO`. Fresh VMs get chezmoi
+`data.role` from `DVM_CHEZMOI_ROLE`, defaulting to the VM name.
+
 List everything:
 
 ```bash

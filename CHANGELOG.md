@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The `chezmoi` recipe now creates an initial config with `data.role`, using
+  `DVM_CHEZMOI_ROLE` or the VM name, so dotfiles templates can branch by role
+  during first apply.
 - Fixed the `agent-user` recipe on guests that deny root writes to user-owned
   temp files in `/tmp`.
 - Fixed `dvm sync` on Bash versions that treat empty arrays as unset under

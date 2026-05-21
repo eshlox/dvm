@@ -84,6 +84,7 @@ Recipes read secrets with `dvm_secret NAME`. Secret files are randomized under
 | Variable | Meaning |
 | --- | --- |
 | `DVM_CHEZMOI_REPO` | repo for `chezmoi` |
+| `DVM_CHEZMOI_ROLE` | initial chezmoi `data.role`; defaults to VM name |
 | `DVM_TAILSCALE_HOSTNAME` | hostname for `tailscale up` |
 | `DVM_DOCKER_AGENT_ACCESS` | add agent user to Docker group when `1` |
 | `DVM_CODEX_VERSION` | Codex npm version |

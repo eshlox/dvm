@@ -39,6 +39,10 @@ Order matters. Repeated recipes are de-duplicated after aliases are resolved.
 Aliases: `ai-user`/`ai-agent` -> `agent-user`, `cloudflare` ->
 `cloudflared`, `ssh-key` -> `ssh-keys`, `gpg-key` -> `gpg-keys`.
 
+`chezmoi` clones `DVM_CHEZMOI_REPO` when set and applies it as `DVM_USER`.
+On first setup it writes `~/.config/chezmoi/chezmoi.json` with `data.role` set
+to `DVM_CHEZMOI_ROLE`, or to `DVM_NAME` when unset.
+
 ## Supply chain
 
 npm recipes install exact versions under `~/.local/npm` as `DVM_USER`.

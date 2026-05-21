@@ -264,9 +264,12 @@ ok "service recipes and secrets work"
 cat >"$DVM_CONFIG_DIR/vms/chezmoi.sh" <<'EOF'
 DVM_RECIPES=(chezmoi ssh-keys gpg-keys)
 DVM_CHEZMOI_REPO="https://example.invalid/dotfiles.git"
+DVM_CHEZMOI_ROLE=dev
 EOF
 DVM_DRY_RUN=1 run_dvm sync chezmoi >"$TMP/chezmoi.out"
 grep -Fq -- "export DVM_CHEZMOI_REPO=https://example.invalid/dotfiles.git" "$TMP/chezmoi.out" || fail "chezmoi repo config not exported"
+grep -Fq -- "export DVM_CHEZMOI_ROLE=dev" "$TMP/chezmoi.out" || fail "chezmoi role config not exported"
+grep -Fq -- '"role": "%s"' "$TMP/chezmoi.out" || fail "chezmoi role config not rendered"
 chezmoi_guard="[ ! -d \"\$home/.local/share/chezmoi\" ]"
 grep -Fq -- "$chezmoi_guard" "$TMP/chezmoi.out" || fail "chezmoi init guard missing"
 grep -Fq -- 'ssh-keygen' "$TMP/chezmoi.out" || fail "ssh key recipe missing"
