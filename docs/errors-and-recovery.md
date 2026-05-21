@@ -8,9 +8,11 @@ Mutating commands create:
 ~/.cache/dvm/<vm>.lock
 ```
 
-DVM removes the lock on normal exit. If the host crashes or the process is
-killed hard, the directory can remain. When you are sure no `dvm` process is
-running, remove it:
+DVM also uses `~/.cache/dvm/<DVM_BASE_NAME>.lock` for `dvm base build` and
+`dvm base rm`; new clones from a base refuse to start while that base lock is
+present. DVM removes locks on normal exit. If the host crashes or the process
+is killed hard, the directory can remain. When you are sure no `dvm` process
+is running, remove it:
 
 ```bash
 rm -r ~/.cache/dvm/app.lock
@@ -59,3 +61,8 @@ DVM_TAILSCALE_AUTHKEY=tskey-... dvm sync demo
 If a single-use key was already consumed, create a new key and re-run sync.
 When a secret is staged and the service authentication command fails, `dvm sync`
 fails so the broken setup is visible.
+
+Staged secrets live under randomized `/run/dvm-secrets` paths. DVM renders a
+guest cleanup trap and also attempts host-side cleanup after the guest script
+exits. If a VM is interrupted mid-sync, inspect `/run/dvm-secrets` inside that
+guest and remove stale files with `sudo rm -r /run/dvm-secrets/<stale-dir>`.

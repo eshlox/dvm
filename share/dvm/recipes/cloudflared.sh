@@ -10,8 +10,8 @@ dvm_pkg cloudflared
 
 if systemctl list-unit-files cloudflared.service --no-legend 2>/dev/null | grep -q '^cloudflared.service'; then
     printf 'dvm recipe cloudflared: service already installed\n'
-elif [ -r /tmp/dvm-secret-DVM_CLOUDFLARED_TOKEN ]; then
-    sudo cloudflared service install "$(cat /tmp/dvm-secret-DVM_CLOUDFLARED_TOKEN)"
+elif dvm_has_secret DVM_CLOUDFLARED_TOKEN; then
+    sudo cloudflared service install "$(sudo cat "$(dvm_secret DVM_CLOUDFLARED_TOKEN)")"
 else
     printf 'dvm recipe cloudflared: no tunnel token staged; skipping service install\n'
 fi

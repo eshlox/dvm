@@ -1,2 +1,2 @@
 dvm_pkg nodejs npm
-sudo npm install -g @openai/codex
+dvm_npm_global @openai/codex "${DVM_CODEX_VERSION:-0.132.0}" ignore-scripts

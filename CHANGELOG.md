@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- Hardened project hooks: `.dvm/sync.sh` now runs as `DVM_USER` by default,
+  `DVM_PROJECT_HOOK=0` disables hooks, and
+  `DVM_PROJECT_HOOK_PRIVILEGED=1` is required for provisioning-privileged
+  hooks with dry-run warning visibility. `DVM_PROJECT_HOOK_GIT_CONFIG=1`
+  requires repo-local `git config dvm.hook true` before hooks run.
+- Staged secrets now use randomized root-owned `/run/dvm-secrets` paths with
+  guest-side cleanup traps and host-side cleanup, and service recipes now use
+  `dvm_secret`/`dvm_has_secret` instead of predictable `/tmp` paths.
+- Built-in npm recipes now install exact package versions under a user-owned
+  npm prefix instead of root-global npm: Codex `0.132.0`, Claude Code
+  `2.1.146`, and opencode `1.15.6`.
+- Removed live `curl | sh` installers from built-in recipes. `ollama` and
+  `mistral` now fail closed unless a pinned HTTPS URL and SHA-256 checksum are
+  supplied, and `dvm_download_verified` rejects non-HTTPS URLs.
+- Tightened `agent-user`: `dvm-agent` fails closed when Bubblewrap is missing
+  unless `DVM_AGENT_ALLOW_UNSANDBOXED=1` is set, uses Bubblewrap's minimal
+  `--dev /dev`, validates sudoers with `visudo`, and is documented as a
+  guardrail.
+- The Docker recipe no longer adds `DVM_AGENT_USER` to the Docker group unless
+  `DVM_DOCKER_AGENT_ACCESS=1` is set, and recipe conflict metadata now rejects
+  `docker` plus `agent-user` by default.
+- Added recipe alias canonicalization, recipe de-duplication, and
+  `DVM_ALLOW_RECIPE_CONFLICTS` for reviewed conflict overrides.
+- DVM now rejects unsafe config and user recipe permissions before sourcing or
+  including them, and blocks dangerous `DVM_ENV` names such as `PATH`,
+  `BASH_ENV`, `LD_*`, and `GIT_*`.
+- `dvm base build` and `dvm base rm` now use the base lock, and sync refuses to
+  clone a missing VM from a base while that base is locked.
+- `dvm edit` now validates VM names; `dvm rm` warns when a VM config remains
+  and supports `--config`; `dvm ls` and `dvm stop --all` support
+  `--only-config`; and `dvm doctor --probe <vm>` checks VM reachability.
+- `dvm new` now writes a conservative starter recipe set, leaving AI/npm tools
+  as commented examples.
+- Tailscale now uses `--auth-key=file:<path>` and package `gpgcheck=1`.
+- The `gpg-keys` recipe now configures Git signing repo-locally when a project
+  repo exists instead of setting global Git signing.
+- `scripts/check` and CI now ShellCheck the guest prelude and built-in recipes,
+  and CI now runs on `ubuntu-24.04` through the same local check entrypoint.
+- Added [docs/threat-model.md](docs/threat-model.md) and
+  [docs/release.md](docs/release.md) for the explicit threat model and signed
+  release/checksum process.
+- Added `security-plan.md` with strict security review findings and the
+  hardening backlog for privileged hooks, recipe supply chain, agent isolation,
+  secret staging, config permissions, base locking, environment passthrough,
+  recipe ordering, release process, and validation gaps.
 - DVM now ensures `DVM_USER` exists in the guest before staging secrets or
   creating the project directory.
 - Added `DVM_ENV` for explicit non-secret variable passthrough into guest
@@ -15,7 +60,7 @@
   of treating the instance list as empty.
 - `dvm sh` and `dvm ssh` now run as `DVM_USER` and prefer the project directory,
   making the normal in-VM AI workflow use the same user state as development.
-- Added `dvm-agent-shell` for an interactive restricted agent environment and
+- Added `dvm-agent-shell` for an interactive guardrail agent environment and
   documented trusted-dev AI mode for running AI tools directly as `DVM_USER`
   inside project VMs with scoped keys.
 - Added `dvm version` for scripts and agent tooling.

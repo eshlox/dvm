@@ -1,2 +1,2 @@
 dvm_pkg nodejs npm
-sudo npm install -g opencode-ai
+dvm_npm_global opencode-ai "${DVM_OPENCODE_VERSION:-1.15.6}" allow-scripts

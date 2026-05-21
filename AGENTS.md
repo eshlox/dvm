@@ -24,6 +24,9 @@ Recipe helpers available inside guest recipes:
 - `dvm_ensure_user <user>` creates a guest user when missing.
 - `dvm_user_group <user>` prints a user's primary group.
 - `dvm_secret <NAME>` prints the staged secret path or fails.
+- `dvm_has_secret <NAME>` tests whether a staged secret path is available.
 - `dvm_append_once <file> <line>` appends a user-owned line once.
 - `dvm_download_verified <name> <url> <sha256> <dest>` installs a verified
   downloaded binary.
+- `dvm_npm_global <package> <version> <script-policy>` installs a pinned npm
+  package under a user-owned prefix.

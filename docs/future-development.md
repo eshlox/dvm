@@ -15,9 +15,9 @@ strengthen that boundary without turning DVM into a large framework.
 2. Secret broker instead of guest secret files.
 
    Keep long-lived secrets on the host and expose only short-lived, scoped
-   credentials or proxied operations to the VM. The current `DVM_SECRETS`
-   staging is simple and auditable, but a broker would reduce secret lifetime
-   inside compromised guests.
+   credentials or proxied operations to the VM. Current `DVM_SECRETS` staging
+   uses private randomized guest paths and cleanup traps, but a broker would
+   further reduce secret lifetime inside compromised guests.
 
 3. Ephemeral agent mode.
 

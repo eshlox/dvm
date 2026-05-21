@@ -24,7 +24,26 @@
 
 # Optional non-secret variable names exported into the guest script for recipes.
 # Do not list tokens or passwords here; use DVM_SECRETS in per-VM config.
+# Dangerous names such as PATH, BASH_ENV, LD_*, and GIT_* are rejected.
 # DVM_ENV=(MY_TOOL_CHANNEL)
+
+# Project hooks run as DVM_USER by default. Leave privileged hooks disabled
+# unless you fully trust the project repository.
+# DVM_PROJECT_HOOK=1
+# DVM_PROJECT_HOOK_PRIVILEGED=0
+# Require repo-local `git config dvm.hook true` before a hook runs.
+# DVM_PROJECT_HOOK_GIT_CONFIG=0
+
+# Recipe conflicts are rejected by default. Set only after reviewing the
+# conflict warning, for example when intentionally combining agent-user and
+# Docker with a custom policy.
+# DVM_ALLOW_RECIPE_CONFLICTS=0
+
+# Pinned npm recipe versions. Built-in npm recipes install under the guest
+# user's ~/.local/npm prefix instead of root-global npm.
+# DVM_CODEX_VERSION=0.132.0
+# DVM_CLAUDE_CODE_VERSION=2.1.146
+# DVM_OPENCODE_VERSION=1.15.6
 
 # Optional base VM reuse. With DVM_USE_BASE=1, `dvm sync <vm>` clones from
 # dvm-<DVM_BASE_NAME> instead of starting from the template.

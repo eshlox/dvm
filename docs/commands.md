@@ -8,15 +8,15 @@ dvm sh <vm>                 interactive shell as DVM_USER
 dvm ssh <vm> -- cmd...      non-interactive command as DVM_USER
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f] [args]    guest journalctl
-dvm ls [<vm>]               list DVM Lima instances
-dvm stop <vm> | --all       stop running VMs
-dvm rm <vm> --yes           delete a Lima instance
+dvm ls [--only-config] [<vm>] list DVM Lima instances
+dvm stop <vm> | --all [--only-config] stop running VMs
+dvm rm <vm> --yes [--config] delete a Lima instance
 dvm new <vm>                write stub config and open editor
 dvm edit <vm>               edit per-VM config
 dvm config edit | show      edit/show global config
 dvm base build | rm         optional reusable base VM
 dvm recipes                 list built-in and user recipes
-dvm doctor                  check Lima and DVM paths
+dvm doctor [--probe <vm>]   check Lima and DVM paths
 dvm version                 print DVM version
 ```
 
@@ -33,13 +33,19 @@ dvm version                 print DVM version
 6. runs the guest script: packages and recipes
 7. removes staged secrets before project-controlled code runs
 8. optionally clones `DVM_GIT_REPO`, then runs `$DVM_CODE_DIR/.dvm/sync.sh`
-   if present
+   as `DVM_USER` when present
 
 `DVM_DRY_RUN=1 dvm sync <vm>` prints the Lima argv and generated guest script
 without contacting Lima.
 
 `dvm sync --all` syncs every `~/.config/dvm/vms/*.sh` config in filename
 order and exits non-zero if any VM fails.
+
+Project hooks can be disabled with `DVM_PROJECT_HOOK=0`. Privileged project
+hooks require `DVM_PROJECT_HOOK_PRIVILEGED=1`, and dry-run output includes the
+warning that project-controlled code will run in the provisioning context.
+Set `DVM_PROJECT_HOOK_GIT_CONFIG=1` to require repo-local
+`git config dvm.hook true` before any project hook runs.
 
 ## Shell And Copy
 
@@ -51,11 +57,15 @@ preferring `$DVM_CODE_DIR` as the working directory. The name is kept for muscle
 memory; it is not raw `ssh`.
 
 `dvm cp ./file app:/tmp/file` and `dvm cp app:/tmp/file ./file` copy between
-host and guest. Cross-VM copy is not supported.
+host and guest. Cross-VM copy is not supported. Any path matching
+`^[a-z][a-z0-9-]*:.*$` is treated as a VM path; use `./tmp:notes.txt` when a
+local filename contains a colon.
 
 ## Logs And Status
 
-`dvm ls` lists DVM-created Lima instances by reading `limactl list`.
+`dvm ls` lists Lima instances whose names start with `dvm-`. That prefix is
+reserved for DVM-managed instances. `dvm ls --only-config` intersects the Lima
+list with `~/.config/dvm/vms/*.sh` and hides unmanaged `dvm-*` instances.
 
 `dvm log <vm> [-f] [journalctl args...]` runs guest `journalctl`.
 
@@ -63,10 +73,12 @@ host and guest. Cross-VM copy is not supported.
 
 `dvm stop <vm>` stops the Lima instance and exits successfully when the
 instance is already missing. `dvm stop --all` stops every `dvm-*` instance and
-continues after per-VM failures.
+continues after per-VM failures. Use `dvm stop --all --only-config` to skip
+unmanaged instances that merely share the `dvm-` prefix.
 
 `dvm rm <vm> --yes` force-stops and deletes the Lima instance. It does not
-need the VM config file to still exist.
+need the VM config file to still exist. When the config remains, DVM prints a
+warning; add `--config` to remove `~/.config/dvm/vms/<vm>.sh` too.
 
 ## Config Editing
 
@@ -93,7 +105,11 @@ script without contacting Lima.
 
 `dvm doctor` checks Lima availability and version, `$VISUAL`/`$EDITOR`, Git,
 the built-in recipe directory, and VM config count. Missing Git is reported as
-a warning because only `DVM_GIT_REPO` and some recipes need it.
+a warning because only `DVM_GIT_REPO` and some recipes need it. Parse failures
+include the raw Lima version string.
+
+`dvm doctor --probe <vm>` also runs `limactl shell dvm-<vm> true` to confirm
+that the VM is reachable.
 
 ## Version
 

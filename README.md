@@ -58,7 +58,7 @@ DVM_DISK=60
 
 DVM_PORTS=(3000:3000 5173:5173)
 DVM_PACKAGES=(git tmux ripgrep)
-DVM_RECIPES=(zsh fzf starship node codex)
+DVM_RECIPES=(zsh fzf starship node)
 
 # Optional: clone code into /home/developer/code/app on first sync.
 DVM_GIT_REPO="git@github.com:me/app.git"
@@ -87,7 +87,8 @@ Examples:
 # Global defaults for every VM.
 DVM_DEFAULT_RECIPES=(zsh fzf starship)
 
-# Extra per-VM tools.
+# Extra per-VM tools. AI/npm tools are pinned and user-local, but still run
+# third-party package code.
 DVM_RECIPES=(node codex claude opencode docker)
 
 # Plain package installs do not need recipes.
@@ -115,7 +116,8 @@ Use Tailscale or Cloudflare Tunnel recipes when other people need access.
 Lima's short `--port-forward host:guest` form is localhost-oriented; for
 direct LAN exposure, configure Lima networking/YAML outside DVM.
 
-Service secrets are staged from host environment variables into guest temp files:
+Service secrets are staged from host environment variables into private,
+randomized guest runtime files:
 
 ```bash
 # ~/.config/dvm/vms/demo.sh
@@ -147,13 +149,19 @@ and project-scoped SSH/signing keys you use. Keep those keys scoped to the
 project, do not forward broad host SSH/GPG agents into the VM, and do not store
 production credentials there.
 
-When you want a more restricted mode, add `agent-user` and use the wrapper:
+When you want a guardrail mode that hides the main user home, add `agent-user`
+and use the wrapper:
 
 ```bash
 DVM_RECIPES=(agent-user codex claude opencode)
 dvm-agent claude
 dvm-agent-shell
 ```
+
+`dvm-agent` requires Bubblewrap by default and refuses the plain `sudo`
+fallback unless `DVM_AGENT_ALLOW_UNSANDBOXED=1` is set. The Docker recipe does
+not add `DVM_AGENT_USER` to the Docker group unless you explicitly set
+`DVM_DOCKER_AGENT_ACCESS=1`.
 
 ## Commands
 
@@ -163,19 +171,20 @@ dvm sh <vm>                 interactive shell as DVM_USER
 dvm ssh <vm> -- cmd...      non-interactive command as DVM_USER
 dvm cp src dst              copy; one side may be vm:path
 dvm log <vm> [-f] [args]    guest journalctl
-dvm ls [<vm>]               list DVM Lima instances
-dvm stop <vm> | --all       stop running VMs
-dvm rm <vm> --yes           delete a Lima instance
+dvm ls [--only-config] [<vm>] list DVM Lima instances
+dvm stop <vm> | --all [--only-config] stop running VMs
+dvm rm <vm> --yes [--config] delete a Lima instance
 dvm new <vm>                write stub config and open editor
 dvm edit <vm>               edit per-VM config
 dvm config edit | show      edit/show global config
 dvm base build | rm         optional reusable base VM
 dvm recipes                 list built-in and user recipes
-dvm doctor                  check Lima and DVM paths
+dvm doctor [--probe <vm>]   check Lima and DVM paths
 dvm version                 print DVM version
 ```
 
-See `docs/` for command, config, recipe, Lima, and security details.
+See `docs/` for command, config, recipe, Lima, threat model, and security
+details.
 Future safety ideas are tracked in
 [docs/future-development.md](docs/future-development.md).
 

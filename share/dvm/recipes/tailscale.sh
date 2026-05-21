@@ -5,16 +5,17 @@ baseurl=https://pkgs.tailscale.com/stable/fedora/$basearch
 enabled=1
 type=rpm
 repo_gpgcheck=1
-gpgcheck=0
+gpgcheck=1
 gpgkey=https://pkgs.tailscale.com/stable/fedora/repo.gpg
 EOF
 dvm_pkg tailscale
 
+# systemd can fail in stripped-down guests, but the package install is still useful.
 sudo systemctl enable --now tailscaled || true
 if sudo tailscale status >/dev/null 2>&1; then
     printf 'dvm recipe tailscale: already authenticated\n'
-elif [ -r /tmp/dvm-secret-DVM_TAILSCALE_AUTHKEY ]; then
-    sudo tailscale up --auth-key "$(cat /tmp/dvm-secret-DVM_TAILSCALE_AUTHKEY)" \
+elif dvm_has_secret DVM_TAILSCALE_AUTHKEY; then
+    sudo tailscale up --auth-key="file:$(dvm_secret DVM_TAILSCALE_AUTHKEY)" \
         --hostname "${DVM_TAILSCALE_HOSTNAME:-$DVM_NAME}"
 else
     printf 'dvm recipe tailscale: no auth key staged; skipping tailscale up\n'

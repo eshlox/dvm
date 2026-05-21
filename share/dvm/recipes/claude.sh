@@ -1,2 +1,2 @@
 dvm_pkg nodejs npm
-sudo npm install -g @anthropic-ai/claude-code
+dvm_npm_global @anthropic-ai/claude-code "${DVM_CLAUDE_CODE_VERSION:-2.1.146}" allow-scripts

@@ -1,4 +1,4 @@
-set -euo pipefail
+set -Eeuo pipefail
 
 dvm_die() {
     printf 'dvm guest: %s\n' "$*" >&2
@@ -57,9 +57,29 @@ dvm_agent_home() {
 }
 
 dvm_secret() {
-    local name="$1" path="/tmp/dvm-secret-$1"
-    [ -r "$path" ] || dvm_recipe_die "${DVM_RECIPE:-secret}" "secret not staged: $name"
+    local name="$1" var path
+    case "$name" in
+        ''|[0-9]*|*[!A-Za-z0-9_]*)
+            dvm_recipe_die "${DVM_RECIPE:-secret}" "invalid secret name: $name"
+            ;;
+    esac
+    var="DVM_SECRET_PATH_$name"
+    path="${!var:-}"
+    [ -n "$path" ] || dvm_recipe_die "${DVM_RECIPE:-secret}" "secret not staged: $name"
+    sudo test -r "$path" || dvm_recipe_die "${DVM_RECIPE:-secret}" "secret not readable: $name"
     printf '%s\n' "$path"
+}
+
+dvm_has_secret() {
+    local name="$1" var path
+    case "$name" in
+        ''|[0-9]*|*[!A-Za-z0-9_]*)
+            return 1
+            ;;
+    esac
+    var="DVM_SECRET_PATH_$name"
+    path="${!var:-}"
+    [ -n "$path" ] && sudo test -r "$path"
 }
 
 dvm_append_once() {
@@ -73,10 +93,49 @@ dvm_append_once() {
 
 dvm_download_verified() {
     local name="$1" url="$2" sha256="$3" out="$4" tmp
+    case "$url" in
+        https://*) ;;
+        *) dvm_recipe_die "${DVM_RECIPE:-download}" "$name download URL must use https" ;;
+    esac
     tmp="$(mktemp)"
-    curl -fsSL "$url" -o "$tmp"
-    printf '%s  %s\n' "$sha256" "$tmp" | sha256sum -c -
+    if ! curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$tmp"; then
+        rm -f "$tmp"
+        dvm_recipe_die "${DVM_RECIPE:-download}" "failed to download $name"
+    fi
+    if ! printf '%s  %s\n' "$sha256" "$tmp" | sha256sum -c -; then
+        rm -f "$tmp"
+        dvm_recipe_die "${DVM_RECIPE:-download}" "checksum failed for $name"
+    fi
+    sudo install -d -m 0755 "$(dirname "$out")"
     sudo install -m 0755 "$tmp" "$out"
     rm -f "$tmp"
     printf 'installed %s -> %s\n' "$name" "$out"
+}
+
+dvm_npm_global() {
+    local package="$1" version="$2" scripts="${3:-ignore-scripts}" home default_prefix prefix script_flag
+    [ -n "$package" ] || dvm_recipe_die "${DVM_RECIPE:-npm}" "missing npm package name"
+    [ -n "$version" ] || dvm_recipe_die "${DVM_RECIPE:-npm}" "missing pinned npm package version for $package"
+    case "$scripts" in
+        ignore-scripts) script_flag=--ignore-scripts ;;
+        allow-scripts)
+            script_flag=--foreground-scripts
+            dvm_recipe_warn "${DVM_RECIPE:-npm}" "$package requires npm lifecycle scripts; running them as $DVM_USER"
+            ;;
+        *) dvm_recipe_die "${DVM_RECIPE:-npm}" "unknown npm script policy: $scripts" ;;
+    esac
+    home="$(dvm_user_home)"
+    default_prefix="$home/.local/npm"
+    prefix="${DVM_NPM_PREFIX:-$default_prefix}"
+    sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" "$prefix"
+    dvm_as_user npm install --global --prefix "$prefix" "$script_flag" "$package@$version"
+    case "$prefix" in
+        "$default_prefix")
+            dvm_append_once "$home/.bashrc" 'export PATH="$HOME/.local/npm/bin:$PATH"'
+            dvm_append_once "$home/.zshrc" 'export PATH="$HOME/.local/npm/bin:$PATH"'
+            ;;
+        *)
+            dvm_recipe_warn "${DVM_RECIPE:-npm}" "custom DVM_NPM_PREFIX is not added to PATH automatically: $prefix"
+            ;;
+    esac
 }

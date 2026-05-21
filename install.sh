@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install dvm by symlinking bin/dvm into PREFIX. No copy. `git pull` is the update.
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${PREFIX:-$HOME/.local/bin}"

@@ -1,4 +1,4 @@
-dvm_pkg gnupg2
+dvm_pkg gnupg2 git
 
 home="$(dvm_user_home)"
 sudo install -d -o "$DVM_USER" -g "$(dvm_user_group "$DVM_USER")" -m 0700 "$home/.gnupg"
@@ -12,9 +12,14 @@ fi
 
 key_id="$(dvm_as_user gpg --list-secret-keys --with-colons | awk -F: '/^sec/ { print $5; exit }')"
 if [ -n "$key_id" ]; then
-    dvm_as_user git config --global user.signingkey "$key_id" || true
-    dvm_as_user git config --global commit.gpgsign true || true
+    if [ -d "$DVM_CODE_DIR/.git" ]; then
+        dvm_as_user git -C "$DVM_CODE_DIR" config user.signingkey "$key_id"
+        dvm_as_user git -C "$DVM_CODE_DIR" config commit.gpgsign true
+    else
+        printf 'dvm recipe gpg-keys: no project Git repo yet; not enabling global signing\n'
+    fi
     if [ "$created" = 1 ]; then
+        # Printing the public key is a convenience; key generation already succeeded.
         dvm_as_user gpg --armor --export "$key_id" || true
     fi
 fi
