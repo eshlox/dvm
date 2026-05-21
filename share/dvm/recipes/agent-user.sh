@@ -7,8 +7,7 @@ sudo setfacl -d -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 
 sudo install -d -m 0750 /etc/sudoers.d
 sudoers_tmp="$(mktemp)"
-printf '%s ALL=(%s) NOPASSWD: ALL\n' "$DVM_USER" "$DVM_AGENT_USER" \
-    | sudo tee "$sudoers_tmp" >/dev/null
+printf '%s ALL=(%s) NOPASSWD: ALL\n' "$DVM_USER" "$DVM_AGENT_USER" >"$sudoers_tmp"
 if ! sudo visudo -cf "$sudoers_tmp" >/dev/null; then
     rm -f "$sudoers_tmp"
     dvm_recipe_die "$DVM_RECIPE" "generated sudoers rule failed validation"

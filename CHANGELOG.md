@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed the `agent-user` recipe on guests that deny root writes to user-owned
+  temp files in `/tmp`.
 - Fixed `dvm sync` on Bash versions that treat empty arrays as unset under
   nounset when a VM inherits default packages or recipes without defining its
   own list.
