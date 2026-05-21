@@ -2,8 +2,11 @@
 
 ## Unreleased
 
-- Hardened project hooks: `.dvm/sync.sh` now runs as `DVM_USER` by default,
-  `DVM_PROJECT_HOOK=0` disables hooks, and
+- Shortened the README and docs around task-first workflows, and removed
+  low-value code comments while keeping ShellCheck directives and non-obvious
+  safety metadata.
+- Hardened project hooks: `.dvm/sync.sh` is now disabled by default,
+  `DVM_PROJECT_HOOK=1` enables hooks as `DVM_USER`, and
   `DVM_PROJECT_HOOK_PRIVILEGED=1` is required for provisioning-privileged
   hooks with dry-run warning visibility. `DVM_PROJECT_HOOK_GIT_CONFIG=1`
   requires repo-local `git config dvm.hook true` before hooks run.
@@ -34,7 +37,9 @@
   and supports `--config`; `dvm ls` and `dvm stop --all` support
   `--only-config`; and `dvm doctor --probe <vm>` checks VM reachability.
 - `dvm new` now writes a conservative starter recipe set, leaving AI/npm tools
-  as commented examples.
+  as commented examples, and primary docs now recommend creating VM-local SSH
+  keys before manually cloning private repos instead of using automatic
+  first-clone config on new private VMs.
 - Tailscale now uses `--auth-key=file:<path>` and package `gpgcheck=1`.
 - The `gpg-keys` recipe now configures Git signing repo-locally when a project
   repo exists instead of setting global Git signing.

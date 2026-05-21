@@ -2,97 +2,58 @@
 
 ## Supported Versions
 
-Until DVM has tagged releases, only the current `main` branch is maintained.
-After the first release, only the latest published release will be supported
-for security fixes.
+Until tagged releases exist, only `main` is maintained.
 
-## Reporting A Vulnerability
+## Report A Vulnerability
 
-Use GitHub private vulnerability reporting for this repository. Please do not
-open a public issue with exploit details, secret material, or a working proof
-of concept.
+Use GitHub private vulnerability reporting. Do not open public issues with
+exploit details, secrets, or proof-of-concept code.
 
-If private vulnerability reporting is not available, open a public issue
-requesting a private disclosure channel and include no technical details.
+## Model
 
-## Security Model
-
-DVM is a tiny wrapper around Lima plus Bash recipes. It does not provide
-stronger isolation than Lima, QEMU, macOS virtualization, SSH, Linux
-permissions, or the packages and scripts users run inside their VMs.
+DVM is a Lima wrapper plus Bash recipes. It is not stronger than Lima, the
+guest OS, Linux permissions, SSH, or the tools you run inside the VM.
 
 Defaults:
 
-- host directories are not mounted into guests (`--mount-none`)
-- code lives inside the guest at `/home/<user>/code/<vm>`
-- DVM only configures Lima localhost-style `host_port:guest_port` forwards
-- secrets are staged from env vars listed in `DVM_SECRETS`
-- project hooks run as `DVM_USER` by default
-- recipes are plain Bash and should be audited like any shell script
+- no host mounts
+- code lives inside the guest
+- localhost-style port forwards only
+- secrets come from env vars listed in `DVM_SECRETS`
+- project hooks are disabled
+- recipes are Bash and should be reviewed
 
-## Secret Staging
+## Main Boundaries
 
-Names listed in `DVM_SECRETS` are read from the host process environment at
-sync time and piped to the guest with one `limactl shell` call per secret.
-The secret value flows through stdin; only the target filename appears in
-argv. Recipes read randomized root-owned files under `/run/dvm-secrets` via
-`dvm_secret <NAME>`. DVM removes staged secret files before optional project
-clone/hooks run and also renders a guest-side cleanup trap.
+- Secrets stage under randomized root-owned `/run/dvm-secrets` paths and are
+  cleaned before clone/hooks.
+- Config and user recipes must be current-user-owned and not group/world
+  writable.
+- `DVM_ENV` rejects secrets and dangerous names such as `PATH`, `BASH_ENV`,
+  `LD_*`, and `GIT_*`.
+- Built-in npm tools are pinned and installed as `DVM_USER`.
+- Direct binary recipes require HTTPS plus SHA-256.
 
-Do not put secrets in DVM config files.
+## Hooks
 
-## Project Hooks And Config
+Hooks are off unless `DVM_PROJECT_HOOK=1`. Enabled hooks run as `DVM_USER`.
+Privileged hooks require `DVM_PROJECT_HOOK_PRIVILEGED=1`. Optional repo-local
+opt-in uses `DVM_PROJECT_HOOK_GIT_CONFIG=1` plus:
 
-Project hooks are project-controlled code. `$DVM_CODE_DIR/.dvm/sync.sh` runs
-as `DVM_USER` unless `DVM_PROJECT_HOOK_PRIVILEGED=1` is explicitly set.
-`DVM_PROJECT_HOOK=0` disables hooks. `DVM_PROJECT_HOOK_GIT_CONFIG=1` requires
-repo-local `git config dvm.hook true` before a hook runs.
-
-DVM config and user recipe overrides are Bash code. DVM refuses to source or
-include them when the files or containing config directories are not owned by
-the current user or are group/world writable.
+```bash
+git config dvm.hook true
+```
 
 ## Agent User
 
-The `agent-user` recipe creates `DVM_AGENT_USER` and installs `dvm-agent`.
-When Bubblewrap works, `dvm-agent <cmd>` hides the main user home and exposes
-only the project directory and the agent user's home. It also installs
-`dvm-agent-shell` for an interactive guardrail shell. If Bubblewrap cannot run,
-it refuses to execute unless `DVM_AGENT_ALLOW_UNSANDBOXED=1` is set.
+`agent-user` installs `dvm-agent`, a Bubblewrap guardrail that hides the main
+home and exposes the project directory plus the agent home. It refuses to run
+without Bubblewrap unless `DVM_AGENT_ALLOW_UNSANDBOXED=1` is set.
 
-This is a guardrail, not a complete sandbox.
+Docker group access is root-equivalent in the guest. DVM does not add
+`DVM_AGENT_USER` to Docker unless `DVM_DOCKER_AGENT_ACCESS=1` is set.
 
-The Docker group is root-equivalent inside the guest. DVM does not add
-`DVM_AGENT_USER` to that group unless `DVM_DOCKER_AGENT_ACCESS=1` is set, and
-the built-in Docker recipe conflicts with `agent-user` by default. Prefer
-rootless Podman or another narrower container path for agent workloads that
-need containers.
+## Keys
 
-For normal VM-contained development, running AI tools directly as `DVM_USER` is
-the most useful mode when the VM contains only project-scoped keys and local or
-sandbox credentials. Do not forward broad host SSH/GPG agents or store
-production credentials in those VMs.
-
-User names used by DVM are validated before they are written into generated
-guest scripts or sudoers snippets.
-
-## Guest-Local Keys
-
-The `ssh-keys` and `gpg-keys` recipes generate keys inside the VM. DVM does
-not copy host private keys into guests and does not back up guest keys on
-`dvm rm`. The generated GPG key has an empty passphrase for disposable
-guest-local signing; do not reuse it outside that project VM. Git signing is
-configured repo-locally when a project repo exists, not globally.
-
-## Supply Chain
-
-Built-in npm recipes install exact package versions under a user-owned npm
-prefix instead of using root-global npm. Recipes are statically tested against
-`curl | sh` installers and root npm installs. Recipes that need direct
-downloaded binaries require HTTPS plus SHA-256 verification.
-
-## Removed Safeguards
-
-`dvm rm <vm> --yes` deletes the Lima instance even if the VM config file is
-already gone. DVM does not run a dirty-git check. Inspect the VM first if
-uncommitted work matters.
+`ssh-keys` and `gpg-keys` create VM-local keys. DVM does not copy host private
+keys into guests or back up guest keys on `dvm rm`.

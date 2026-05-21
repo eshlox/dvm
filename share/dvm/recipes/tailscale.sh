@@ -10,7 +10,6 @@ gpgkey=https://pkgs.tailscale.com/stable/fedora/repo.gpg
 EOF
 dvm_pkg tailscale
 
-# systemd can fail in stripped-down guests, but the package install is still useful.
 sudo systemctl enable --now tailscaled || true
 if sudo tailscale status >/dev/null 2>&1; then
     printf 'dvm recipe tailscale: already authenticated\n'

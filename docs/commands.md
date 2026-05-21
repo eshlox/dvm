@@ -1,116 +1,70 @@
 # Commands
 
-Running `dvm` with no arguments is the same as `dvm ls`.
+Running `dvm` with no args runs `dvm ls`.
 
 ```text
-dvm sync <vm> | --all       create/start VM and run packages + recipes
-dvm sh <vm>                 interactive shell as DVM_USER
-dvm ssh <vm> -- cmd...      non-interactive command as DVM_USER
-dvm cp src dst              copy; one side may be vm:path
-dvm log <vm> [-f] [args]    guest journalctl
-dvm ls [--only-config] [<vm>] list DVM Lima instances
-dvm stop <vm> | --all [--only-config] stop running VMs
-dvm rm <vm> --yes [--config] delete a Lima instance
-dvm new <vm>                write stub config and open editor
-dvm edit <vm>               edit per-VM config
-dvm config edit | show      edit/show global config
-dvm base build | rm         optional reusable base VM
-dvm recipes                 list built-in and user recipes
-dvm doctor [--probe <vm>]   check Lima and DVM paths
-dvm version                 print DVM version
+dvm sync <vm> | --all
+dvm sh <vm>
+dvm ssh <vm> -- cmd...
+dvm cp src dst
+dvm log <vm> [-f] [args]
+dvm ls [--only-config] [<vm>]
+dvm stop <vm> | --all [--only-config]
+dvm rm <vm> --yes [--config]
+dvm new <vm>
+dvm edit <vm>
+dvm config edit | show
+dvm base build | rm
+dvm recipes
+dvm doctor [--probe <vm>]
+dvm version
 ```
 
-## `dvm sync`
+## Main Flow
 
-`dvm sync <vm>`:
+`dvm sync <vm>` loads config, creates or starts `dvm-<vm>`, stages secrets,
+runs packages and recipes, cleans secrets, optionally clones `DVM_GIT_REPO`,
+and runs project hooks only when enabled.
 
-1. loads `~/.config/dvm/config.sh`
-2. loads `~/.config/dvm/vms/<vm>.sh`
-3. starts `dvm-<vm>` from `DVM_TEMPLATE`, or clones `dvm-<DVM_BASE_NAME>`
-   when `DVM_USE_BASE=1`
-4. ensures `DVM_USER` exists in the guest
-5. stages any `DVM_SECRETS`
-6. runs the guest script: packages and recipes
-7. removes staged secrets before project-controlled code runs
-8. optionally clones `DVM_GIT_REPO`, then runs `$DVM_CODE_DIR/.dvm/sync.sh`
-   as `DVM_USER` when present
+```bash
+DVM_DRY_RUN=1 dvm sync app
+dvm sync app
+dvm sh app
+```
 
-`DVM_DRY_RUN=1 dvm sync <vm>` prints the Lima argv and generated guest script
-without contacting Lima.
+`dvm sh <vm>` opens a shell as `DVM_USER`, starting in the project directory
+when it exists.
 
-`dvm sync --all` syncs every `~/.config/dvm/vms/*.sh` config in filename
-order and exits non-zero if any VM fails.
+`dvm ssh <vm> -- cmd...` runs one command as `DVM_USER`.
 
-Project hooks can be disabled with `DVM_PROJECT_HOOK=0`. Privileged project
-hooks require `DVM_PROJECT_HOOK_PRIVILEGED=1`, and dry-run output includes the
-warning that project-controlled code will run in the provisioning context.
-Set `DVM_PROJECT_HOOK_GIT_CONFIG=1` to require repo-local
-`git config dvm.hook true` before any project hook runs.
+## Files
 
-## Shell And Copy
+```bash
+dvm cp ./file app:/tmp/file
+dvm cp app:/tmp/file ./file
+```
 
-`dvm sh <vm>` opens an interactive shell as `DVM_USER`, starting in
-`$DVM_CODE_DIR` when it exists and falling back to the user's home directory.
+One side must be `vm:path`. Use `./tmp:notes.txt` for local paths containing a
+colon.
 
-`dvm ssh <vm> -- cmd...` runs a non-interactive command as `DVM_USER`, also
-preferring `$DVM_CODE_DIR` as the working directory. The name is kept for muscle
-memory; it is not raw `ssh`.
+## Lifecycle
 
-`dvm cp ./file app:/tmp/file` and `dvm cp app:/tmp/file ./file` copy between
-host and guest. Cross-VM copy is not supported. Any path matching
-`^[a-z][a-z0-9-]*:.*$` is treated as a VM path; use `./tmp:notes.txt` when a
-local filename contains a colon.
+`dvm ls` and `dvm stop --all` operate on `dvm-*` Lima instances. Add
+`--only-config` to limit them to instances with `~/.config/dvm/vms/*.sh`.
 
-## Logs And Status
+`dvm rm <vm> --yes` deletes the Lima instance. Add `--config` to also remove
+the VM config.
 
-`dvm ls` lists Lima instances whose names start with `dvm-`. That prefix is
-reserved for DVM-managed instances. `dvm ls --only-config` intersects the Lima
-list with `~/.config/dvm/vms/*.sh` and hides unmanaged `dvm-*` instances.
+## Base
 
-`dvm log <vm> [-f] [journalctl args...]` runs guest `journalctl`.
-
-## Stop And Remove
-
-`dvm stop <vm>` stops the Lima instance and exits successfully when the
-instance is already missing. `dvm stop --all` stops every `dvm-*` instance and
-continues after per-VM failures. Use `dvm stop --all --only-config` to skip
-unmanaged instances that merely share the `dvm-` prefix.
-
-`dvm rm <vm> --yes` force-stops and deletes the Lima instance. It does not
-need the VM config file to still exist. When the config remains, DVM prints a
-warning; add `--config` to remove `~/.config/dvm/vms/<vm>.sh` too.
-
-## Config Editing
-
-`dvm new <vm>` writes a starter config and opens `$VISUAL` or `$EDITOR`.
-
-`dvm edit <vm>` opens one per-VM config.
-
-`dvm config edit` creates the global config from `share/dvm/config.sh.example`
-if needed and opens it. `dvm config show` prints it.
-
-## Base VM
-
-`dvm base build` starts `dvm-<DVM_BASE_NAME>`, runs `DVM_BASE_PACKAGES` and
-`DVM_BASE_RECIPES`, then stops it. With `DVM_USE_BASE=1`, new VMs clone that
-base with `limactl clone`.
-
-Use this only for slow, stable setup. VM-specific recipes and secrets should
-stay in the per-VM sync.
-
-`DVM_DRY_RUN=1 dvm base build` prints the Lima argv and generated base guest
-script without contacting Lima.
+`dvm base build` builds `dvm-<DVM_BASE_NAME>` from `DVM_BASE_PACKAGES` and
+`DVM_BASE_RECIPES`. With `DVM_USE_BASE=1`, new VMs clone that base.
 
 ## Doctor
 
-`dvm doctor` checks Lima availability and version, `$VISUAL`/`$EDITOR`, Git,
-the built-in recipe directory, and VM config count. Missing Git is reported as
-a warning because only `DVM_GIT_REPO` and some recipes need it. Parse failures
-include the raw Lima version string.
+```bash
+dvm doctor
+dvm doctor --probe app
+```
 
-`dvm doctor --probe <vm>` also runs `limactl shell dvm-<vm> true` to confirm
-that the VM is reachable.
-
-## Version
-
-`dvm version` prints the DVM version string for scripts and agent tooling.
+`--probe` checks that Lima can run a command inside the VM.

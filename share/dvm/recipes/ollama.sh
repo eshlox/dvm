@@ -5,5 +5,4 @@ if ! dvm_has ollama; then
     fi
     dvm_download_verified ollama "$DVM_OLLAMA_URL" "$DVM_OLLAMA_SHA256" /usr/local/bin/ollama
 fi
-# systemd may be unavailable in minimal/test guests; installation still succeeds.
 sudo systemctl enable --now ollama || true

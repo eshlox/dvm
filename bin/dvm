@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# dvm: tiny Lima wrapper with built-in shell recipes.
 set -Eeuo pipefail
 
-# --- discovery -------------------------------------------------------------
 src="${BASH_SOURCE[0]}"
 while [ -L "$src" ]; do
     target="$(readlink "$src")"
@@ -64,12 +62,10 @@ editor_cmd() {
 }
 run_editor() {
     local ed; ed="$(editor_cmd)"
-    # Allow standard EDITOR/VISUAL values with arguments, e.g. "code --wait".
     # shellcheck disable=SC2086
     $ed "$1"
 }
 
-# --- config loading --------------------------------------------------------
 load_global() {
     [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
     DVM_TEMPLATE="template:fedora"
@@ -85,7 +81,7 @@ load_global() {
     DVM_BASE_PACKAGES=()
     DVM_BASE_RECIPES=()
     DVM_USE_BASE=0
-    DVM_PROJECT_HOOK=1
+    DVM_PROJECT_HOOK=0
     DVM_PROJECT_HOOK_PRIVILEGED=0
     DVM_PROJECT_HOOK_GIT_CONFIG=0
     DVM_ALLOW_RECIPE_CONFLICTS=0
@@ -157,7 +153,6 @@ validate_ports() {
     done
 }
 
-# --- lock ------------------------------------------------------------------
 lock_vm() {
     mkdir -p "$DVM_CACHE_DIR"
     local d="$DVM_CACHE_DIR/$1.lock"
@@ -167,7 +162,6 @@ lock_vm() {
     trap 'cleanup_secrets; rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
 }
 
-# --- lima command builders -------------------------------------------------
 DVM_ARGV=()
 
 port_forward_args() {
@@ -216,7 +210,6 @@ vm_config_exists() {
     [ -f "$DVM_CONFIG_DIR/vms/$1.sh" ]
 }
 
-# --- recipes ---------------------------------------------------------------
 canonical_recipe_name() {
     local name="$1"
     case "$name" in
@@ -513,7 +506,6 @@ run_guest_script() {
     return $rc
 }
 
-# --- commands --------------------------------------------------------------
 cmd_sync() {
     if [ "${1:-}" = "--all" ]; then
         local rc=0 f n
@@ -714,41 +706,38 @@ cmd_new() {
     [ ! -e "$f" ] || die "config already exists: $f"
     cat > "$f" <<EOF
 # shellcheck shell=bash
-# Per-VM config for "$1". Sourced after the global ~/.config/dvm/config.sh.
+# Per-VM config. Global config loads first.
 
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 
-# Host-to-guest localhost port forwards.
+# Localhost port forwards.
 # DVM_PORTS=(3000:3000 5173:5173)
 
-# Built-in or user recipes. Global DVM_DEFAULT_RECIPES are prepended.
+# Recipes. Global DVM_DEFAULT_RECIPES are prepended.
 DVM_RECIPES=(zsh fzf)
-# AI/npm tools are pinned and user-local, but still execute third-party code.
 # DVM_RECIPES=(zsh fzf node codex)
 
-# Extra distro packages with no custom behavior.
+# Extra Fedora packages.
 # DVM_PACKAGES=(git tmux)
 
-# Optional project clone. Code stays inside the VM at /home/<user>/code/<vm>.
+# Optional first clone. For private repos, create SSH keys first.
 # DVM_GIT_REPO="git@github.com:me/app.git"
 # DVM_GIT_BRANCH=main
 
-# Optional chezmoi source used by the chezmoi recipe.
 # DVM_CHEZMOI_REPO="https://github.com/me/dotfiles.git"
 
-# Optional base reuse, usually set globally after running dvm base build.
 # DVM_USE_BASE=1
 
-# Env var names staged into private /run/dvm-secrets paths for recipes.
+# Secret env var names.
 # DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
 
-# Non-secret variable names exported into the guest script for recipes.
+# Non-secret recipe settings.
 # DVM_ENV=(MY_TOOL_CHANNEL)
 
-# Project hooks run as DVM_USER by default. Set to 0 to disable.
-# DVM_PROJECT_HOOK=1
+# Hooks are disabled by default.
+# DVM_PROJECT_HOOK=0
 # DVM_PROJECT_HOOK_PRIVILEGED=0
 # DVM_PROJECT_HOOK_GIT_CONFIG=0
 EOF
@@ -912,7 +901,6 @@ cmd_doctor() {
     return $rc
 }
 
-# --- dispatch --------------------------------------------------------------
 usage() {
     cat <<'EOF'
 dvm <command> [args]

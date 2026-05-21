@@ -1,9 +1,7 @@
 # dvm-conflicts: agent-user
 dvm_pkg moby-engine docker-compose || dvm_pkg docker docker-compose-plugin
 
-# systemd can fail in stripped-down guests; users can start Docker manually there.
 sudo systemctl enable --now docker || true
-# The package may create the group lazily on some Fedora variants.
 sudo usermod -aG docker "$DVM_USER" || true
 if [ "${DVM_DOCKER_AGENT_ACCESS:-0}" = "1" ] && [ "$DVM_AGENT_USER" != "$DVM_USER" ]; then
     dvm_recipe_warn "$DVM_RECIPE" "adding $DVM_AGENT_USER to docker grants root-equivalent guest access"

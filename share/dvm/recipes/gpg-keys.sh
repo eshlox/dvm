@@ -19,7 +19,6 @@ if [ -n "$key_id" ]; then
         printf 'dvm recipe gpg-keys: no project Git repo yet; not enabling global signing\n'
     fi
     if [ "$created" = 1 ]; then
-        # Printing the public key is a convenience; key generation already succeeded.
         dvm_as_user gpg --armor --export "$key_id" || true
     fi
 fi

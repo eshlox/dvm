@@ -57,4 +57,7 @@ DVM does not mount host project directories. Code lives inside the guest at:
 /home/<DVM_USER>/code/<DVM_NAME>
 ```
 
-Use `DVM_GIT_REPO` for first-clone convenience or clone manually inside the VM.
+For private repos, create VM-local SSH keys first and clone manually inside the
+VM after adding the public key to GitHub/GitLab. `DVM_GIT_REPO` is mainly a
+first-clone convenience for public HTTPS repos or VMs that already have working
+Git credentials.

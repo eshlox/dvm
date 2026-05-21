@@ -4,8 +4,6 @@ if ! id "$DVM_AGENT_USER" >/dev/null 2>&1; then
     sudo useradd -m -s /bin/bash "$DVM_AGENT_USER"
 fi
 
-# Some guest filesystems may not support default ACLs; the runner still works
-# when the project directory is already accessible.
 sudo setfacl -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 sudo setfacl -d -m "u:$DVM_AGENT_USER:rwx" "$DVM_CODE_DIR" || true
 

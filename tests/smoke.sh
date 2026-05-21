@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# End-to-end smoke test for dvm with a fake limactl.
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -189,16 +188,15 @@ esac
 case "$out" in *"dvm_pkg git tmux"*"$git_clone_literal"*) ok "dry-run prints guest script" ;; *) fail "dry-run guest script wrong" ;; esac
 # shellcheck disable=SC2016 # Match literal guest-side variable expansion.
 case "$out" in *'dvm_ensure_user "$DVM_USER"'*) ok "guest script ensures DVM_USER exists" ;; *) fail "guest script does not ensure DVM_USER" ;; esac
-# shellcheck disable=SC2016 # Match literal generated hook runner.
-hook_runner='dvm_as_user bash -lc '\''cd "$1" && exec bash .dvm/sync.sh'\'' bash "$DVM_CODE_DIR"'
-grep -Fq -- "$hook_runner" <<<"$out" || fail "project hook is not unprivileged by default"
-ok "project hook runs as DVM_USER by default"
+grep -Fq -- 'DVM_PROJECT_HOOK=0' <<<"$out" || fail "project hook is not disabled by default"
+ok "project hook is disabled by default"
 case "$out" in *"sudo dnf5 install -y"*) ok "guest script uses dnf5 only" ;; *) fail "guest script missing dnf5 package helper" ;; esac
 case "$out" in *"apt-get"*|*"sudo dnf install"*) fail "guest script contains non-dnf5 package-manager fallback" ;; *) ok "guest script has no apt/dnf fallback" ;; esac
 [ ! -s "$DVM_TEST_LOG" ] || fail "dry-run called limactl"
 ok "dry-run does not contact Lima"
 
 cat >"$DVM_CONFIG_DIR/vms/priv-hook.sh" <<'EOF'
+DVM_PROJECT_HOOK=1
 DVM_PROJECT_HOOK_PRIVILEGED=1
 EOF
 DVM_DRY_RUN=1 run_dvm sync priv-hook >"$TMP/priv-hook.out"
@@ -207,6 +205,7 @@ grep -Fq -- 'warning: running project hook with provisioning privileges' "$TMP/p
 ok "privileged project hooks require visible opt-in"
 
 cat >"$DVM_CONFIG_DIR/vms/gated-hook.sh" <<'EOF'
+DVM_PROJECT_HOOK=1
 DVM_PROJECT_HOOK_GIT_CONFIG=1
 EOF
 DVM_DRY_RUN=1 run_dvm sync gated-hook >"$TMP/gated-hook.out"
@@ -430,6 +429,7 @@ run_dvm new fresh
 [ -f "$DVM_CONFIG_DIR/vms/fresh.sh" ] || fail "new did not write config"
 grep -Fxq "DVM_RECIPES=(zsh fzf)" "$DVM_CONFIG_DIR/vms/fresh.sh" || fail "new config default recipes are not conservative"
 grep -Fq "# DVM_RECIPES=(zsh fzf node codex)" "$DVM_CONFIG_DIR/vms/fresh.sh" || fail "new config missing commented AI recipe example"
+grep -Fq "# DVM_PROJECT_HOOK=0" "$DVM_CONFIG_DIR/vms/fresh.sh" || fail "new config does not disable project hooks by default"
 ok "new writes starter config"
 
 run_dvm stop missing
