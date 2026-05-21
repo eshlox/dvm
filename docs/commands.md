@@ -30,7 +30,7 @@ dvm sh app
 
 Dry-run prints the Lima argv and setup script order without contacting Lima.
 
-`dvm sh <vm>` opens a shell as `DVM_USER`, starting in the project directory
+`dvm sh <vm>` opens `DVM_USER`'s login shell, starting in the project directory
 when it exists.
 
 `dvm ssh <vm> -- cmd...` runs one command as `DVM_USER`.
