@@ -49,7 +49,7 @@ Lima's short `--port-forward host:guest` form is localhost-oriented. DVM does
 not expose a bind-IP setting. Use Tailscale or Cloudflare Tunnel for team
 access, or configure Lima networking/YAML directly when you need VM IP access.
 
-## Code Location
+## Code location
 
 DVM does not mount host project directories. Code lives inside the guest at:
 

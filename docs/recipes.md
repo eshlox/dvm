@@ -5,7 +5,7 @@ live in `share/dvm/recipes`; user overrides live in `~/.config/dvm/recipes`.
 
 Order matters. Repeated recipes are de-duplicated after aliases are resolved.
 
-## Built-Ins
+## Built-ins
 
 | Recipe | Purpose |
 | --- | --- |
@@ -39,7 +39,7 @@ Order matters. Repeated recipes are de-duplicated after aliases are resolved.
 Aliases: `ai-user`/`ai-agent` -> `agent-user`, `cloudflare` ->
 `cloudflared`, `ssh-key` -> `ssh-keys`, `gpg-key` -> `gpg-keys`.
 
-## Supply Chain
+## Supply chain
 
 npm recipes install exact versions under `~/.local/npm` as `DVM_USER`.
 
@@ -72,7 +72,7 @@ Recipes can declare conflicts with:
 DVM rejects conflicts unless `DVM_ALLOW_RECIPE_CONFLICTS=1`. `docker` conflicts
 with `agent-user` because Docker group access is root-equivalent in the guest.
 
-## Write A Recipe
+## Write a recipe
 
 ```bash
 # ~/.config/dvm/recipes/my-tool.sh

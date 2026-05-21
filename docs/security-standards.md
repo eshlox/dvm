@@ -1,4 +1,4 @@
-# Security Standards
+# Security standards
 
 DVM is not a sandbox beyond Lima, the guest OS, Linux permissions, and the code
 you run inside the VM.
@@ -30,7 +30,7 @@ DVM stages each secret under randomized root-owned `/run/dvm-secrets` paths,
 exports only the path, and cleans secrets before clone/hooks. Tool-specific
 auth commands may still expose secrets inside the guest.
 
-## Project Hooks
+## Project hooks
 
 Hooks are off by default:
 
@@ -70,7 +70,7 @@ chmod go-w ~/.config/dvm ~/.config/dvm/config.sh ~/.config/dvm/vms/app.sh
 - direct binary recipes require HTTPS plus SHA-256
 - Fedora packages track configured Fedora repos
 
-## Agent User
+## Agent user
 
 `agent-user` installs `dvm-agent`. With Bubblewrap, it hides the main home,
 binds the project directory and agent home, uses minimal `/dev`, and preserves
@@ -97,7 +97,7 @@ with `agent-user`, and the agent user is not added to Docker unless:
 DVM_DOCKER_AGENT_ACCESS=1
 ```
 
-## Guest Keys
+## Guest keys
 
 `ssh-keys` and `gpg-keys` create VM-local keys. DVM does not copy host private
 keys into guests. `gpg-keys` configures signing repo-locally only when a Git

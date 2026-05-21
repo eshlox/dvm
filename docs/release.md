@@ -1,4 +1,4 @@
-# Release Process
+# Release process
 
 DVM has no stable tagged release yet. Before v1.0, use `main` as the maintained
 line and run:
@@ -7,7 +7,7 @@ line and run:
 bash scripts/check
 ```
 
-## v1.0 Gate
+## v1.0 gate
 
 A security-focused v1.0 release should include:
 

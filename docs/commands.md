@@ -20,7 +20,7 @@ dvm doctor [--probe <vm>]
 dvm version
 ```
 
-## Main Flow
+## Main flow
 
 `dvm sync <vm>` loads config, creates or starts `dvm-<vm>`, stages secrets,
 runs packages and recipes, cleans secrets, optionally clones `DVM_GIT_REPO`,

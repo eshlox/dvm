@@ -5,6 +5,7 @@
 - Shortened the README and docs around task-first workflows, and removed
   low-value code comments while keeping ShellCheck directives and non-obvious
   safety metadata.
+- Normalized document headings to sentence case.
 - Hardened project hooks: `.dvm/sync.sh` is now disabled by default,
   `DVM_PROJECT_HOOK=1` enables hooks as `DVM_USER`, and
   `DVM_PROJECT_HOOK_PRIVILEGED=1` is required for provisioning-privileged

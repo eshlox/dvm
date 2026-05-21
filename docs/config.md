@@ -79,7 +79,7 @@ dvm sync app
 Recipes read secrets with `dvm_secret NAME`. Secret files are randomized under
 `/run/dvm-secrets` and cleaned before clone/hooks.
 
-## Built-In Recipe Settings
+## Built-in recipe settings
 
 | Variable | Meaning |
 | --- | --- |

@@ -1,4 +1,4 @@
-# Future Development
+# Future development
 
 Keep DVM small. Prefer docs or recipes over framework code.
 

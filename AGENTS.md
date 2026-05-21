@@ -1,4 +1,4 @@
-# Agent Instructions
+# Agent instructions
 
 This repository is intentionally small and audit-friendly. DVM is a Bash +
 Lima wrapper with built-in Bash recipes. Keep core behavior focused; prefer

@@ -1,6 +1,6 @@
-# Errors And Recovery
+# Errors and recovery
 
-## Stale Lock
+## Stale lock
 
 Locks live in:
 
@@ -15,7 +15,7 @@ killed and no `dvm` command is running, remove the stale lock:
 rm -r ~/.cache/dvm/app.lock
 ```
 
-## Failed Sync
+## Failed sync
 
 DVM does not roll back partial setup. Fix the package, recipe, config, or env
 var, then rerun:

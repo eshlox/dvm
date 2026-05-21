@@ -1,4 +1,4 @@
-# Threat Model
+# Threat model
 
 DVM reduces host exposure by keeping code and tools inside a Lima VM with no
 host mount. It does not defend against VM escapes or malicious guest-root code.

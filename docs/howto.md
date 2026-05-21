@@ -1,4 +1,4 @@
-# How To
+# How to
 
 ## New VM
 
@@ -23,7 +23,7 @@ dvm sync app
 dvm sh app
 ```
 
-## Private Repo
+## Private repo
 
 Generate a VM-local key only for VMs that need Git SSH access:
 
@@ -48,7 +48,7 @@ credentials:
 DVM_GIT_REPO="https://github.com/me/app.git"
 ```
 
-## Codex And Claude
+## Codex and Claude
 
 ```bash
 DVM_RECIPES=(zsh fzf starship node codex claude)
@@ -58,7 +58,7 @@ codex
 claude
 ```
 
-## Guest Keys
+## Guest keys
 
 ```bash
 DVM_RECIPES=(ssh-keys gpg-keys)
@@ -92,7 +92,7 @@ DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
 DVM_CLOUDFLARED_TOKEN=... dvm sync app
 ```
 
-## Project Hooks
+## Project hooks
 
 Hooks are disabled by default. To run `$DVM_CODE_DIR/.dvm/sync.sh` as
 `DVM_USER`:

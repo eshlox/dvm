@@ -1,10 +1,10 @@
-# Security Policy
+# Security policy
 
-## Supported Versions
+## Supported versions
 
 Until tagged releases exist, only `main` is maintained.
 
-## Report A Vulnerability
+## Report a vulnerability
 
 Use GitHub private vulnerability reporting. Do not open public issues with
 exploit details, secrets, or proof-of-concept code.
@@ -23,7 +23,7 @@ Defaults:
 - project hooks are disabled
 - recipes are Bash and should be reviewed
 
-## Main Boundaries
+## Main boundaries
 
 - Secrets stage under randomized root-owned `/run/dvm-secrets` paths and are
   cleaned before clone/hooks.
@@ -44,7 +44,7 @@ opt-in uses `DVM_PROJECT_HOOK_GIT_CONFIG=1` plus:
 git config dvm.hook true
 ```
 
-## Agent User
+## Agent user
 
 `agent-user` installs `dvm-agent`, a Bubblewrap guardrail that hides the main
 home and exposes the project directory plus the agent home. It refuses to run

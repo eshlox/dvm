@@ -22,7 +22,7 @@ cd dvm
 ./install.sh
 ```
 
-## Create A VM
+## Create a VM
 
 ```bash
 dvm config edit
@@ -49,7 +49,7 @@ dvm sync app
 dvm sh app
 ```
 
-## Clone A Private Repo
+## Clone a private repo
 
 Private repos usually need a VM-local SSH key first:
 
@@ -74,7 +74,7 @@ cd ~/code/app
 `DVM_GIT_REPO` exists for public repos or VMs that already have Git credentials.
 Manual clone is the normal private-repo path.
 
-## Use Codex Or Claude
+## Use Codex or Claude
 
 Add recipes:
 
@@ -94,7 +94,7 @@ claude
 npm tools are pinned and installed under the guest user's `~/.local/npm`, not
 with root-global npm.
 
-## Common Recipes
+## Common recipes
 
 ```bash
 DVM_RECIPES=(zsh fzf starship node codex claude ssh-keys gpg-keys)
@@ -113,7 +113,7 @@ List everything:
 dvm recipes
 ```
 
-## Secrets And Services
+## Secrets and services
 
 Secrets are passed from host env vars during sync, staged in private guest
 runtime files, then cleaned up.
