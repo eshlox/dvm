@@ -245,8 +245,12 @@ grep -Fq -- "tailscale status" "$DVM_TEST_GUEST/dvm-cloud.sh" || fail "tailscale
 grep -Fq -- "service already installed" "$DVM_TEST_GUEST/dvm-cloud.sh" || fail "cloudflared service guard missing"
 tailscale_secret="$(find "$DVM_TEST_GUEST" -maxdepth 1 -name 'secret-*-DVM_TAILSCALE_AUTHKEY' -print -quit)"
 cloudflared_secret="$(find "$DVM_TEST_GUEST" -maxdepth 1 -name 'secret-*-DVM_CLOUDFLARED_TOKEN' -print -quit)"
-[ -n "$tailscale_secret" ] && [ "$(cat "$tailscale_secret")" = "tskey-test" ] || fail "tailscale secret not staged"
-[ -n "$cloudflared_secret" ] && [ "$(cat "$cloudflared_secret")" = "cf-test" ] || fail "cloudflared secret not staged"
+if [ -z "$tailscale_secret" ] || [ "$(cat "$tailscale_secret")" != "tskey-test" ]; then
+    fail "tailscale secret not staged"
+fi
+if [ -z "$cloudflared_secret" ] || [ "$(cat "$cloudflared_secret")" != "cf-test" ]; then
+    fail "cloudflared secret not staged"
+fi
 ! grep -Fq "tskey-test" "$DVM_TEST_LOG" || fail "secret leaked into limactl argv log"
 ! grep -Fq "/tmp/dvm-secret" "$DVM_TEST_LOG" || fail "old predictable secret path used"
 ok "service recipes and secrets work"

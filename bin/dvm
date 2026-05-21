@@ -421,7 +421,9 @@ cleanup_secrets() {
         args+=("$path")
     done
     "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" "${args[@]}" >/dev/null 2>&1 || true
-    [ -n "${DVM_SECRET_DIR:-}" ] && "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo rmdir "$DVM_SECRET_DIR" >/dev/null 2>&1 || true
+    if [ -n "${DVM_SECRET_DIR:-}" ]; then
+        "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo rmdir "$DVM_SECRET_DIR" >/dev/null 2>&1 || true
+    fi
 }
 
 guest_core_exports() {

@@ -38,8 +38,9 @@
 - Tailscale now uses `--auth-key=file:<path>` and package `gpgcheck=1`.
 - The `gpg-keys` recipe now configures Git signing repo-locally when a project
   repo exists instead of setting global Git signing.
-- `scripts/check` and CI now ShellCheck the guest prelude and built-in recipes,
-  and CI now runs on `ubuntu-24.04` through the same local check entrypoint.
+- `scripts/check` and CI now ShellCheck the guest prelude and built-in recipes
+  as Bash, fail on warnings/errors instead of intentional info notes, and CI
+  now runs on `ubuntu-24.04` through the same local check entrypoint.
 - Added [docs/threat-model.md](docs/threat-model.md) and
   [docs/release.md](docs/release.md) for the explicit threat model and signed
   release/checksum process.
