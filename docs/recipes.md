@@ -22,7 +22,7 @@ Order matters. Repeated recipes are de-duplicated after aliases are resolved.
 | `gpg-keys` | VM-local signing key |
 | `helix` | Helix |
 | `just` | just |
-| `lazygit` | lazygit |
+| `lazygit` | verified lazygit binary plus Git |
 | `mistral` | verified Mistral binary |
 | `node` | Node.js, npm, corepack |
 | `ollama` | verified Ollama binary |
@@ -55,6 +55,9 @@ npm recipes install exact versions under `~/.local/npm` as `DVM_USER`.
 
 Override with `DVM_CODEX_VERSION`, `DVM_CLAUDE_CODE_VERSION`, or
 `DVM_OPENCODE_VERSION`.
+
+`lazygit` installs a pinned upstream release with a checked SHA-256 for Linux
+`x86_64` and `arm64`.
 
 `ollama` and `mistral` require an HTTPS URL plus SHA-256:
 

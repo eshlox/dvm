@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed the `lazygit` recipe on Fedora templates where `lazygit` is not
+  available from configured `dnf5` repositories by installing a pinned,
+  checksum-verified upstream Linux binary.
 - The `chezmoi` recipe now creates an initial config with `data.role`, using
   `DVM_CHEZMOI_ROLE` or the VM name, so dotfiles templates can branch by role
   during first apply.
