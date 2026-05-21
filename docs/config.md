@@ -14,7 +14,6 @@ Global config loads first. VM config overrides it.
 
 ```bash
 # ~/.config/dvm/config.sh
-DVM_TEMPLATE=template:fedora
 DVM_CPUS=2
 DVM_MEMORY=4
 DVM_DISK=30
@@ -34,7 +33,6 @@ DVM_PORTS=(3000:3000 5173:5173)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DVM_TEMPLATE` | `template:fedora` | Lima template name or local template path |
 | `DVM_CPUS` | `2` | CPUs |
 | `DVM_MEMORY` | `4` | GiB memory |
 | `DVM_DISK` | `30` | GiB disk |

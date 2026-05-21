@@ -116,7 +116,6 @@ sudo -u "$DVM_USER" -H bash -lc 'mkdir -p "$HOME/.local/bin"'
 EOF
 
 cat >"$DVM_CONFIG_DIR/config.sh" <<EOF
-DVM_TEMPLATE=template:fedora
 DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
 EOF
 

@@ -49,20 +49,13 @@ DVM_DRY_RUN=1 dvm sync app
 
 ## Packages
 
-Distro packages come from the guest OS repositories. That is usually acceptable
-for baseline tools such as Git, ripgrep, fd, tmux, or Helix.
+Fedora packages come from configured Fedora repositories. That is usually
+acceptable for baseline tools such as Git, ripgrep, fd, tmux, or Helix.
 
 Example:
 
 ```bash
 sudo dnf5 install -y git ripgrep fd-find tmux
-```
-
-For Ubuntu templates:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y git ripgrep fd-find tmux
 ```
 
 ## npm and AI tools

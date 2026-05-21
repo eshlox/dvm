@@ -26,24 +26,22 @@ lowercase letter and contain only lowercase letters, numbers, and hyphens.
 
 ## Template
 
-The default template is `template:fedora`, but DVM core does not assume Fedora
-after the VM exists. Your setup scripts decide which package manager and tools
-to use.
+DVM always creates VMs from Lima's Fedora template:
 
-Use a reviewed local Lima template when you need a different image or advanced
-Lima settings:
-
-```bash
-DVM_TEMPLATE="$HOME/.config/lima/templates/my-dev.yaml"
+```text
+template:fedora
 ```
+
+Setup examples assume Fedora with `dnf5`. Other guest distributions are outside
+the supported path for this project.
 
 ## Host mounts
 
 DVM passes `--mount-none` when it creates instances. This is deliberate: Lima
 otherwise commonly mounts host paths, which weakens the host protection goal.
 
-If you need host mounts, manage that VM directly with Lima or a reviewed local
-template. DVM does not expose a generic extra-args escape hatch.
+If you need host mounts or advanced Lima YAML, manage that VM directly with
+Lima. DVM does not expose a generic extra-args escape hatch.
 
 ## Ports
 

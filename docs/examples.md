@@ -3,26 +3,16 @@
 These are examples for user-owned setup scripts. They are not DVM runtime code.
 Review and adapt them before use.
 
-All examples assume the script runs during `dvm sync` and receives `DVM_USER`
-and `DVM_CODE_DIR`.
+All examples assume Fedora with `dnf5`. Setup scripts run during `dvm sync` and
+receive `DVM_USER` and `DVM_CODE_DIR`.
 
-## Fedora packages
+## Packages
 
 ```bash
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
 sudo dnf5 install -y git ripgrep fd-find tmux helix git-delta
-```
-
-## Ubuntu packages
-
-```bash
-#!/usr/bin/env bash
-set -Eeuo pipefail
-
-sudo apt-get update
-sudo apt-get install -y git ripgrep fd-find tmux helix git-delta
 ```
 
 ## User-local npm tools
