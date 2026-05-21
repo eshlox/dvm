@@ -1,83 +1,104 @@
-# Security Standards
+# Security standards
 
-These are the operating rules for DVM. They are short because the implementation is
-small, but they are the bar for changes.
+DVM is not a sandbox beyond Lima, the guest OS, Linux permissions, and the code
+you run inside the VM.
 
-## Isolation
+## Defaults
 
-- One project gets one VM.
-- Host project directories are not mounted into guests.
-- Code lives in the VM and is cloned from Git or created there.
-- `~` in DVM config means guest home, never host home; DVM expands it inside the VM.
-- Recreate by deleting the VM and applying recipes again.
+- no host mounts
+- project code lives inside the guest
+- only localhost-style Lima port forwards
+- secrets come from env vars, not config files
+- project hooks are disabled
+- recipes are Bash and should be reviewed
 
 ## Secrets
 
-- Do not put secrets in DVM config, public dotfiles, recipes, or project setup scripts.
-- Do not copy host SSH/GPG private keys into VMs.
-- Generate VM-local keys when a VM needs Git or signing access:
-  `dvm ssh-key <name>` and `dvm gpg-key <name>`.
-- `dvm ssh-key` intentionally creates separate SSH keys for Git hosting access and Git
-  commit signing. Do not reuse a repo deploy/access key as an account signing key.
-- The VM-local GPG helper creates an unencrypted, one-year signing key for disposable
-  VM use; do not treat it as a long-lived identity key.
-- Prefer repo-scoped deploy keys and service-scoped tokens.
-- Pass Cloudflare tokens only when syncing the cloudflared VM, or fetch them from
-  macOS Keychain in your shell before sync.
-- Do not put secrets in general `DVM_*` config. Most sync-time DVM values are visible
-  to host process listings while `limactl` runs.
-- The bundled cloudflared token handoff is special-cased: `CLOUDFLARED_TOKEN` and
-  `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
-  being passed as `limactl shell env` arguments.
+List secret names:
 
-## AI
+```bash
+DVM_SECRETS=(DVM_TAILSCALE_AUTHKEY)
+```
 
-- Run hosted AI tools through `dvm-agent`.
-- Create `dvm-agent` as a system account with a home directory and no DVM-managed sudo
-  privileges.
-- Run AI tools through Bubblewrap. DVM does not support a non-Bubblewrap AI mode.
-- Codex and Claude default to unattended modes only inside the mandatory Bubblewrap
-  wrapper; the VM and sandbox are the security boundary, not tool-native prompt
-  approvals. Set `DVM_CODEX_YOLO=0` or `DVM_CLAUDE_BYPASS=0` when you want those
-  prompts for a VM.
-- Mount only project code at `/workspace`, the agent home, and the runtime/system paths
-  needed to execute tools.
-- Do not mount the main user's home into the AI sandbox.
-- Keep network access enabled for hosted AI tools; use the separate VM boundary for
-  project isolation.
-- Treat ACLs as defense in depth and as the permission bridge that lets `dvm-agent`
-  and the VM user share `DVM_CODE_DIR`. Bubblewrap is not a separate VM; guest root or
-  bad sudo policy can bypass it.
-- Review AI-generated changes before committing or running them.
+Run sync with values in the host environment:
 
-## Networking
+```bash
+DVM_TAILSCALE_AUTHKEY=tskey-... dvm sync app
+```
 
-- Bind forwarded ports to `127.0.0.1` by default.
-- Use `0.0.0.0` only when you intentionally want LAN exposure.
-- Re-run `dvm sync <name>` after editing `DVM_PORTS`; DVM updates existing Lima port
-  forwards without recreating the VM.
-- Put shared services such as llama and cloudflared in dedicated VMs.
-- Use Lima internal names for VM-to-VM traffic.
+DVM stages each secret under randomized root-owned `/run/dvm-secrets` paths,
+exports only the path, and cleans secrets before clone/hooks. Tool-specific
+auth commands may still expose secrets inside the guest.
 
-## Deletion
+## Project hooks
 
-- `dvm rm <name> --yes` checks nested Git repos under `DVM_CODE_DIR` before deleting.
-- Use `--force` only when you have intentionally accepted losing uncommitted VM-local
-  work.
+Hooks are off by default:
+
+```bash
+DVM_PROJECT_HOOK=0
+```
+
+When enabled, `.dvm/sync.sh` runs as `DVM_USER`. Privileged hooks require:
+
+```bash
+DVM_PROJECT_HOOK_PRIVILEGED=1
+```
+
+Require repo-local opt-in with:
+
+```bash
+DVM_PROJECT_HOOK_GIT_CONFIG=1
+git config dvm.hook true
+```
+
+## Config
+
+Config and user recipes are Bash code. DVM rejects files or config directories
+that are not owned by the current user or are group/world writable.
+
+```bash
+chmod go-w ~/.config/dvm ~/.config/dvm/config.sh ~/.config/dvm/vms/app.sh
+```
+
+`DVM_ENV` rejects secrets and dangerous names such as `PATH`, `BASH_ENV`,
+`LD_*`, and `GIT_*`.
 
 ## Recipes
 
-- Recipes must be readable shell.
-- Recipes must be safe to rerun.
-- Recipes must not read host paths.
-- Recipes should install one concept and avoid hidden dependency systems.
-- Remote downloads should come from package managers or pinned URLs with checksums
-  when practical.
-- Updating a pinned upstream recipe means updating the version, URL, and sha256
-  together in the recipe.
+- npm tools are pinned and installed as `DVM_USER`
+- `curl | sh` is rejected in built-ins
+- direct binary recipes require HTTPS plus SHA-256
+- Fedora packages track configured Fedora repos
 
-## Host
+## Agent user
 
-- Keep the host dependency set small: Lima, Bash, DVM config.
-- Install DVM from a reviewed checkout or signed release.
-- Run `bash scripts/check.sh` before committing changes.
+`agent-user` installs `dvm-agent`. With Bubblewrap, it hides the main home,
+binds the project directory and agent home, uses minimal `/dev`, and preserves
+network by default.
+
+If Bubblewrap is missing, `dvm-agent` refuses to run unless:
+
+```bash
+DVM_AGENT_ALLOW_UNSANDBOXED=1
+```
+
+Disable network for one run:
+
+```bash
+DVM_AGENT_NETWORK=0 dvm-agent codex
+```
+
+This is a guardrail, not a complete sandbox.
+
+Docker group access is root-equivalent inside the guest. `docker` conflicts
+with `agent-user`, and the agent user is not added to Docker unless:
+
+```bash
+DVM_DOCKER_AGENT_ACCESS=1
+```
+
+## Guest keys
+
+`ssh-keys` and `gpg-keys` create VM-local keys. DVM does not copy host private
+keys into guests. `gpg-keys` configures signing repo-locally only when a Git
+repo already exists.

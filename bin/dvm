@@ -1,74 +1,944 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-dvm_script_dir() {
-	local source dir
-	source="${BASH_SOURCE[0]}"
-	while [ -L "$source" ]; do
-		dir="$(cd -P "$(dirname "$source")" && pwd)"
-		source="$(readlink "$source")"
-		case "$source" in
-		/*) ;;
-		*) source="$dir/$source" ;;
-		esac
-	done
-	cd -P "$(dirname "$source")" && pwd
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+    target="$(readlink "$src")"
+    case "$target" in
+        /*) src="$target" ;;
+        *)  src="$(cd "$(dirname "$src")" && pwd)/$target" ;;
+    esac
+done
+DVM_ROOT="$(cd "$(dirname "$src")/.." && pwd)"
+DVM_SHARE="${DVM_SHARE_DIR:-$DVM_ROOT/share/dvm}"
+DVM_CONFIG_DIR="${DVM_CONFIG_DIR:-$HOME/.config/dvm}"
+DVM_CACHE_DIR="${DVM_CACHE_DIR:-$HOME/.cache/dvm}"
+LIMACTL="${DVM_LIMACTL:-limactl}"
+DVM_VERSION="0.1.0-dev"
+
+die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+lima_name() { printf 'dvm-%s\n' "$1"; }
+valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+valid_env_name() { [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
+valid_bool() {
+    case "$2" in
+        0|1) ;;
+        *) die "$1 must be 0 or 1" ;;
+    esac
+}
+validate_identity_names() {
+    valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
+    valid_name "$DVM_AGENT_USER" || die "invalid DVM_AGENT_USER: $DVM_AGENT_USER"
+    valid_name "$DVM_BASE_NAME" || die "invalid DVM_BASE_NAME: $DVM_BASE_NAME"
+}
+stat_uid() {
+    stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null
+}
+stat_mode() {
+    stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null
+}
+assert_safe_path() {
+    local path="$1" label="$2" uid mode
+    [ -e "$path" ] || return 0
+    uid="$(stat_uid "$path")" || die "cannot inspect $label ownership: $path"
+    [ "$uid" = "$(id -u)" ] || die "$label must be owned by the current user: $path"
+    mode="$(stat_mode "$path")" || die "cannot inspect $label permissions: $path"
+    if (( (8#$mode & 0022) != 0 )); then
+        die "unsafe permissions on $label: $path (repair: chmod go-w '$path')"
+    fi
+}
+require_lima() {
+    have "$LIMACTL" || die "limactl not found: $LIMACTL"
+}
+editor_cmd() {
+    if [ -n "${VISUAL:-}" ]; then
+        printf '%s\n' "$VISUAL"
+    elif [ -n "${EDITOR:-}" ]; then
+        printf '%s\n' "$EDITOR"
+    else
+        die 'set VISUAL or EDITOR before editing config'
+    fi
+}
+run_editor() {
+    local ed; ed="$(editor_cmd)"
+    # shellcheck disable=SC2086
+    $ed "$1"
 }
 
-DVM_ROOT="${DVM_ROOT:-$(cd "$(dvm_script_dir)/.." && pwd)}"
-DVM_SHARE="${DVM_SHARE:-$DVM_ROOT/share/dvm}"
-DVM_CONFIG="${DVM_CONFIG:-$HOME/.config/dvm}"
-DVM_LIB_DIR="${DVM_LIB_DIR:-$DVM_SHARE/lib}"
-
-[ -d "$DVM_LIB_DIR" ] || {
-	printf 'dvm: error: missing library directory: %s\n' "$DVM_LIB_DIR" >&2
-	exit 1
+load_global() {
+    [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
+    DVM_TEMPLATE="template:fedora"
+    DVM_CPUS=2
+    DVM_MEMORY=4
+    DVM_DISK=30
+    DVM_USER=developer
+    DVM_AGENT_USER=dvm-agent
+    DVM_DEFAULT_PACKAGES=()
+    DVM_DEFAULT_RECIPES=()
+    DVM_ENV=()
+    DVM_BASE_NAME=base
+    DVM_BASE_PACKAGES=()
+    DVM_BASE_RECIPES=()
+    DVM_USE_BASE=0
+    DVM_PROJECT_HOOK=0
+    DVM_PROJECT_HOOK_PRIVILEGED=0
+    DVM_PROJECT_HOOK_GIT_CONFIG=0
+    DVM_ALLOW_RECIPE_CONFLICTS=0
+    # shellcheck source=/dev/null
+    if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
+        assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
+        . "$DVM_CONFIG_DIR/config.sh"
+    fi
+    validate_identity_names
+    valid_bool DVM_USE_BASE "$DVM_USE_BASE"
+    valid_bool DVM_PROJECT_HOOK "$DVM_PROJECT_HOOK"
+    valid_bool DVM_PROJECT_HOOK_PRIVILEGED "$DVM_PROJECT_HOOK_PRIVILEGED"
+    valid_bool DVM_PROJECT_HOOK_GIT_CONFIG "$DVM_PROJECT_HOOK_GIT_CONFIG"
+    valid_bool DVM_ALLOW_RECIPE_CONFLICTS "$DVM_ALLOW_RECIPE_CONFLICTS"
+    return 0
 }
 
-# shellcheck source=share/dvm/lib/core.sh
-source "$DVM_LIB_DIR/core.sh"
-# shellcheck source=share/dvm/lib/ports.sh
-source "$DVM_LIB_DIR/ports.sh"
-# shellcheck source=share/dvm/lib/lima.sh
-source "$DVM_LIB_DIR/lima.sh"
-# shellcheck source=share/dvm/lib/apply.sh
-source "$DVM_LIB_DIR/apply.sh"
-# shellcheck source=share/dvm/lib/guest.sh
-source "$DVM_LIB_DIR/guest.sh"
-# shellcheck source=share/dvm/lib/keys.sh
-source "$DVM_LIB_DIR/keys.sh"
-# shellcheck source=share/dvm/lib/vm_admin.sh
-source "$DVM_LIB_DIR/vm_admin.sh"
-
-main() {
-	local cmd="${1:-help}"
-	[ "$#" -eq 0 ] || shift
-	case "$cmd" in
-	init)
-		case "$#" in
-		1 | 2) init_vm "$@" ;;
-		*) die "init takes <name> [template]" ;;
-		esac
-		;;
-	sync)
-		case "${1:-}" in
-		--all) [ "$#" -eq 1 ] || die "sync --all takes no other arguments"; apply_all ;;
-		'') die "sync requires a VM name or --all" ;;
-		*) [ "$#" -eq 1 ] || die "sync takes one VM name"; apply_one "$1" ;;
-		esac
-		;;
-	sh) [ "$#" -eq 1 ] || die "sh takes one VM name"; enter_vm "$1" ;;
-	ssh) [ -n "${1:-}" ] || die "ssh requires a VM name"; ssh_vm "$@" ;;
-	cp) cp_vm "$@" ;;
-	log) [ "$#" -ge 1 ] || die "log requires a VM name"; logs_vm "$@" ;;
-	ssh-key) [ "$#" -eq 1 ] || die "ssh-key takes one VM name"; ssh_key_vm "$@" ;;
-	gpg-key) [ "$#" -eq 1 ] || die "gpg-key takes one VM name"; gpg_key_vm "$@" ;;
-	ls) [ "$#" -eq 0 ] || die "ls takes no arguments"; list_vms ;;
-	stop) stop_command "$@" ;;
-	rm) [ "$#" -ge 1 ] || die "rm requires a VM name"; rm_vm "$@" ;;
-	help | -h | --help) usage ;;
-	*) usage >&2; die "unknown command: $cmd" ;;
-	esac
+load_vm() {
+    valid_name "$1" || die "invalid VM name: $1"
+    local f="$DVM_CONFIG_DIR/vms/$1.sh"
+    [ -f "$f" ] || die "no config for VM \"$1\" at $f"
+    load_global
+    assert_safe_path "$DVM_CONFIG_DIR/vms" "VM config directory"
+    assert_safe_path "$f" "VM config"
+    DVM_NAME="$1"
+    DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
+    DVM_PORTS=()
+    DVM_PACKAGES=()
+    DVM_RECIPES=()
+    DVM_SECRETS=()
+    DVM_SECRET_DIR=
+    DVM_SECRET_NAMES=()
+    DVM_SECRET_PATHS=()
+    DVM_GIT_REPO=
+    DVM_GIT_BRANCH=
+    # shellcheck source=/dev/null
+    . "$f"
+    validate_identity_names
+    valid_bool DVM_USE_BASE "$DVM_USE_BASE"
+    valid_bool DVM_PROJECT_HOOK "$DVM_PROJECT_HOOK"
+    valid_bool DVM_PROJECT_HOOK_PRIVILEGED "$DVM_PROJECT_HOOK_PRIVILEGED"
+    valid_bool DVM_PROJECT_HOOK_GIT_CONFIG "$DVM_PROJECT_HOOK_GIT_CONFIG"
+    valid_bool DVM_ALLOW_RECIPE_CONFLICTS "$DVM_ALLOW_RECIPE_CONFLICTS"
+    DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
+    DVM_PACKAGES=("${DVM_DEFAULT_PACKAGES[@]}" "${DVM_PACKAGES[@]}")
+    DVM_RECIPES=("${DVM_DEFAULT_RECIPES[@]}" "${DVM_RECIPES[@]}")
+    prepare_recipes
+    validate_ports
 }
 
-main "$@"
+validate_ports() {
+    local p host guest extra
+    for p in "${DVM_PORTS[@]:-}"; do
+        [ -n "$p" ] || continue
+        IFS=: read -r host guest extra <<<"$p"
+        if [ -n "${extra:-}" ]; then
+            die "bad port spec (extra ':'): $p"
+        fi
+        if [ -z "${host:-}" ] || [ -z "${guest:-}" ]; then
+            die "bad port spec: $p"
+        fi
+        case "$host$guest" in *[!0-9]*) die "port must be numeric: $p" ;; esac
+        if [ "$host" -lt 1 ] || [ "$host" -gt 65535 ]; then
+            die "port out of range 1-65535: $p"
+        fi
+        if [ "$guest" -lt 1 ] || [ "$guest" -gt 65535 ]; then
+            die "port out of range 1-65535: $p"
+        fi
+    done
+}
+
+lock_vm() {
+    mkdir -p "$DVM_CACHE_DIR"
+    local d="$DVM_CACHE_DIR/$1.lock"
+    if ! mkdir "$d" 2>/dev/null; then
+        die "VM \"$1\" busy: another dvm operation is in progress (rm $d if stale)"
+    fi
+    trap 'cleanup_secrets; rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
+}
+
+DVM_ARGV=()
+
+port_forward_args() {
+    local p host guest
+    for p in "${DVM_PORTS[@]:-}"; do
+        [ -n "$p" ] || continue
+        IFS=: read -r host guest <<<"$p"
+        DVM_ARGV+=(--port-forward "$host:$guest")
+    done
+}
+
+build_lima_start() {
+    DVM_ARGV=("$LIMACTL" start --name "$DVM_LIMA_NAME"
+        --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
+        --mount-none)
+    port_forward_args
+    DVM_ARGV+=("$DVM_TEMPLATE")
+}
+
+build_lima_clone() {
+    local from="$1"
+    DVM_ARGV=("$LIMACTL" clone
+        --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
+        --mount-none)
+    port_forward_args
+    DVM_ARGV+=("$from" "$DVM_LIMA_NAME")
+}
+
+print_argv() {
+    local x
+    for x in "${DVM_ARGV[@]}"; do printf '  %q\n' "$x"; done
+}
+
+lima_list_quiet() {
+    "$LIMACTL" list -q
+}
+
+lima_has() {
+    local list
+    list="$(lima_list_quiet)" || die "failed to list Lima instances"
+    printf '%s\n' "$list" | grep -Fxq "$1"
+}
+
+vm_config_exists() {
+    valid_name "$1" || return 1
+    [ -f "$DVM_CONFIG_DIR/vms/$1.sh" ]
+}
+
+canonical_recipe_name() {
+    local name="$1"
+    case "$name" in
+        ai-user|ai-agent) name=agent-user ;;
+        cloudflare|cloudflare-tunnel) name=cloudflared ;;
+        gpg-key) name=gpg-keys ;;
+        ssh-key) name=ssh-keys ;;
+    esac
+    printf '%s\n' "$name"
+}
+
+recipe_file() {
+    local name user_file
+    name="$(canonical_recipe_name "$1")"
+    user_file="$DVM_CONFIG_DIR/recipes/$name.sh"
+    if [ -f "$user_file" ]; then
+        assert_safe_path "$DVM_CONFIG_DIR/recipes" "user recipe directory"
+        assert_safe_path "$user_file" "user recipe"
+        printf '%s\n' "$user_file"
+        return
+    fi
+    [ -f "$DVM_SHARE/recipes/$name.sh" ] && { printf '%s\n' "$DVM_SHARE/recipes/$name.sh"; return; }
+    die "unknown recipe: $name"
+}
+
+recipe_conflicts() {
+    local file="$1" line words
+    while IFS= read -r line; do
+        case "$line" in
+            '# dvm-conflicts:'*)
+                words="${line#'# dvm-conflicts:'}"
+                # shellcheck disable=SC2086 # Metadata is whitespace-separated recipe names.
+                printf '%s\n' $words
+                ;;
+        esac
+    done <"$file"
+}
+
+prepare_recipes() {
+    local r canonical f conflict seen=' ' selected=' ' prepared=()
+    for r in "${DVM_RECIPES[@]:-}"; do
+        [ -n "${r:-}" ] || continue
+        canonical="$(canonical_recipe_name "$r")"
+        f="$(recipe_file "$canonical")"
+        case "$seen" in *" $canonical "*) continue ;; esac
+        seen="$seen$canonical "
+        selected="$selected$canonical "
+        prepared+=("$canonical")
+    done
+    if [ "$DVM_ALLOW_RECIPE_CONFLICTS" != "1" ]; then
+        for r in "${prepared[@]}"; do
+            f="$(recipe_file "$r")"
+            while IFS= read -r conflict; do
+                [ -n "${conflict:-}" ] || continue
+                conflict="$(canonical_recipe_name "$conflict")"
+                case "$selected" in
+                    *" $conflict "*) die "recipes \"$r\" and \"$conflict\" conflict; set DVM_ALLOW_RECIPE_CONFLICTS=1 only after reviewing the risk" ;;
+                esac
+            done < <(recipe_conflicts "$f")
+        done
+    fi
+    DVM_RECIPES=("${prepared[@]}")
+}
+
+print_recipe_aliases() {
+    cat <<'EOF'
+
+Aliases:
+  ai-user, ai-agent          -> agent-user
+  cloudflare, cloudflare-tunnel -> cloudflared
+  ssh-key                   -> ssh-keys
+  gpg-key                   -> gpg-keys
+EOF
+}
+
+is_secret_name() {
+    local s
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ "$s" = "$1" ] && return 0
+    done
+    return 1
+}
+
+dangerous_env_name() {
+    case "$1" in
+        PATH|BASH_ENV|ENV|SHELLOPTS|IFS|CDPATH|LD_*|DYLD_*|BASH_FUNC_*|GIT_*|SSH_ASKPASS|PYTHONHOME|PYTHONPATH|RUBYOPT|NODE_OPTIONS|NPM_CONFIG_*|npm_config_*|CURL_HOME|GNUPGHOME)
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+guest_env_exports() {
+    local n emitted=' ' source
+    local builtins=(
+        DVM_CHEZMOI_REPO
+        DVM_TAILSCALE_HOSTNAME
+        DVM_DOCKER_AGENT_ACCESS
+        DVM_CODEX_VERSION
+        DVM_CLAUDE_CODE_VERSION
+        DVM_OPENCODE_VERSION
+        DVM_NPM_PREFIX
+        DVM_OLLAMA_URL
+        DVM_OLLAMA_SHA256
+        DVM_MISTRAL_URL
+        DVM_MISTRAL_SHA256
+    )
+    for n in "${builtins[@]}" "${DVM_ENV[@]:-}"; do
+        [ -n "${n:-}" ] || continue
+        valid_env_name "$n" || die "DVM_ENV entry \"$n\" must match [A-Za-z_][A-Za-z0-9_]*"
+        source=custom
+        case " ${builtins[*]} " in *" $n "*) source=builtin ;; esac
+        if [ "$source" = custom ] && dangerous_env_name "$n"; then
+            die "DVM_ENV entry \"$n\" is blocked because it can alter shell or tool execution"
+        fi
+        is_secret_name "$n" && die "DVM_ENV must not include secret \"$n\"; use DVM_SECRETS"
+        case "$emitted" in *" $n "*) continue ;; esac
+        emitted="$emitted$n "
+        [ -n "${!n+x}" ] || continue
+        printf 'export %s=%q\n' "$n" "${!n}"
+    done
+}
+
+random_hex() {
+    local hex
+    hex="$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')" || hex=
+    if [ -z "$hex" ]; then
+        hex="$(date +%s)-$$-${RANDOM:-0}"
+    fi
+    printf '%s\n' "$hex"
+}
+
+prepare_secret_paths() {
+    local require_values="${1:-1}" s
+    DVM_SECRET_NAMES=()
+    DVM_SECRET_PATHS=()
+    DVM_SECRET_DIR=
+    [ "${#DVM_SECRETS[@]}" -gt 0 ] || return 0
+    DVM_SECRET_DIR="/run/dvm-secrets/$(random_hex)"
+    for s in "${DVM_SECRETS[@]:-}"; do
+        [ -n "${s:-}" ] || continue
+        valid_env_name "$s" || die "DVM_SECRETS entry \"$s\" must match [A-Za-z_][A-Za-z0-9_]*"
+        if [ "$require_values" = "1" ]; then
+            [ -n "${!s:-}" ] || die "secret env var \"$s\" is empty or unset"
+        fi
+        DVM_SECRET_NAMES+=("$s")
+        DVM_SECRET_PATHS+=("$DVM_SECRET_DIR/$(random_hex)-$s")
+    done
+}
+
+guest_secret_exports() {
+    local i s path
+    for i in "${!DVM_SECRET_NAMES[@]}"; do
+        s="${DVM_SECRET_NAMES[$i]}"
+        path="${DVM_SECRET_PATHS[$i]}"
+        printf 'export DVM_SECRET_PATH_%s=%q\n' "$s" "$path"
+    done
+}
+
+guest_secret_cleanup() {
+    local path
+    [ "${#DVM_SECRET_PATHS[@]}" -gt 0 ] || return 0
+    printf 'sudo rm -f'
+    for path in "${DVM_SECRET_PATHS[@]}"; do
+        printf ' %q' "$path"
+    done
+    printf '\n'
+    printf 'sudo rmdir %q 2>/dev/null || true\n' "$DVM_SECRET_DIR"
+}
+
+guest_secret_trap() {
+    [ "${#DVM_SECRET_PATHS[@]}" -gt 0 ] || return 0
+    printf '\ndvm_cleanup_staged_secrets() {\n'
+    guest_secret_cleanup
+    printf '}\n'
+    printf 'trap dvm_cleanup_staged_secrets EXIT INT TERM\n'
+}
+
+stage_secrets() {
+    local i s path
+    [ "${#DVM_SECRET_PATHS[@]}" -gt 0 ] || return 0
+    "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" \
+        sudo install -d -m 700 -o root -g root /run/dvm-secrets "$DVM_SECRET_DIR" \
+        || { cleanup_secrets; die "failed to create guest secret directory"; }
+    for i in "${!DVM_SECRET_NAMES[@]}"; do
+        s="${DVM_SECRET_NAMES[$i]}"
+        path="${DVM_SECRET_PATHS[$i]}"
+        printf '%s' "${!s}" \
+            | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" \
+              sudo install -m 600 -o root -g root /dev/stdin "$path" \
+            || { cleanup_secrets; die "failed to stage secret $s"; }
+    done
+}
+
+cleanup_secrets() {
+    local path args=()
+    [ -n "${DVM_LIMA_NAME:-}" ] || return 0
+    declare -p DVM_SECRET_PATHS >/dev/null 2>&1 || return 0
+    [ "${#DVM_SECRET_PATHS[@]}" -gt 0 ] || return 0
+    args=(sudo rm -f)
+    for path in "${DVM_SECRET_PATHS[@]}"; do
+        args+=("$path")
+    done
+    "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" "${args[@]}" >/dev/null 2>&1 || true
+    if [ -n "${DVM_SECRET_DIR:-}" ]; then
+        "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" sudo rmdir "$DVM_SECRET_DIR" >/dev/null 2>&1 || true
+    fi
+}
+
+guest_core_exports() {
+    printf 'export DVM_NAME=%q DVM_VM=%q DVM_LIMA_NAME=%q DVM_USER=%q DVM_AGENT_USER=%q DVM_CODE_DIR=%q DVM_PORTS=%q DVM_GIT_REPO=%q DVM_GIT_BRANCH=%q DVM_PROJECT_HOOK=%q DVM_PROJECT_HOOK_PRIVILEGED=%q DVM_PROJECT_HOOK_GIT_CONFIG=%q\n' \
+        "$DVM_NAME" "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" "$DVM_AGENT_USER" "$DVM_CODE_DIR" "$(IFS=,; printf '%s' "${DVM_PORTS[*]:-}")" "$DVM_GIT_REPO" "$DVM_GIT_BRANCH" "$DVM_PROJECT_HOOK" "$DVM_PROJECT_HOOK_PRIVILEGED" "$DVM_PROJECT_HOOK_GIT_CONFIG"
+}
+
+guest_user_setup_script() {
+    guest_core_exports
+    cat "$DVM_SHARE/prelude.sh"
+    # shellcheck disable=SC2016 # Emit literal guest-side variable expansion.
+    printf 'dvm_ensure_user "$DVM_USER"\n'
+}
+
+ensure_guest_user() {
+    guest_user_setup_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
+}
+
+guest_script() {
+    guest_core_exports
+    guest_env_exports
+    guest_secret_exports
+    cat "$DVM_SHARE/prelude.sh"
+    guest_secret_trap
+    # shellcheck disable=SC2016 # Emit literal guest-side variable expansion.
+    printf 'dvm_ensure_user "$DVM_USER"\n'
+    printf "sudo install -d -o \"\$DVM_USER\" -g \"\$(dvm_user_group \"\$DVM_USER\")\" \"\$DVM_CODE_DIR\"\n"
+    if [ "${#DVM_PACKAGES[@]}" -gt 0 ]; then
+        printf 'dvm_pkg'
+        printf ' %q' "${DVM_PACKAGES[@]}"
+        printf '\n'
+    fi
+    local r f
+    for r in "${DVM_RECIPES[@]:-}"; do
+        [ -n "${r:-}" ] || continue
+        f="$(recipe_file "$r")"
+        printf '\n# >>> recipe: %s\nexport DVM_RECIPE=%q\n' "$r" "$r"
+        cat "$f"
+        printf '\n# <<< recipe: %s\n' "$r"
+    done
+    if [ "${#DVM_SECRETS[@]}" -gt 0 ]; then
+        printf '\n# Remove staged secrets before project-controlled clone/hooks.\n'
+        guest_secret_cleanup
+        printf 'trap - EXIT INT TERM\n'
+    fi
+    printf "\nif [ -n \"\$DVM_GIT_REPO\" ] && [ ! -d \"\$DVM_CODE_DIR/.git\" ]; then\n"
+    printf '  dvm_pkg git\n'
+    printf "  if [ -n \"\$DVM_GIT_BRANCH\" ]; then\n"
+    printf "    dvm_as_user git clone --branch \"\$DVM_GIT_BRANCH\" \"\$DVM_GIT_REPO\" \"\$DVM_CODE_DIR\"\n"
+    printf '  else\n'
+    printf "    dvm_as_user git clone \"\$DVM_GIT_REPO\" \"\$DVM_CODE_DIR\"\n"
+    printf '  fi\n'
+    printf 'fi\n'
+    printf '\nif [ "$DVM_PROJECT_HOOK" != "0" ] && [ -f "$DVM_CODE_DIR/.dvm/sync.sh" ]; then\n'
+    printf '  hook_allowed=1\n'
+    printf '  if [ "$DVM_PROJECT_HOOK_GIT_CONFIG" = "1" ]; then\n'
+    printf '    hook_allowed=0\n'
+    printf '    if dvm_as_user git -C "$DVM_CODE_DIR" config --bool --get dvm.hook 2>/dev/null | grep -Fxq true; then hook_allowed=1; fi\n'
+    printf '  fi\n'
+    printf '  if [ "$hook_allowed" = "1" ] && [ "$DVM_PROJECT_HOOK_PRIVILEGED" = "1" ]; then\n'
+    printf '    printf "dvm guest: warning: running project hook with provisioning privileges\\n" >&2\n'
+    printf '    ( cd "$DVM_CODE_DIR" && bash .dvm/sync.sh )\n'
+    printf '  elif [ "$hook_allowed" = "1" ]; then\n'
+    printf '    dvm_as_user bash -lc '\''cd "$1" && exec bash .dvm/sync.sh'\'' bash "$DVM_CODE_DIR"\n'
+    printf '  else\n'
+    printf '    printf "dvm guest: skipping project hook; repo git config dvm.hook is not true\\n" >&2\n'
+    printf '  fi\n'
+    printf 'fi\n'
+}
+
+run_guest_script() {
+    if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
+        prepare_secret_paths 0
+        printf -- '--- guest script ---\n'
+        guest_script
+        printf -- '--- /guest script ---\n'
+        return 0
+    fi
+    prepare_secret_paths 1
+    ensure_guest_user
+    stage_secrets
+    set +e
+    guest_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
+    local rc=$?
+    set -e
+    cleanup_secrets
+    return $rc
+}
+
+cmd_sync() {
+    if [ "${1:-}" = "--all" ]; then
+        local rc=0 f n
+        for f in "$DVM_CONFIG_DIR"/vms/*.sh; do
+            [ -f "$f" ] || continue
+            n="$(basename "$f" .sh)"
+            printf -- '--- sync %s ---\n' "$n"
+            ( cmd_sync "$n" ) || rc=1
+        done
+        return $rc
+    fi
+    [ "$#" -eq 1 ] || die "usage: dvm sync <vm> | --all"
+    load_vm "$1"
+
+    if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
+        printf 'VM: %s (lima: %s)\n' "$DVM_NAME" "$DVM_LIMA_NAME"
+        if [ "$DVM_USE_BASE" = "1" ]; then
+            build_lima_clone "$(lima_name "$DVM_BASE_NAME")"
+            printf 'limactl clone argv:\n'
+        else
+            build_lima_start
+            printf 'limactl start argv:\n'
+        fi
+        print_argv
+        run_guest_script
+        return 0
+    fi
+
+    lock_vm "$DVM_NAME"
+    require_lima
+    if ! lima_has "$DVM_LIMA_NAME"; then
+        if [ "$DVM_USE_BASE" = "1" ]; then
+            local base; base="$(lima_name "$DVM_BASE_NAME")"
+            [ ! -d "$DVM_CACHE_DIR/$DVM_BASE_NAME.lock" ] || die "base \"$DVM_BASE_NAME\" busy: another dvm base operation is in progress"
+            lima_has "$base" || die "DVM_USE_BASE=1 but base \"$base\" is missing (run: dvm base build)"
+            build_lima_clone "$base"
+        else
+            build_lima_start
+        fi
+        "${DVM_ARGV[@]}"
+    fi
+    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
+    run_guest_script
+}
+
+cmd_sh() {
+    [ "$#" -eq 1 ] || die "usage: dvm sh <vm>"
+    load_vm "$1"
+    require_lima
+    ensure_guest_user
+    local sh_script
+    # shellcheck disable=SC2016 # Guest-side bash receives and expands $1.
+    sh_script='cd "$1" 2>/dev/null || cd; exec bash -l'
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
+        "$sh_script" bash "$DVM_CODE_DIR"
+}
+
+cmd_ssh() {
+    [ "$#" -ge 1 ] || die "usage: dvm ssh <vm> -- cmd..."
+    local name="$1"; shift
+    load_vm "$name"
+    require_lima
+    [ "${1:-}" = "--" ] && shift
+    [ "$#" -gt 0 ] || die "usage: dvm ssh <vm> -- cmd..."
+    ensure_guest_user
+    local sh_script
+    # shellcheck disable=SC2016 # Guest-side bash receives and expands $1/$@.
+    sh_script='cd "$1" 2>/dev/null || cd; shift; exec "$@"'
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
+        "$sh_script" bash "$DVM_CODE_DIR" "$@"
+}
+
+cmd_cp() {
+    [ "$#" -eq 2 ] || die "usage: dvm cp <src> <dst>"
+    local src_arg="$1" dst_arg="$2" src="$1" dst="$2"
+    local src_is_vm=0 dst_is_vm=0 vm rest
+    if [[ "$src_arg" =~ ^([a-z][a-z0-9-]*):(.*)$ ]]; then
+        vm="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+        src="$(lima_name "$vm"):$rest"; src_is_vm=1
+    fi
+    if [[ "$dst_arg" =~ ^([a-z][a-z0-9-]*):(.*)$ ]]; then
+        vm="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+        dst="$(lima_name "$vm"):$rest"; dst_is_vm=1
+    fi
+    [ $((src_is_vm + dst_is_vm)) -ge 1 ] || die "at least one path must be <vm>:<path>"
+    [ $((src_is_vm + dst_is_vm)) -le 1 ] || die "cross-VM copy is not supported"
+    require_lima
+    exec "$LIMACTL" copy "$src" "$dst"
+}
+
+cmd_log() {
+    [ "$#" -ge 1 ] || die "usage: dvm log <vm> [-f] [args]"
+    local name="$1"; shift
+    load_vm "$name"
+    require_lima
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo journalctl "$@"
+}
+
+cmd_ls() {
+    require_lima
+    local only_config=0 filter=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --only-config) only_config=1 ;;
+            *)
+                [ -z "$filter" ] || die "usage: dvm ls [--only-config] [<vm>]"
+                filter="$1"
+                ;;
+        esac
+        shift
+    done
+    local fmt='{{.Name}}	{{.Status}}	{{.CPUs}}	{{.Memory}}'
+    local name status cpus mem short
+    local rows
+    rows="$("$LIMACTL" list --format "$fmt")" || die "failed to list Lima instances"
+    printf '%-20s %-10s %-5s %-10s\n' VM STATE CPU MEMORY
+    while IFS=$'\t' read -r name status cpus mem; do
+        [ -n "$name" ] || continue
+        case "$name" in dvm-*) short="${name#dvm-}" ;; *) continue ;; esac
+        if [ -n "$filter" ] && [ "$short" != "$filter" ]; then continue; fi
+        if [ "$only_config" = "1" ] && ! vm_config_exists "$short"; then continue; fi
+        printf '%-20s %-10s %-5s %-10s\n' "$short" "$status" "$cpus" "$mem"
+    done <<<"$rows"
+}
+
+cmd_stop() {
+    if [ "${1:-}" = "--all" ]; then
+        shift
+        local only_config=0
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --only-config) only_config=1 ;;
+                *) die "usage: dvm stop <vm> | --all [--only-config]" ;;
+            esac
+            shift
+        done
+        require_lima
+        local rc=0 n rows
+        rows="$(lima_list_quiet)" || die "failed to list Lima instances"
+        while IFS= read -r n; do
+            case "$n" in
+                dvm-*)
+                    if [ "$only_config" = "1" ] && ! vm_config_exists "${n#dvm-}"; then
+                        continue
+                    fi
+                    "$LIMACTL" stop "$n" || { rc=1; printf 'dvm: stop %s failed\n' "$n" >&2; }
+                    ;;
+            esac
+        done <<<"$rows"
+        return $rc
+    fi
+    [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
+    require_lima
+    local name; name="$(lima_name "$1")"
+    lima_has "$name" || return 0
+    "$LIMACTL" stop "$name"
+}
+
+cmd_rm() {
+    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes"
+    local name="$1"; shift
+    local yes=0 remove_config=0 config_file
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --yes) yes=1 ;;
+            --config) remove_config=1 ;;
+            *) die "unknown flag: $1" ;;
+        esac
+        shift
+    done
+    [ "$yes" = "1" ] || die "dvm rm requires --yes"
+    valid_name "$name" || die "invalid VM name: $name"
+    DVM_NAME="$name"
+    DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
+    config_file="$DVM_CONFIG_DIR/vms/$DVM_NAME.sh"
+    require_lima
+    lock_vm "$DVM_NAME"
+    if lima_has "$DVM_LIMA_NAME"; then
+        "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
+        "$LIMACTL" delete --force "$DVM_LIMA_NAME"
+        printf 'removed %s\n' "$DVM_NAME"
+    else
+        printf 'no Lima instance: %s\n' "$DVM_NAME"
+    fi
+    if [ "$remove_config" = "1" ]; then
+        rm -f "$config_file"
+        printf 'removed config %s\n' "$config_file"
+    elif [ -f "$config_file" ]; then
+        printf 'warning: config remains at %s (use --config to remove it)\n' "$config_file" >&2
+    fi
+}
+
+cmd_new() {
+    [ "$#" -eq 1 ] || die "usage: dvm new <vm>"
+    valid_name "$1" || die "invalid VM name: $1"
+    mkdir -p "$DVM_CONFIG_DIR/vms"
+    local f="$DVM_CONFIG_DIR/vms/$1.sh"
+    [ ! -e "$f" ] || die "config already exists: $f"
+    cat > "$f" <<EOF
+# shellcheck shell=bash
+# Per-VM config. Global config loads first.
+
+DVM_CPUS=4
+DVM_MEMORY=8
+DVM_DISK=60
+
+# Localhost port forwards.
+# DVM_PORTS=(3000:3000 5173:5173)
+
+# Recipes. Global DVM_DEFAULT_RECIPES are prepended.
+DVM_RECIPES=(zsh fzf)
+# DVM_RECIPES=(zsh fzf node codex)
+
+# Extra Fedora packages.
+# DVM_PACKAGES=(git tmux)
+
+# Optional first clone. For private repos, create SSH keys first.
+# DVM_GIT_REPO="git@github.com:me/app.git"
+# DVM_GIT_BRANCH=main
+
+# DVM_CHEZMOI_REPO="https://github.com/me/dotfiles.git"
+
+# DVM_USE_BASE=1
+
+# Secret env var names.
+# DVM_SECRETS=(DVM_CLOUDFLARED_TOKEN)
+
+# Non-secret recipe settings.
+# DVM_ENV=(MY_TOOL_CHANNEL)
+
+# Hooks are disabled by default.
+# DVM_PROJECT_HOOK=0
+# DVM_PROJECT_HOOK_PRIVILEGED=0
+# DVM_PROJECT_HOOK_GIT_CONFIG=0
+EOF
+    run_editor "$f"
+}
+
+cmd_edit() {
+    [ "$#" -eq 1 ] || die "usage: dvm edit <vm>"
+    valid_name "$1" || die "invalid VM name: $1"
+    local f="$DVM_CONFIG_DIR/vms/$1.sh"
+    [ -f "$f" ] || die "no config for VM \"$1\""
+    run_editor "$f"
+}
+
+cmd_config() {
+    case "${1:-}" in
+        edit)
+            mkdir -p "$DVM_CONFIG_DIR"
+            local f="$DVM_CONFIG_DIR/config.sh"
+            [ -e "$f" ] || cp "$DVM_SHARE/config.sh.example" "$f" 2>/dev/null || : > "$f"
+            run_editor "$f"
+            ;;
+        show)
+            cat "$DVM_CONFIG_DIR/config.sh" 2>/dev/null || die "no config at $DVM_CONFIG_DIR/config.sh"
+            ;;
+        *) die "usage: dvm config edit | show" ;;
+    esac
+}
+
+cmd_base() {
+    load_global
+    local base; base="$(lima_name "$DVM_BASE_NAME")"
+    case "${1:-}" in
+        build)
+            DVM_NAME="$DVM_BASE_NAME"
+            DVM_LIMA_NAME="$base"
+            DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_BASE_NAME"
+            DVM_PORTS=()
+            DVM_PACKAGES=("${DVM_BASE_PACKAGES[@]}")
+            DVM_RECIPES=("${DVM_BASE_RECIPES[@]}")
+            prepare_recipes
+            DVM_SECRETS=()
+            DVM_SECRET_DIR=
+            DVM_SECRET_NAMES=()
+            DVM_SECRET_PATHS=()
+            DVM_GIT_REPO=
+            DVM_GIT_BRANCH=
+            if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
+                build_lima_start
+                printf 'limactl start argv:\n'
+                print_argv
+                run_guest_script
+                return 0
+            fi
+            require_lima
+            lock_vm "$DVM_BASE_NAME"
+            if ! lima_has "$base"; then
+                build_lima_start
+                "${DVM_ARGV[@]}"
+            fi
+            "$LIMACTL" start "$base" >/dev/null 2>&1 || "$LIMACTL" start "$base"
+            run_guest_script
+            "$LIMACTL" stop "$base"
+            ;;
+        rm)
+            require_lima
+            lock_vm "$DVM_BASE_NAME"
+            if lima_has "$base"; then
+                "$LIMACTL" stop --force "$base" >/dev/null 2>&1 || true
+                "$LIMACTL" delete --force "$base"
+            fi
+            printf 'removed %s\n' "$base"
+            ;;
+        *) die "usage: dvm base build | rm" ;;
+    esac
+}
+
+cmd_recipes() {
+    local d f n
+    printf '%-18s %s\n' RECIPE SOURCE
+    for d in "$DVM_SHARE/recipes" "$DVM_CONFIG_DIR/recipes"; do
+        [ -d "$d" ] || continue
+        for f in "$d"/*.sh; do
+            [ -f "$f" ] || continue
+            n="$(basename "$f" .sh)"
+            printf '%-18s %s\n' "$n" "$f"
+        done
+    done
+    print_recipe_aliases
+}
+
+cmd_doctor() {
+    local probe=
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --probe)
+                shift
+                [ -n "${1:-}" ] || die "usage: dvm doctor [--probe <vm>]"
+                probe="$1"
+                ;;
+            *) die "usage: dvm doctor [--probe <vm>]" ;;
+        esac
+        shift
+    done
+    load_global
+    local rc=0 version major minor lima_ok=0
+    check() { printf '%-36s %s\n' "$1" "$2"; }
+    if have "$LIMACTL"; then
+        version="$("$LIMACTL" --version 2>/dev/null | head -1 || true)"
+        if [[ "$version" =~ ([0-9]+)\.([0-9]+) ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            if [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 0 ]; }; then
+                lima_ok=1
+            fi
+        fi
+        if [ "$lima_ok" = "1" ]; then
+            check "limactl" "ok ($version)"
+        elif [ -z "$version" ]; then
+            check "limactl" "unparsable (no version output; need 2.0+)"; rc=1
+        elif [[ "$version" =~ [0-9]+\.[0-9]+ ]]; then
+            check "limactl" "OLD ($version; need 2.0+)"; rc=1
+        else
+            check "limactl" "unparsable ($version; expected major.minor, need 2.0+)"; rc=1
+        fi
+    else
+        check "limactl" "MISSING"; rc=1
+    fi
+    if [ -n "${VISUAL:-}${EDITOR:-}" ]; then
+        check "VISUAL/EDITOR" "ok"
+    else
+        check "VISUAL/EDITOR" "MISSING"; rc=1
+    fi
+    if have git; then
+        check "git" "ok"
+    else
+        check "git" "WARN missing (needed for DVM_GIT_REPO and some recipes)"
+    fi
+    if [ -d "$DVM_SHARE/recipes" ]; then
+        check "built-in recipes" "ok"
+    else
+        check "built-in recipes" "MISSING"; rc=1
+    fi
+    if [ -d "$DVM_CONFIG_DIR/vms" ]; then
+        check "VM configs" "$(find "$DVM_CONFIG_DIR/vms" -maxdepth 1 -name '*.sh' | wc -l) found"
+    else
+        check "VM configs" "no $DVM_CONFIG_DIR/vms directory"
+    fi
+    if [ -n "$probe" ]; then
+        if have "$LIMACTL"; then
+            load_vm "$probe"
+            if "$LIMACTL" shell "$DVM_LIMA_NAME" true >/dev/null 2>&1; then
+                check "probe $probe" "ok"
+            else
+                check "probe $probe" "UNREACHABLE"; rc=1
+            fi
+        else
+            check "probe $probe" "SKIPPED (limactl missing)"; rc=1
+        fi
+    fi
+    return $rc
+}
+
+usage() {
+    cat <<'EOF'
+dvm <command> [args]
+  sync <vm> | --all       create/start VM and run packages + recipes
+  sh <vm>                 interactive shell as DVM_USER
+  ssh <vm> -- cmd...      non-interactive command as DVM_USER
+  cp src dst              copy; one side may be vm:path
+  log <vm> [-f] [args]    guest journalctl
+  ls [--only-config] [<vm>] list running Lima instances
+  stop <vm> | --all [--only-config] stop running VMs
+  rm <vm> --yes [--config] stop and delete the Lima instance
+  new <vm>                write stub config and open editor
+  edit <vm>               edit per-VM config
+  config edit | show      edit/show global config
+  base build | rm         build or delete the optional base VM
+  recipes                 list built-in and user recipes
+  doctor [--probe <vm>]   check Lima and DVM paths
+  version                 print DVM version
+EOF
+}
+
+cmd="${1:-ls}"; [ "$#" -gt 0 ] && shift
+case "$cmd" in
+    sync) cmd_sync "$@" ;;
+    sh) cmd_sh "$@" ;;
+    ssh) cmd_ssh "$@" ;;
+    cp) cmd_cp "$@" ;;
+    log) cmd_log "$@" ;;
+    ls) cmd_ls "$@" ;;
+    stop) cmd_stop "$@" ;;
+    rm) cmd_rm "$@" ;;
+    new) cmd_new "$@" ;;
+    edit) cmd_edit "$@" ;;
+    config) cmd_config "$@" ;;
+    base) cmd_base "$@" ;;
+    recipes) cmd_recipes "$@" ;;
+    doctor) cmd_doctor "$@" ;;
+    version) [ "$#" -eq 0 ] || die "usage: dvm version"; printf 'dvm %s\n' "$DVM_VERSION" ;;
+    help|-h|--help) usage ;;
+    *) usage >&2; die "unknown command: $cmd" ;;
+esac

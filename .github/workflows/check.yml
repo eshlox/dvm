@@ -17,7 +17,7 @@ concurrency:
 jobs:
   check:
     name: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck gnupg
+          sudo apt-get install -y --no-install-recommends shellcheck
 
-      - name: Run checks
-        run: bash scripts/check.sh
+      - name: Check
+        run: bash scripts/check

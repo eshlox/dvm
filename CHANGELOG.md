@@ -2,182 +2,130 @@
 
 ## Unreleased
 
-- Changed `dvm ssh-key` generated access-key comments and output labels from
-  GitHub-specific wording to provider-neutral Git wording. Existing key file paths are
-  unchanged.
-- Fixed per-VM `DVM_CODE_ROOT` overrides so the default `DVM_CODE_DIR` is computed
-  after VM config is sourced.
-- Fixed remaining user-facing docs and diagnostics that still used old command names
-  after the `sync` / `sh` / `log` rename.
-- Renamed commands for shorter typing: `apply` → `sync`, `enter` → `sh`, `logs` →
-  `log`, `list` → `ls`. The per-project hook moved from `.dvm/apply.sh` to
-  `.dvm/sync.sh`; rename the file in projects that use it.
-- Added built-in defaults for `DVM_CPUS=2`, `DVM_MEMORY=2GiB`, `DVM_DISK=10GiB`,
-  `DVM_USER=${USER:-developer}`. Bundled `share/dvm/config.sh` is now fully
-  commented; uncomment values to override defaults.
-- Changed `dvm init` to render the bundled VM template, substituting host CPU/memory
-  ceilings into inline comments.
-- Added a `use_tools` helper in `share/dvm/config.sh`. The bundled VM template calls
-  it, so every general-purpose recipe (excluding service recipes like `llama` and
-  `cloudflared`) is selected from a single global location. Define more helpers
-  (`use_data_tools`, …) and mix them per VM as needed.
-- Rewrote `share/dvm/vms/app.sh` as a fully commented self-documenting template.
-- Added `# Description: <one line>` to bundled recipes as a one-liner docstring.
-- Moved `DVM_CHEZMOI_REPO`, `DVM_CHEZMOI_SIGNING_KEY`, and `DVM_CHEZMOI_DEPLOY_KEY` to
-  global config; per-VM config only opts in via `use chezmoi` (per-VM override still
-  works through the source order).
-- Tightened CLI arg validation: `init`, `sync`, `sh`, `ssh-key`, `gpg-key`, `ls`, and
-  `stop` now reject unexpected extra arguments with a clear error rather than
-  silently ignoring them.
-- Added `dvm stop --all` to stop every DVM-managed Lima instance while preserving VM
-  disks and config, plus `dvm stop --inactive` / `dvm stop --all --inactive` for
-  stopping only VMs without a detected active shell, `tmux`/`zellij`, or known DVM
-  service unit.
-- Added an opt-in zsh completion file at `share/dvm/completions/_dvm` for commands,
-  options, VM names, and bundled `init` templates.
-- Tightened `dvm rm` dirty check: when `git` is not installed in the guest, the
-  check now exits with status 2 and refuses to delete the VM unless `--force` is
-  passed. Previously the check exited cleanly when `git` was absent, allowing
-  silent deletion of un-checked code directories.
-- Extended `dvm rm` dirty check to also count files under `DVM_CODE_DIR` that are
-  not enclosed by any `.git` tree; the count and a sample of paths are printed and
-  deletion is refused unless `--force` is passed. Previously only dirty Git repos
-  blocked deletion; loose data files (databases, notes, downloads) could be lost
-  silently.
-- Added a `tailscale` recipe and a dedicated `tailscale` VM template aimed at
-  on-demand sharing of local VM services via Tailscale Funnel. The recipe
-  installs Tailscale on Fedora, joins the tailnet via an auth key, and toggles
-  Funnel based on `DVM_TAILSCALE_FUNNEL_TARGET`: every sync runs `tailscale
-  funnel reset` first, so passing the env var enables Funnel for that target
-  and omitting it turns Funnel off. The auth key is staged through a mode
-  `0600` guest temp file, the same way as the cloudflared token, and is never
-  passed as a `limactl shell env` argument. `dvm log tailscale` defaults to
-  `tailscaled.service`. See [docs/services.md](docs/services.md#tailscale).
-- Added a `bat` recipe that installs bat from Fedora and runs `bat cache --build`.
-- Added VM config validation before Lima template rendering for VM names, users, sizing,
-  code directories, host IPs, and port forwards.
-- Internal: split `bin/dvm` into a small dispatcher plus sourced shell libraries under
-  `share/dvm/lib`.
-- Added `dvm cp` to copy files between the host and a DVM VM through Lima, with
-  relative guest paths resolved under `DVM_CODE_DIR`.
-- Fixed `dvm cp` without copy options on macOS Bash 3.2.
-- Changed `dvm cp` to refresh `dvm-agent` ACLs for host files copied into
-  `DVM_CODE_DIR`, so AI wrappers can edit those files.
-- Changed `agent-user` ACL setup so the VM user and `dvm-agent` both keep read/write
-  access to files created under `DVM_CODE_DIR`.
-- Changed cloudflared token handling so `CLOUDFLARED_TOKEN` and
-  `DVM_CLOUDFLARED_TOKEN` are staged through a mode `0600` guest temp file instead of
-  being passed as `limactl shell env` arguments.
-- Changed cloudflared token leak checks to scan logs since the service start time when
-  systemd reports it.
-- Added `DVM_CLAUDE_BYPASS`; Claude still defaults to unattended
-  `bypassPermissions` mode inside the `dvm-agent` Bubblewrap sandbox, and setting
-  `DVM_CLAUDE_BYPASS=0` leaves Claude permission prompts enabled.
-- Added `DVM_CODEX_YOLO`; Codex now defaults to
-  `--dangerously-bypass-approvals-and-sandbox` inside the `dvm-agent` Bubblewrap
-  sandbox, and setting `DVM_CODEX_YOLO=0` leaves Codex approval prompts and its own
-  sandbox enabled.
-- Changed `dvm ssh-key` to regenerate missing or empty public key files through a
-  temporary file before moving them into place.
-- Changed the chezmoi recipe to write `chezmoi.toml` through a temporary file before
-  moving it into place.
-- Added clearer warnings when `dvm rm` deletes a Lima VM whose DVM config is missing,
-  and clearer diagnostics when a stale Lima instance directory cannot be started.
-- Clarified host requirements, Linux template support, security support status,
-  `DVM_NO_BASELINE`, `dvm logs` journal argument passthrough, and cloudflared/Claude
-  security behavior in the docs.
-- Added the minimal Bash/Lima wrapper.
-- Added the small `dvm` shell wrapper: `apply`, `apply --all`, `enter`, `ssh`,
-  `logs`, `ssh-key`, `gpg-key`, `list`, `stop`, and `rm`.
-- Added `dvm init <name> [template]` to create a VM config from a bundled example and
-  open it in the user's editor.
-- Changed `install.sh` to install a snapshotting launcher instead of a direct symlink,
-  preventing long-running applies from reading a half-edited wrapper while the repo is
-  being updated.
-- Added `dvm stop <name>`.
-- Fixed `dvm rm` to stop a VM after the dirty check before deleting it.
-- Added existing-VM Lima port-forward updates during `dvm apply`.
-- Fixed `dvm apply` to continue when Lima's existence check is stale and
-  `limactl create` reports that the instance already exists.
-- Fixed `dvm ssh`, `enter`, and other existing-VM commands to tolerate stale
-  `limactl list` output by checking the local Lima instance directory.
-- Changed `dvm list` to display public VM names without the internal `dvm-` Lima
-  prefix and normalized accidental `dvm-` prefixes in command arguments.
-- Fixed `dvm list` column alignment after stripping the internal Lima prefix.
-- Fixed `dvm enter` on host terminals whose terminfo name is missing in the guest, such
-  as Ghostty's `xterm-ghostty`.
-- Fixed `dvm enter` to export the selected guest login shell as `SHELL`, and changed the
-  `zsh` recipe to set the login shell with `usermod --shell`.
-- Fixed guest-side `~` expansion so `DVM_CODE_DIR="~/code/app"` enters
-  `/home/<user>/code/app` instead of creating `/home/<user>/~/code/app`.
-- Changed `dvm apply` to set the guest hostname to the public VM name, while keeping the
-  internal Lima name prefixed with `dvm-`.
-- Added an `apply` recipe summary line so host-side helper expansion is visible.
-- Added smoke coverage and docs for global host-side app tool bundles such as
-  `use_app_tools`.
-- Added nested Git dirty checks before `dvm rm`; `--force` skips the check.
-- Added VM-local SSH and GPG key helpers.
-- Changed `dvm ssh-key` to create separate VM-local Git hosting access and Git commit
-  signing SSH keys, and to configure Git signing with the signing key.
-- Added bundled defaults under `share/dvm`: global config, Lima template, example VM
-  configs, and reusable guest recipes.
-- Added first-pass recipes for setup basics, `dvm-agent`, Codex, Claude, OpenCode,
-  Mistral, HTTPS chezmoi dotfiles, llama, cloudflared, Node, Python, zsh, Git, Helix,
-  lazygit, Starship, fzf, Delta, just, tmux, and Yazi.
-- Documented how to define local host-side recipe helper functions without adding a
-  default personal tool bundle.
-- Added sha256-verified pinned upstream fallbacks for lazygit, Starship, and Yazi when
-  they are not available from Fedora repositories.
-- Added a small internal recipe helper prelude for verified upstream downloads.
-- Changed `dvm enter` to open the guest user's configured login shell instead of
-  trusting `$SHELL`.
-- Expanded llama and cloudflared recipes with service options, model aliases/checksums,
-  token-file handling, and default log units.
-- Fixed config isolation for `dvm apply --all` and forwarded recipe variables
-  generically instead of hardcoding each `DVM_*` variable.
-- Changed `dvm logs` to use `sudo journalctl` inside the VM.
-- Moved Node/Python out of `baseline` and into their explicit recipes.
-- Reduced `baseline` to required setup basics only; editors, shells, terminal tools,
-  Git UIs, and language runtimes are user-selected recipes.
-- Fixed the Mistral recipe's `mistral` wrapper target and updated the Claude recipe to
-  the current signed RPM repository.
-- Changed the Claude recipe to track Anthropic's `latest` RPM channel and use
-  `dnf5 --refresh upgrade`; changed the Mistral recipe to run `uv tool upgrade`.
-- Changed the Claude recipe to configure `dvm-agent` with Claude Code
-  `bypassPermissions` mode by default inside the mandatory Bubblewrap sandbox.
-- Hardened cloudflared token-log checking and expanded the `dvm-agent` ACL deny list.
-- Changed `agent-user` to create `dvm-agent` as a system account to avoid Fedora
-  subordinate UID allocation failures.
-- Changed AI wrappers to require Bubblewrap sandboxing: AI tools run as `dvm-agent`
-  with project code mounted at `/workspace`, agent home mounted read/write, and the main
-  user home omitted from the sandbox.
-- Changed the Node recipe to install standalone Corepack from npm and enable Corepack
-  shims when Fedora's Node package does not provide `corepack`.
-- Added generic `DVM_CHEZMOI_CONFIG_TOML` support for dotfiles that need chezmoi
-  template data.
-- Added generated chezmoi `[data]` support from `DVM_CHEZMOI_ROLE`,
-  `DVM_CHEZMOI_NAME`, `DVM_CHEZMOI_EMAIL`, `DVM_CHEZMOI_SIGNING_KEY`, and
-  `DVM_CHEZMOI_DEPLOY_KEY`.
-- Changed generated chezmoi key data to default to the stable paths created by
-  `dvm ssh-key <name>`, while keeping key path variables as overrides.
-- Changed `install.sh --init` to leave VM examples in `share/dvm/vms` instead of
-  copying inactive examples into `~/.config/dvm`.
-- Changed `install.sh --init` to leave bundled recipes in `share/dvm/recipes` instead
-  of copying stale recipe overrides into `~/.config/dvm/recipes`.
-- Changed `install.sh --init` to use the bundled `share/dvm/lima.yaml.in` by default
-  instead of copying a local Lima template.
-- Documented how to add DNF and non-DNF tools globally or per VM.
-- Added explicit docs for creating app, llama, and cloudflared VMs from repo examples.
-- Documented that the bundled llama VM opens port 8080 for host and VM-to-VM access.
-- Removed `docs/plan.md` so implemented behavior lives only in maintained user docs.
-- Set bundled llama and cloudflared service VM examples to skip the setup baseline.
-- Removed an unused Lima template param that current Lima rejects during VM creation.
-- Removed Lima `param` usage from the template because current Lima rejects values that
-  are only consumed through shell provision environment variables.
-- Fixed Lima template temp-file creation on macOS.
-- Hardened Lima user provision so empty or host-looking `/Users/...` code directories
-  do not fail cloud-init.
-- Updated install, checks, smoke tests, CI, README, and docs for the Bash-only
-  implementation.
-- Added focused docs for commands, config, Lima, AI, services, dotfiles, and
-  security standards.
+- Shortened the README and docs around task-first workflows, and removed
+  low-value code comments while keeping ShellCheck directives and non-obvious
+  safety metadata.
+- Normalized document headings to sentence case.
+- Hardened project hooks: `.dvm/sync.sh` is now disabled by default,
+  `DVM_PROJECT_HOOK=1` enables hooks as `DVM_USER`, and
+  `DVM_PROJECT_HOOK_PRIVILEGED=1` is required for provisioning-privileged
+  hooks with dry-run warning visibility. `DVM_PROJECT_HOOK_GIT_CONFIG=1`
+  requires repo-local `git config dvm.hook true` before hooks run.
+- Staged secrets now use randomized root-owned `/run/dvm-secrets` paths with
+  guest-side cleanup traps and host-side cleanup, and service recipes now use
+  `dvm_secret`/`dvm_has_secret` instead of predictable `/tmp` paths.
+- Built-in npm recipes now install exact package versions under a user-owned
+  npm prefix instead of root-global npm: Codex `0.132.0`, Claude Code
+  `2.1.146`, and opencode `1.15.6`.
+- Removed live `curl | sh` installers from built-in recipes. `ollama` and
+  `mistral` now fail closed unless a pinned HTTPS URL and SHA-256 checksum are
+  supplied, and `dvm_download_verified` rejects non-HTTPS URLs.
+- Tightened `agent-user`: `dvm-agent` fails closed when Bubblewrap is missing
+  unless `DVM_AGENT_ALLOW_UNSANDBOXED=1` is set, uses Bubblewrap's minimal
+  `--dev /dev`, validates sudoers with `visudo`, and is documented as a
+  guardrail.
+- The Docker recipe no longer adds `DVM_AGENT_USER` to the Docker group unless
+  `DVM_DOCKER_AGENT_ACCESS=1` is set, and recipe conflict metadata now rejects
+  `docker` plus `agent-user` by default.
+- Added recipe alias canonicalization, recipe de-duplication, and
+  `DVM_ALLOW_RECIPE_CONFLICTS` for reviewed conflict overrides.
+- DVM now rejects unsafe config and user recipe permissions before sourcing or
+  including them, and blocks dangerous `DVM_ENV` names such as `PATH`,
+  `BASH_ENV`, `LD_*`, and `GIT_*`.
+- `dvm base build` and `dvm base rm` now use the base lock, and sync refuses to
+  clone a missing VM from a base while that base is locked.
+- `dvm edit` now validates VM names; `dvm rm` warns when a VM config remains
+  and supports `--config`; `dvm ls` and `dvm stop --all` support
+  `--only-config`; and `dvm doctor --probe <vm>` checks VM reachability.
+- `dvm new` now writes a conservative starter recipe set, leaving AI/npm tools
+  as commented examples, and primary docs now recommend creating VM-local SSH
+  keys before manually cloning private repos instead of using automatic
+  first-clone config on new private VMs.
+- Tailscale now uses `--auth-key=file:<path>` and package `gpgcheck=1`.
+- The `gpg-keys` recipe now configures Git signing repo-locally when a project
+  repo exists instead of setting global Git signing.
+- `scripts/check` and CI now ShellCheck the guest prelude and built-in recipes
+  as Bash, fail on warnings/errors instead of intentional info notes, and CI
+  now runs on `ubuntu-24.04` through the same local check entrypoint.
+- Added [docs/threat-model.md](docs/threat-model.md) and
+  [docs/release.md](docs/release.md) for the explicit threat model and signed
+  release/checksum process.
+- Added `security-plan.md` with strict security review findings and the
+  hardening backlog for privileged hooks, recipe supply chain, agent isolation,
+  secret staging, config permissions, base locking, environment passthrough,
+  recipe ordering, release process, and validation gaps.
+- DVM now ensures `DVM_USER` exists in the guest before staging secrets or
+  creating the project directory.
+- Added `DVM_ENV` for explicit non-secret variable passthrough into guest
+  recipes, and automatically pass built-in recipe settings such as
+  `DVM_CHEZMOI_REPO` and `DVM_TAILSCALE_HOSTNAME`.
+- Staged secret files are now removed before optional project clone and
+  `$DVM_CODE_DIR/.dvm/sync.sh` hooks run.
+- Tailscale and Cloudflared recipes now fail the sync when a staged auth secret
+  is used but service authentication fails.
+- Commands that contact Lima now fail clearly when `limactl` is missing instead
+  of treating the instance list as empty.
+- `dvm sh` and `dvm ssh` now run as `DVM_USER` and prefer the project directory,
+  making the normal in-VM AI workflow use the same user state as development.
+- Added `dvm-agent-shell` for an interactive guardrail agent environment and
+  documented trusted-dev AI mode for running AI tools directly as `DVM_USER`
+  inside project VMs with scoped keys.
+- Added `dvm version` for scripts and agent tooling.
+- Updated the Docker recipe to use the guarded `dvm_pkg` helper and removed
+  redundant project-directory creation from the `agent-user` recipe.
+- Documented guest recipe helpers in `AGENTS.md` and clarified that generated
+  GPG keys are empty-passphrase, VM-local convenience keys.
+- Added `scripts/check` as a local development entrypoint for smoke tests and
+  optional ShellCheck.
+- Removed Ansible from the default architecture. DVM is again a small Bash
+  wrapper around Lima plus repo-owned Bash recipes.
+- `dvm sync <vm>` now starts or clones the Lima VM, stages optional secrets,
+  installs `DVM_PACKAGES`, runs `DVM_RECIPES`, optionally clones
+  `DVM_GIT_REPO`, and then runs the guest project hook
+  `$DVM_CODE_DIR/.dvm/sync.sh` when present.
+- Added built-in recipes for common VM tools and services: `age`,
+  `agent-user`, `bat`, `chezmoi`, `claude`, `cloudflared`, `codex`,
+  `delta`, `docker`, `fzf`, `gpg-keys`, `helix`, `just`, `lazygit`,
+  `mistral`, `node`, `ollama`, `opencode`, `python`, `sops`, `ssh-keys`,
+  `starship`, `tailscale`, `yazi`, `zellij`, and `zsh`.
+- Added recipe aliases: `ai-user` and `ai-agent` for `agent-user`,
+  `cloudflare` and `cloudflare-tunnel` for `cloudflared`, plus singular
+  `ssh-key` and `gpg-key` aliases.
+- Added optional `DVM_GIT_REPO` and `DVM_GIT_BRANCH` per-VM settings for a
+  first clone into `/home/<DVM_USER>/code/<DVM_NAME>`.
+- Kept Lima simplifications from the previous plan: `limactl start` flags,
+  `template:fedora`, optional `limactl clone` base VM reuse, and `mkdir`
+  locks. DVM no longer renders Lima YAML.
+- DVM now passes `--mount-none` when creating/cloning instances so Lima does
+  not mount the host home by default.
+- Removed the old `DVM_HOST_IP` idea. DVM uses Lima's documented
+  `--port-forward host:guest` CLI shape; use Tailscale, Cloudflare Tunnel, or
+  direct Lima networking for team access.
+- `dvm rm <vm> --yes` no longer needs the VM config file to exist.
+- Made stateful service/key recipes more idempotent: Tailscale and
+  Cloudflared skip already-authenticated/installed services, Chezmoi init
+  runs once, and SSH/GPG public keys print only when created.
+- Validated `DVM_USER`, `DVM_AGENT_USER`, and `DVM_BASE_NAME` before they are
+  used in generated guest scripts or sudoers snippets.
+- Expanded `dvm doctor` to check `$VISUAL`/`$EDITOR`, Git, and Lima 2.0+
+  instead of only printing the Lima version.
+- Added `DVM_DRY_RUN=1 dvm base build`, recipe alias output, and clearer
+  `dvm rm` output when the Lima instance is missing.
+- Added [docs/errors-and-recovery.md](docs/errors-and-recovery.md) for stale
+  locks, partial syncs, dry-run, and re-running failed recipes.
+- Added [docs/future-development.md](docs/future-development.md) with the
+  safety roadmap: network policy, secret broker, ephemeral agent mode, session
+  logs, trust tiers, and stricter service exposure.
+- Narrowed guest support to Lima's latest Fedora template with `dnf5` only,
+  removing the unused `dnf`/`apt` package-manager compatibility branches.
+- Removed user-facing Ansible docs and examples. Documentation now describes
+  packages, recipes, service sharing, secrets, and project hooks.
+
+## v2
+
+- Single Bash program (`bin/dvm`) replaced the original Bash launcher plus
+  `share/dvm/lib` helper tree.
+- Config moved to plain Bash sourced from `~/.config/dvm/config.sh` and
+  `~/.config/dvm/vms/<name>.sh`.
+- Introduced package, recipe, and secret nouns: `DVM_PACKAGES`,
+  `DVM_RECIPES`, and `DVM_SECRETS`.

@@ -1,11 +1,7 @@
-#!/usr/bin/env bash
-# Description: zsh shell (sets as login shell)
-set -euo pipefail
-
-sudo dnf5 install -y zsh shadow-utils
+dvm_pkg zsh
 
 zsh_path="$(command -v zsh)"
-current_shell="$(getent passwd "$(id -un)" | cut -d: -f7)"
-if [ "$current_shell" != "$zsh_path" ]; then
-	sudo usermod --shell "$zsh_path" "$(id -un)"
-fi
+sudo chsh -s "$zsh_path" "$DVM_USER" || true
+home="$(dvm_user_home)"
+dvm_append_once "$home/.bashrc" '[ -t 1 ] && command -v zsh >/dev/null 2>&1 && exec zsh'
+[ -f "$home/.zshrc" ] || dvm_as_user touch "$home/.zshrc"

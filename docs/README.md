@@ -1,13 +1,15 @@
-# Docs
+# DVM docs
 
-DVM is intentionally small. The docs are larger than the wrapper because they carry
-the decisions, examples, and recipe behavior.
+Start with [README.md](../README.md).
 
-- [Commands](commands.md): command reference
-- [Config](config.md): global and per-VM Bash variables
-- [Lima](lima.md): template, networking, and no-host-mount decisions
-- [Recipes](recipes.md): host/guest boundary, recipe rules, and bundled recipes
-- [AI](ai.md): `dvm-agent`, Codex, Claude, OpenCode, and Mistral
-- [Services](services.md): llama and cloudflared dedicated VMs
-- [Dotfiles](dotfiles.md): chezmoi over public HTTPS
-- [Security Standards](security-standards.md): operating rules and security defaults
+| Need | Read |
+| --- | --- |
+| common workflows | [howto.md](howto.md) |
+| config variables | [config.md](config.md) |
+| recipes | [recipes.md](recipes.md) |
+| commands | [commands.md](commands.md) |
+| security model | [security-standards.md](security-standards.md) |
+| errors | [errors-and-recovery.md](errors-and-recovery.md) |
+| Lima notes | [lima.md](lima.md) |
+| threat model | [threat-model.md](threat-model.md) |
+| release process | [release.md](release.md) |

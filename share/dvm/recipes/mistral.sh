@@ -1,14 +1,7 @@
-#!/usr/bin/env bash
-# Description: Mistral CLI
-set -euo pipefail
-
-: "${DVM_AI_AGENT_USER:=dvm-agent}"
-command -v dvm_agent_write_wrapper >/dev/null 2>&1 || {
-	printf 'dvm: recipe mistral requires use agent-user before use mistral\n' >&2
-	exit 1
-}
-
-sudo dnf5 install -y python3 uv
-sudo -H -u "$DVM_AI_AGENT_USER" bash -lc 'uv tool install mistral-vibe && uv tool upgrade mistral-vibe && ln -sfn "$HOME/.local/bin/vibe" "$HOME/.local/bin/mistral"'
-dvm_agent_write_wrapper vibe "/home/$DVM_AI_AGENT_USER/.local/bin/vibe"
-dvm_agent_write_wrapper mistral "/home/$DVM_AI_AGENT_USER/.local/bin/mistral"
+dvm_pkg curl
+if ! dvm_as_user bash -lc 'command -v mistral >/dev/null 2>&1'; then
+    if [ -z "${DVM_MISTRAL_URL:-}" ] || [ -z "${DVM_MISTRAL_SHA256:-}" ]; then
+        dvm_recipe_die "$DVM_RECIPE" "set DVM_MISTRAL_URL and DVM_MISTRAL_SHA256 for a pinned Mistral CLI binary"
+    fi
+    dvm_download_verified mistral "$DVM_MISTRAL_URL" "$DVM_MISTRAL_SHA256" /usr/local/bin/mistral
+fi

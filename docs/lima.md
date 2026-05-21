@@ -1,109 +1,63 @@
 # Lima
 
-DVM's job is to render one Lima YAML and then get out of the way.
+DVM delegates VM lifecycle to Lima and avoids rendering its own YAML.
+
+For a new VM, DVM runs roughly:
+
+```bash
+limactl start \
+  --name dvm-app \
+  --cpus 4 \
+  --memory 8 \
+  --disk 60 \
+  --mount-none \
+  --port-forward 3000:3000 \
+  template:fedora
+```
+
+For base reuse, DVM runs:
+
+```bash
+limactl clone --cpus 4 --memory 8 --disk 60 --mount-none dvm-base dvm-app
+```
+
+`--mount-none` is deliberate: Lima otherwise mounts the host home read-only by
+default. Then DVM starts the instance and pipes the generated Bash guest script
+through `limactl shell`. Before staging secrets, DVM runs a small guest setup
+step to create `DVM_USER` when the template does not already provide it.
+
+## Names
+
+DVM VM `app` maps to Lima instance `dvm-app`. VM names must start with a
+lowercase letter and contain only lowercase letters, numbers, and hyphens.
 
 ## Template
 
-The default template lives in the repo:
+The default and supported template is `template:fedora`. This follows Lima's
+current Fedora template. Built-in recipes assume Fedora with `dnf5`; other
+templates are out of scope for DVM.
+
+## Ports
+
+DVM supports two-part port specs:
+
+```bash
+DVM_PORTS=(3000:3000 5173:5173)
+```
+
+Lima's short `--port-forward host:guest` form is localhost-oriented. DVM does
+not expose a bind-IP setting. Use Tailscale or Cloudflare Tunnel for team
+access, or configure Lima networking/YAML directly when you need VM IP access.
+
+## Code location
+
+DVM does not mount host project directories. Code lives inside the guest at:
 
 ```text
-share/dvm/lima.yaml.in
+/home/<DVM_USER>/code/<DVM_NAME>
 ```
 
-It requires Lima 2.0.0 or newer.
-
-If you need structural Lima changes, create a user override:
-
-```bash
-cp share/dvm/lima.yaml.in ~/.config/dvm/lima.yaml.in
-```
-
-When `~/.config/dvm/lima.yaml.in` exists, DVM uses it. Otherwise DVM uses the bundled
-template from `share/dvm/lima.yaml.in`. `install.sh --init` does not copy the Lima
-template into user config, so normal installs do not get stale local templates.
-
-Important defaults:
-
-- Fedora image template.
-- `vmType: vz` for macOS virtualization. Linux hosts are not supported by the bundled
-  template; use a custom QEMU Lima template if you want to experiment on Linux.
-- `mounts: []` so host code is not mounted into the guest.
-- containerd disabled by default.
-- `user-v2` networking for VM-to-VM names.
-- port forwards rendered from `DVM_PORTS`.
-- guest port `5355` ignored to avoid Fedora LLMNR forwarding noise.
-- minimal first-boot provision installs only bootstrap tools.
-- user first-boot provision ignores empty or host-looking `/Users/...` code dirs rather
-  than failing cloud-init.
-
-DVM sets the guest system hostname to the public VM name during `dvm sync`, so a VM
-configured as `eshlox-net` presents itself as `eshlox-net` inside the guest even though
-the internal Lima instance remains `dvm-eshlox-net`.
-
-Before rendering this template, DVM validates VM sizing, user names, code directory
-characters, host IPs, and port forwards so custom config cannot inject YAML or guest
-setup script lines.
-
-## No Host Mounts
-
-No host project directory is mounted by default. Code lives inside the VM and is cloned
-from Git remotes or created there. This is the central isolation choice.
-
-Use:
-
-```bash
-dvm sh app
-```
-
-Then edit with guest tools installed by your recipes, such as an editor, AI CLI, or
-project-local tooling.
-
-## VM To VM
-
-With `user-v2`, Lima gives VM names like:
-
-```text
-lima-dvm-llama.internal
-lima-dvm-cloudflared.internal
-```
-
-From another VM:
-
-```bash
-curl http://lima-dvm-llama.internal:8080
-```
-
-From a VM to macOS:
-
-```bash
-curl http://host.lima.internal:3000
-```
-
-## Updating Ports And Template
-
-Editing `DVM_PORTS` in a VM config and running `dvm sync <name>` updates the existing
-Lima VM's `portForwards` without recreating the VM. DVM compares the configured ports
-with the VM's Lima YAML and asks Lima to edit the VM when they differ.
-
-Editing the bundled template affects future VMs created from this checkout. Editing a
-user override affects future VMs for that user. Existing Lima instances keep their
-created configuration for structural settings. For those changes, recreate:
-
-```bash
-dvm rm app --yes
-dvm sync app
-```
-
-If an older VM shows failed `cloud-final.service` or `cloud-init-main.service` because
-first boot tried to create an empty code directory or a host-looking `/Users/...` path,
-the VM can still be usable. Recreate it for the clean template, or clear the stale
-failed state after confirming the logs:
-
-```bash
-dvm ssh app -- sudo systemctl reset-failed cloud-final.service cloud-init-main.service
-```
-
-If Lima briefly misses an existing instance during `sync`, `ssh`, `sh`, or other DVM
-commands, DVM also checks the local Lima instance directory before deciding the VM is
-missing. If that local directory exists but `limactl start` cannot start it, DVM reports
-the likely stale instance directory path so you can inspect or remove it.
+For private repos, create VM-local SSH keys first and clone manually inside the
+VM after adding the public key to GitHub/GitLab. `DVM_GIT_REPO` is mainly a
+first-clone convenience for public HTTPS repos or VMs that already have working
+Git credentials.
