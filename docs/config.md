@@ -4,8 +4,8 @@ DVM config is Bash.
 
 ```text
 ~/.config/dvm/config.sh
-~/.config/dvm/vms/<vm>.sh
-~/.config/dvm/vms/<vm>.setup.sh
+~/.config/dvm/vms/<vm>/config.sh
+~/.config/dvm/vms/<vm>/setup.sh
 ```
 
 Global config loads first. VM config overrides it.
@@ -23,12 +23,11 @@ DVM_GLOBAL_SETUP="$HOME/.config/dvm/setup.sh"
 ```
 
 ```bash
-# ~/.config/dvm/vms/app.sh
+# ~/.config/dvm/vms/app/config.sh
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
 ```
 
 ## Variables
@@ -42,15 +41,14 @@ DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
 | `DVM_USER` | `developer` | main guest user |
 | `DVM_PORTS` | `()` | `host:guest` port forwards |
 | `DVM_GLOBAL_SETUP` | empty | absolute host path to setup script run for every VM |
-| `DVM_SETUP` | empty | absolute host path to setup script run for one VM |
 
 Names for VMs and `DVM_USER` must start with a lowercase letter and contain
 only lowercase letters, numbers, and hyphens.
 
-Setup script paths must be absolute. They may refer to `DVM_CONFIG_DIR`, as in:
+The per-VM setup script uses the conventional path:
 
-```bash
-DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
+```text
+~/.config/dvm/vms/app/setup.sh
 ```
 
 ## Setup scripts
@@ -61,7 +59,7 @@ guest user/project directory exist.
 Order:
 
 1. `DVM_GLOBAL_SETUP`
-2. `DVM_SETUP`
+2. `~/.config/dvm/vms/<vm>/setup.sh`, when present
 
 Scripts receive:
 
@@ -79,5 +77,6 @@ are owned by the current host user and are not group/world writable.
 
 ```bash
 chmod go-w ~/.config/dvm ~/.config/dvm/config.sh
-chmod go-w ~/.config/dvm/vms/app.sh ~/.config/dvm/vms/app.setup.sh
+chmod go-w ~/.config/dvm/vms/app ~/.config/dvm/vms/app/config.sh
+chmod go-w ~/.config/dvm/vms/app/setup.sh
 ```

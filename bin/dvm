@@ -52,7 +52,6 @@ load_global() {
     DVM_USER=developer
     DVM_PORTS=()
     DVM_GLOBAL_SETUP=
-    DVM_SETUP=
     # shellcheck source=/dev/null
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
         assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
@@ -64,21 +63,23 @@ load_global() {
 
 load_vm() {
     valid_name "$1" || die "invalid VM name: $1"
-    local f="$DVM_CONFIG_DIR/vms/$1.sh"
+    local f="$DVM_CONFIG_DIR/vms/$1/config.sh" setup="$DVM_CONFIG_DIR/vms/$1/setup.sh"
     [ -f "$f" ] || die "no config for VM \"$1\" at $f"
     load_global
-    assert_safe_path "$DVM_CONFIG_DIR/vms" "VM config directory"
+    [ -d "$DVM_CONFIG_DIR/vms" ] && assert_safe_path "$DVM_CONFIG_DIR/vms" "VM config directory"
+    assert_safe_path "$DVM_CONFIG_DIR/vms/$1" "VM directory"
     assert_safe_path "$f" "VM config"
     DVM_NAME="$1"
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
-    DVM_SETUP=
     # shellcheck source=/dev/null
     . "$f"
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
+    VM_SETUP=
+    [ -f "$setup" ] && VM_SETUP="$setup"
     validate_ports
     assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
-    assert_setup_script "$DVM_SETUP" "VM setup script"
+    assert_setup_script "$VM_SETUP" "VM setup script"
 }
 
 validate_ports() {
@@ -143,7 +144,7 @@ lima_has() {
 
 vm_config_exists() {
     valid_name "$1" || return 1
-    [ -f "$DVM_CONFIG_DIR/vms/$1.sh" ]
+    [ -f "$DVM_CONFIG_DIR/vms/$1/config.sh" ]
 }
 
 guest_core_exports() {
@@ -190,15 +191,15 @@ run_setup_script() {
 print_setup_plan() {
     printf 'setup scripts:\n'
     printf '  global: %s\n' "${DVM_GLOBAL_SETUP:-<none>}"
-    printf '  vm:     %s\n' "${DVM_SETUP:-<none>}"
+    printf '  vm:     %s\n' "${VM_SETUP:-<none>}"
 }
 
 cmd_sync() {
     if [ "${1:-}" = "--all" ]; then
         local rc=0 f n
-        for f in "$DVM_CONFIG_DIR"/vms/*.sh; do
+        for f in "$DVM_CONFIG_DIR"/vms/*/config.sh; do
             [ -f "$f" ] || continue
-            n="$(basename "$f" .sh)"
+            n="$(basename "$(dirname "$f")")"
             printf -- '--- sync %s ---\n' "$n"
             ( cmd_sync "$n" ) || rc=1
         done
@@ -226,7 +227,7 @@ cmd_sync() {
     "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
     run_guest_bootstrap
     run_setup_script "global setup" "$DVM_GLOBAL_SETUP"
-    run_setup_script "VM setup" "$DVM_SETUP"
+    run_setup_script "VM setup" "$VM_SETUP"
 }
 
 cmd_sh() {
@@ -353,7 +354,7 @@ cmd_rm() {
     valid_name "$name" || die "invalid VM name: $name"
     DVM_NAME="$name"
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
-    config_file="$DVM_CONFIG_DIR/vms/$DVM_NAME.sh"
+    config_file="$DVM_CONFIG_DIR/vms/$DVM_NAME/config.sh"
     require_lima
     lock_vm "$DVM_NAME"
     if lima_has "$DVM_LIMA_NAME"; then
@@ -364,23 +365,23 @@ cmd_rm() {
         printf 'no Lima instance: %s\n' "$DVM_NAME"
     fi
     if [ "$remove_config" = "1" ]; then
-        rm -f "$config_file"
-        rm -f "$DVM_CONFIG_DIR/vms/$DVM_NAME.setup.sh"
-        printf 'removed config %s\n' "$config_file"
+        rm -rf "$DVM_CONFIG_DIR/vms/$DVM_NAME"
+        printf 'removed config %s\n' "$DVM_CONFIG_DIR/vms/$DVM_NAME"
     elif [ -f "$config_file" ]; then
-        printf 'warning: config remains at %s (use --config to remove it)\n' "$config_file" >&2
+        printf 'warning: config remains at %s (use --config to remove it)\n' "$DVM_CONFIG_DIR/vms/$DVM_NAME" >&2
     fi
 }
 
 cmd_new() {
     [ "$#" -eq 1 ] || die "usage: dvm new <vm>"
     valid_name "$1" || die "invalid VM name: $1"
-    mkdir -p "$DVM_CONFIG_DIR/vms"
-    local f="$DVM_CONFIG_DIR/vms/$1.sh" setup="$DVM_CONFIG_DIR/vms/$1.setup.sh"
-    [ ! -e "$f" ] || die "config already exists: $f"
-    [ ! -e "$setup" ] || die "setup script already exists: $setup"
+    local d="$DVM_CONFIG_DIR/vms/$1" f setup
+    f="$d/config.sh"
+    setup="$d/setup.sh"
+    [ ! -e "$d" ] || die "VM directory already exists: $d"
     (
         umask 077
+        mkdir -p "$d"
         cat > "$f" <<EOF
 # shellcheck shell=bash
 # Per-VM config. Global config loads first.
@@ -392,8 +393,7 @@ DVM_DISK=60
 # Localhost port forwards.
 # DVM_PORTS=(3000:3000 5173:5173)
 
-# Trusted host-owned setup script run by "dvm sync $1".
-DVM_SETUP="\$DVM_CONFIG_DIR/vms/$1.setup.sh"
+# Optional setup script: $setup
 EOF
         cat > "$setup" <<'EOF'
 #!/usr/bin/env bash

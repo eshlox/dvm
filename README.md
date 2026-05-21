@@ -33,8 +33,8 @@ dvm new app
 `dvm new app` writes:
 
 ```text
-~/.config/dvm/vms/app.sh
-~/.config/dvm/vms/app.setup.sh
+~/.config/dvm/vms/app/config.sh
+~/.config/dvm/vms/app/setup.sh
 ```
 
 Example VM config:
@@ -44,7 +44,6 @@ DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
 ```
 
 Example setup script:

@@ -11,7 +11,7 @@ ok() { printf 'ok - %s\n' "$*"; }
 export HOME="$TMP/home"
 export DVM_CONFIG_DIR="$TMP/config"
 export DVM_CACHE_DIR="$TMP/cache"
-mkdir -p "$TMP/bin" "$HOME" "$DVM_CONFIG_DIR/vms" "$TMP/guest"
+mkdir -p "$TMP/bin" "$HOME" "$DVM_CONFIG_DIR/vms/app" "$DVM_CONFIG_DIR/vms/defaults-only" "$TMP/guest"
 
 export DVM_TEST_STATE="$TMP/state"
 export DVM_TEST_LOG="$TMP/limactl.log"
@@ -120,19 +120,18 @@ DVM_TEMPLATE=template:fedora
 DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
 EOF
 
-cat >"$DVM_CONFIG_DIR/vms/app.setup.sh" <<'EOF'
+cat >"$DVM_CONFIG_DIR/vms/app/setup.sh" <<'EOF'
 sudo -u "$DVM_USER" -H bash -lc 'printf "%s\n" "$DVM_NAME" >"$HOME/.dvm-project"'
 EOF
 
-cat >"$DVM_CONFIG_DIR/vms/app.sh" <<EOF
+cat >"$DVM_CONFIG_DIR/vms/app/config.sh" <<EOF
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
-DVM_SETUP="$DVM_CONFIG_DIR/vms/app.setup.sh"
 EOF
 
-cat >"$DVM_CONFIG_DIR/vms/defaults-only.sh" <<'EOF'
+cat >"$DVM_CONFIG_DIR/vms/defaults-only/config.sh" <<'EOF'
 # No per-VM overrides.
 EOF
 
@@ -159,7 +158,7 @@ case "$out" in
     *) fail "dry-run missing Lima argv" ;;
 esac
 case "$out" in
-    *"setup scripts:"*"global:"*"$DVM_CONFIG_DIR/setup.sh"*"vm:"*"$DVM_CONFIG_DIR/vms/app.setup.sh"*) ;;
+    *"setup scripts:"*"global:"*"$DVM_CONFIG_DIR/setup.sh"*"vm:"*"$DVM_CONFIG_DIR/vms/app/setup.sh"*) ;;
     *) fail "dry-run missing setup script order" ;;
 esac
 [ ! -s "$DVM_TEST_LOG" ] || fail "dry-run called limactl"
@@ -167,7 +166,8 @@ ok "dry-run shows setup plan without contacting Lima"
 
 NO_GLOBAL="$TMP/no-global"
 mkdir -p "$NO_GLOBAL/vms"
-printf '# tiny\n' >"$NO_GLOBAL/vms/tiny.sh"
+mkdir -p "$NO_GLOBAL/vms/tiny"
+printf '# tiny\n' >"$NO_GLOBAL/vms/tiny/config.sh"
 DVM_CONFIG_DIR="$NO_GLOBAL" DVM_DRY_RUN=1 run_dvm sync tiny >/dev/null
 ok "sync works without a global config file"
 
@@ -199,7 +199,8 @@ run_dvm cp ./local app:/tmp/file >/dev/null
 grep -Fxq -- "dvm-app:/tmp/file" "$DVM_TEST_LOG" || fail "copy did not map VM path"
 ok "cp maps vm:path to Lima instance path"
 
-cat >"$DVM_CONFIG_DIR/vms/bad-port.sh" <<'EOF'
+mkdir -p "$DVM_CONFIG_DIR/vms/bad-port"
+cat >"$DVM_CONFIG_DIR/vms/bad-port/config.sh" <<'EOF'
 DVM_PORTS=(70000:3000)
 EOF
 if DVM_DRY_RUN=1 run_dvm sync bad-port >/dev/null 2>&1; then
@@ -207,7 +208,8 @@ if DVM_DRY_RUN=1 run_dvm sync bad-port >/dev/null 2>&1; then
 fi
 ok "invalid port is rejected"
 
-cat >"$DVM_CONFIG_DIR/vms/bad-user.sh" <<'EOF'
+mkdir -p "$DVM_CONFIG_DIR/vms/bad-user"
+cat >"$DVM_CONFIG_DIR/vms/bad-user/config.sh" <<'EOF'
 DVM_USER='developer) NOPASSWD: ALL #'
 EOF
 if DVM_DRY_RUN=1 run_dvm sync bad-user >/dev/null 2>&1; then
@@ -215,26 +217,10 @@ if DVM_DRY_RUN=1 run_dvm sync bad-user >/dev/null 2>&1; then
 fi
 ok "invalid DVM_USER is rejected"
 
-cat >"$DVM_CONFIG_DIR/vms/bad-setup-relative.sh" <<'EOF'
-DVM_SETUP=relative.sh
-EOF
-if DVM_DRY_RUN=1 run_dvm sync bad-setup-relative >/dev/null 2>&1; then
-    fail "relative setup path accepted"
-fi
-ok "relative setup paths are rejected"
-
-cat >"$DVM_CONFIG_DIR/vms/bad-setup-missing.sh" <<EOF
-DVM_SETUP="$TMP/missing-setup.sh"
-EOF
-if DVM_DRY_RUN=1 run_dvm sync bad-setup-missing >/dev/null 2>&1; then
-    fail "missing setup path accepted"
-fi
-ok "missing setup paths are rejected"
-
 BAD_PERMS="$TMP/bad-perms"
-mkdir -p "$BAD_PERMS/vms"
+mkdir -p "$BAD_PERMS/vms/app"
 printf '# config\n' >"$BAD_PERMS/config.sh"
-printf '# vm\n' >"$BAD_PERMS/vms/app.sh"
+printf '# vm\n' >"$BAD_PERMS/vms/app/config.sh"
 chmod g+w "$BAD_PERMS/config.sh"
 if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; then
     fail "unsafe config permissions accepted"
@@ -244,16 +230,21 @@ printf '# setup\n' >"$BAD_PERMS/setup.sh"
 printf 'DVM_GLOBAL_SETUP="%s/setup.sh"\n' "$BAD_PERMS" >"$BAD_PERMS/config.sh"
 chmod o+w "$BAD_PERMS/setup.sh"
 if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; then
-    fail "unsafe setup permissions accepted"
+    fail "unsafe global setup permissions accepted"
+fi
+printf '# vm setup\n' >"$BAD_PERMS/vms/app/setup.sh"
+chmod g+w "$BAD_PERMS/vms/app/setup.sh"
+if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; then
+    fail "unsafe VM setup permissions accepted"
 fi
 ok "unsafe config and setup permissions are rejected"
 
 out="$(run_dvm new fresh)"
-[ -f "$DVM_CONFIG_DIR/vms/fresh.sh" ] || fail "new did not write config"
-[ -f "$DVM_CONFIG_DIR/vms/fresh.setup.sh" ] || fail "new did not write setup script"
-case "$out" in *"wrote"*"fresh.sh"*"wrote"*"fresh.setup.sh"*) ;; *) fail "new did not print written paths" ;; esac
-grep -Fq 'DVM_SETUP="$DVM_CONFIG_DIR/vms/fresh.setup.sh"' "$DVM_CONFIG_DIR/vms/fresh.sh" || fail "new config missing setup path"
-grep -Fq 'sudo dnf5 install -y' "$DVM_CONFIG_DIR/vms/fresh.setup.sh" || fail "new setup missing package example"
+[ -f "$DVM_CONFIG_DIR/vms/fresh/config.sh" ] || fail "new did not write config"
+[ -f "$DVM_CONFIG_DIR/vms/fresh/setup.sh" ] || fail "new did not write setup script"
+case "$out" in *"wrote"*"fresh/config.sh"*"wrote"*"fresh/setup.sh"*) ;; *) fail "new did not print written paths" ;; esac
+grep -Fq 'DVM_CPUS=4' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing defaults"
+grep -Fq 'sudo dnf5 install -y' "$DVM_CONFIG_DIR/vms/fresh/setup.sh" || fail "new setup missing package example"
 ok "new writes starter config and setup script"
 
 run_dvm stop missing
@@ -279,11 +270,9 @@ ok "rm works without a VM config file"
 
 run_dvm rm fresh --yes >"$TMP/rm-fresh.out" 2>"$TMP/rm-fresh.err"
 grep -Fq -- "warning: config remains" "$TMP/rm-fresh.err" || fail "rm did not warn about remaining config"
-[ -f "$DVM_CONFIG_DIR/vms/fresh.sh" ] || fail "rm deleted config without --config"
-[ -f "$DVM_CONFIG_DIR/vms/fresh.setup.sh" ] || fail "rm deleted setup without --config"
+[ -d "$DVM_CONFIG_DIR/vms/fresh" ] || fail "rm deleted VM config directory without --config"
 run_dvm rm fresh --yes --config >/dev/null
-[ ! -f "$DVM_CONFIG_DIR/vms/fresh.sh" ] || fail "rm --config did not remove config"
-[ ! -f "$DVM_CONFIG_DIR/vms/fresh.setup.sh" ] || fail "rm --config did not remove setup"
+[ ! -e "$DVM_CONFIG_DIR/vms/fresh" ] || fail "rm --config did not remove VM config directory"
 ok "rm warns about and optionally removes stale config and setup"
 
 if DVM_LIMACTL=/no/such/limactl run_dvm ls >/dev/null 2>&1; then

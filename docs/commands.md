@@ -20,7 +20,7 @@ dvm version
 exists, creates `DVM_CODE_DIR`, then runs the configured setup scripts:
 
 1. `DVM_GLOBAL_SETUP`
-2. `DVM_SETUP`
+2. `~/.config/dvm/vms/<vm>/setup.sh`, when present
 
 ```bash
 DVM_DRY_RUN=1 dvm sync app
@@ -54,7 +54,8 @@ colon.
 ## Lifecycle
 
 `dvm ls` and `dvm stop --all` operate on `dvm-*` Lima instances. Add
-`--only-config` to limit them to instances with `~/.config/dvm/vms/*.sh`.
+`--only-config` to limit them to instances with
+`~/.config/dvm/vms/*/config.sh`.
 
 `dvm rm <vm> --yes` deletes the Lima instance. Add `--config` to also remove
-the VM config and the starter setup script path created by `dvm new`.
+`~/.config/dvm/vms/<vm>`.
