@@ -200,9 +200,16 @@ grep -Fxq -- "/home/developer/code/app" "$DVM_TEST_LOG" || fail "ssh command mis
 ok "ssh commands run as DVM_USER in the project directory"
 
 : >"$DVM_TEST_LOG"
-run_dvm cp ./local app:/tmp/file >/dev/null
-grep -Fxq -- "dvm-app:/tmp/file" "$DVM_TEST_LOG" || fail "copy did not map VM path"
-ok "cp maps vm:path to Lima instance path"
+printf 'hello\n' >"$TMP/local"
+run_dvm cp "$TMP/local" app:/tmp/file >/dev/null
+grep -Fxq -- "sudo" "$DVM_TEST_LOG" || fail "copy does not use sudo"
+grep -Fxq -- "developer" "$DVM_TEST_LOG" || fail "copy does not run as DVM_USER"
+grep -Fxq -- "/tmp/file" "$DVM_TEST_LOG" || fail "copy did not preserve absolute VM path"
+
+: >"$DVM_TEST_LOG"
+run_dvm cp "$TMP/local" app:notes.txt >/dev/null
+grep -Fxq -- "/home/developer/code/app/notes.txt" "$DVM_TEST_LOG" || fail "copy did not resolve relative VM path in project directory"
+ok "cp runs as DVM_USER and maps relative vm:path to the project directory"
 
 mkdir -p "$DVM_CONFIG_DIR/vms/bad-port"
 cat >"$DVM_CONFIG_DIR/vms/bad-port/config.sh" <<'EOF'
