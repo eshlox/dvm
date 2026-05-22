@@ -19,6 +19,11 @@ Then DVM starts the instance, ensures `DVM_USER` exists, creates
 `/home/<DVM_USER>/code/<vm>`, and pipes trusted setup scripts through
 `limactl shell`.
 
+Lima also creates and uses its own default login account, commonly
+`<host-user>.guest` on Linux guests. DVM treats that account as Lima
+infrastructure for shell access, bootstrap, and sudo-based setup. Project shells,
+commands, and file copies run as `DVM_USER`.
+
 ## Names
 
 DVM VM `app` maps to Lima instance `dvm-app`. VM names must start with a
@@ -62,3 +67,6 @@ DVM does not mount host project directories. Code lives inside the guest at:
 ```text
 /home/<DVM_USER>/code/<DVM_NAME>
 ```
+
+For `dvm cp`, relative VM paths use that directory as their base. For example,
+`dvm cp ./notes app:notes` writes to `/home/<DVM_USER>/code/app/notes`.

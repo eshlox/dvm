@@ -45,11 +45,14 @@ dvm ssh app -- sudo journalctl -f
 
 ```bash
 dvm cp ./file app:/tmp/file
-dvm cp app:/tmp/file ./file
+dvm cp ./file app:notes.txt
+dvm cp app:notes.txt ./file
 ```
 
-One side must be `vm:path`. Use `./tmp:notes.txt` for local paths containing a
-colon.
+One side must be `vm:path`. Relative VM paths resolve under
+`/home/<DVM_USER>/code/<vm>` and copy as `DVM_USER`; absolute VM paths are used as
+given. Directory copies are not supported. Use `./tmp:notes.txt` for local paths
+containing a colon.
 
 ## Lifecycle
 

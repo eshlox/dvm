@@ -10,6 +10,8 @@
 - Hardcoded Lima's Fedora template as the only supported guest template.
 - `dvm sh` now opens `DVM_USER`'s configured login shell instead of forcing
   Bash.
+- `dvm cp` now runs guest file reads/writes as `DVM_USER` and resolves relative
+  VM paths under the VM project directory.
 - Added documentation for secure setup scripts, package installation, AI tools,
   verified downloads, VM-local keys, Docker risk, and Lima behavior.
 - Documented Fedora with `dnf5` as the supported guest setup path.

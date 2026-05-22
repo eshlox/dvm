@@ -266,16 +266,56 @@ cmd_cp() {
     local src_is_vm=0 dst_is_vm=0 vm rest
     if [[ "$src_arg" =~ ^([a-z][a-z0-9-]*):(.*)$ ]]; then
         vm="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
-        src="$(lima_name "$vm"):$rest"; src_is_vm=1
+        src="$rest"; src_is_vm=1
     fi
     if [[ "$dst_arg" =~ ^([a-z][a-z0-9-]*):(.*)$ ]]; then
         vm="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
-        dst="$(lima_name "$vm"):$rest"; dst_is_vm=1
+        dst="$rest"; dst_is_vm=1
     fi
     [ $((src_is_vm + dst_is_vm)) -ge 1 ] || die "at least one path must be <vm>:<path>"
     [ $((src_is_vm + dst_is_vm)) -le 1 ] || die "cross-VM copy is not supported"
+
+    load_vm "$vm"
     require_lima
-    exec "$LIMACTL" copy "$src" "$dst"
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
+    run_guest_bootstrap
+
+    local remote local_path parent base tmp
+    if [ "$src_is_vm" = "1" ]; then
+        case "$src" in
+            /*) remote="$src" ;;
+            "") remote="$DVM_CODE_DIR" ;;
+            *) remote="$DVM_CODE_DIR/$src" ;;
+        esac
+        local_path="$dst"
+        if [ -d "$local_path" ]; then
+            local_path="$local_path/$(basename "$remote")"
+        fi
+        parent="$(dirname "$local_path")"
+        [ "$parent" = "." ] || mkdir -p "$parent"
+        tmp="$(mktemp "$parent/.dvm-cp.XXXXXX")"
+        if "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
+            'src="$1"; [ ! -d "$src" ] || { printf "dvm cp: directories are not supported: %s\n" "$src" >&2; exit 1; }; cat "$src"' \
+            bash "$remote" >"$tmp"; then
+            :
+        else
+            rm -f "$tmp"
+            return 1
+        fi
+        mv "$tmp" "$local_path"
+    else
+        [ ! -d "$src" ] || die "directories are not supported: $src"
+        case "$dst" in
+            /*) remote="$dst" ;;
+            "") remote="$DVM_CODE_DIR" ;;
+            *) remote="$DVM_CODE_DIR/$dst" ;;
+        esac
+        base="$(basename "$src")"
+        "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
+            'dst="$1"; base="$2"; if [[ "$dst" = */ ]]; then install -d "$dst"; cat >"$dst/$base"; else install -d "$(dirname "$dst")"; cat >"$dst"; fi' \
+            bash "$remote" "$base" <"$src"
+    fi
 }
 
 cmd_ls() {
