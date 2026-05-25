@@ -118,19 +118,11 @@ putting tokens in DVM config.
 
 ## Rootless Docker
 
-Rootless Docker needs subordinate uid/gid ranges for `DVM_USER`. Enable them in
-the VM config before syncing if you have overridden the defaults:
-
-```bash
-DVM_SUBUID_COUNT=65536
-DVM_SUBGID_COUNT=65536
-```
-
-Then install Docker's rootless packages from the setup script:
+Install Docker's rootless packages from the setup script:
 
 ```bash
 sudo dnf5 install -y moby-engine moby-engine-rootless-extras \
-  docker-compose-plugin uidmap slirp4netns fuse-overlayfs
+  docker-compose shadow-utils slirp4netns fuse-overlayfs
 
 uid="$(id -u "$DVM_USER")"
 group="$(id -gn "$DVM_USER")"
@@ -155,9 +147,34 @@ docker info --format '{{.SecurityOptions}}'
 docker compose version
 ```
 
-Rootless Docker is still privileged inside the project VM from the perspective
-of project files and user-owned credentials, but it does not expose the
-root-owned Docker socket to the AI/user account.
+Run containers as `DVM_USER`, without `sudo`:
+
+```bash
+docker run --rm hello-world
+docker compose version
+```
+
+Rootless Docker uses the user's socket under `/run/user/<uid>/docker.sock`.
+There is no root-owned Docker socket and `DVM_USER` does not need to be in the
+`docker` group.
+
+## Rootless Podman
+
+Podman is rootless by default when run as `DVM_USER`:
+
+```bash
+sudo dnf5 install -y podman podman-compose shadow-utils slirp4netns fuse-overlayfs
+```
+
+Run containers as `DVM_USER`, without `sudo`:
+
+```bash
+podman run --rm alpine echo ok
+podman compose version
+```
+
+Podman does not require a daemon. It uses the subordinate uid/gid ranges that
+DVM creates by default for the guest user.
 
 ## Rootful Docker
 
