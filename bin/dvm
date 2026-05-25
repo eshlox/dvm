@@ -49,6 +49,8 @@ load_global() {
     DVM_MEMORY=4
     DVM_DISK=30
     DVM_USER=developer
+    DVM_SUBUID_COUNT=0
+    DVM_SUBGID_COUNT=0
     DVM_PORTS=()
     DVM_GLOBAL_SETUP=
     # shellcheck source=/dev/null
@@ -57,6 +59,7 @@ load_global() {
         . "$DVM_CONFIG_DIR/config.sh"
     fi
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
+    validate_subid_counts
     assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
 }
 
@@ -73,12 +76,18 @@ load_vm() {
     # shellcheck source=/dev/null
     . "$f"
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
+    validate_subid_counts
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
     VM_SETUP=
     [ -f "$setup" ] && VM_SETUP="$setup"
     validate_ports
     assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
     assert_setup_script "$VM_SETUP" "VM setup script"
+}
+
+validate_subid_counts() {
+    case "$DVM_SUBUID_COUNT" in ''|*[!0-9]*) die "DVM_SUBUID_COUNT must be a non-negative integer" ;; esac
+    case "$DVM_SUBGID_COUNT" in ''|*[!0-9]*) die "DVM_SUBGID_COUNT must be a non-negative integer" ;; esac
 }
 
 validate_ports() {
@@ -147,8 +156,8 @@ vm_config_exists() {
 }
 
 guest_core_exports() {
-    printf 'export DVM_NAME=%q DVM_VM=%q DVM_LIMA_NAME=%q DVM_USER=%q DVM_CODE_DIR=%q DVM_PORTS=%q\n' \
-        "$DVM_NAME" "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" "$DVM_CODE_DIR" "$(IFS=,; printf '%s' "${DVM_PORTS[*]:-}")"
+    printf 'export DVM_NAME=%q DVM_VM=%q DVM_LIMA_NAME=%q DVM_USER=%q DVM_CODE_DIR=%q DVM_PORTS=%q DVM_SUBUID_COUNT=%q DVM_SUBGID_COUNT=%q\n' \
+        "$DVM_NAME" "$DVM_NAME" "$DVM_LIMA_NAME" "$DVM_USER" "$DVM_CODE_DIR" "$(IFS=,; printf '%s' "${DVM_PORTS[*]:-}")" "$DVM_SUBUID_COUNT" "$DVM_SUBGID_COUNT"
 }
 
 guest_bootstrap_script() {
@@ -160,10 +169,32 @@ if ! id "$DVM_USER" >/dev/null 2>&1; then
         printf 'dvm guest: useradd not found; create %s manually or use a Fedora template with useradd\n' "$DVM_USER" >&2
         exit 1
     fi
-    if ! sudo useradd -m -s /bin/bash -K SUB_UID_COUNT=0 -K SUB_GID_COUNT=0 "$DVM_USER" 2>/tmp/dvm-useradd.err; then
+    if ! sudo useradd -m -s /bin/bash -K SUB_UID_COUNT="$DVM_SUBUID_COUNT" -K SUB_GID_COUNT="$DVM_SUBGID_COUNT" "$DVM_USER" 2>/tmp/dvm-useradd.err; then
         sudo useradd -m -s /bin/bash "$DVM_USER"
     fi
 fi
+
+ensure_subid_range() {
+    local user="$1" file="$2" flag="$3" count="$4" start end
+    [ "$count" -gt 0 ] || return 0
+    if sudo awk -F: -v u="$user" '$1 == u { found=1 } END { exit !found }' "$file" 2>/dev/null; then
+        return 0
+    fi
+    start="$(sudo awk -F: '
+        BEGIN { max = 99999 }
+        $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {
+            end = $2 + $3 - 1
+            if (end > max) max = end
+        }
+        END { print max + 1 }
+    ' "$file" 2>/dev/null || printf '100000')"
+    end=$((start + count - 1))
+    sudo usermod "$flag" "$start-$end" "$user"
+}
+
+ensure_subid_range "$DVM_USER" /etc/subuid --add-subuids "$DVM_SUBUID_COUNT"
+ensure_subid_range "$DVM_USER" /etc/subgid --add-subgids "$DVM_SUBGID_COUNT"
+
 home="$(getent passwd "$DVM_USER" | cut -d: -f6)"
 [ -n "$home" ] || { printf 'dvm guest: user %s has no passwd entry\n' "$DVM_USER" >&2; exit 1; }
 group="$(id -gn "$DVM_USER")" || { printf 'dvm guest: user %s has no primary group\n' "$DVM_USER" >&2; exit 1; }
@@ -428,6 +459,10 @@ cmd_new() {
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
+
+# Enable these for rootless Docker/Podman inside the VM.
+# DVM_SUBUID_COUNT=65536
+# DVM_SUBGID_COUNT=65536
 
 # Localhost port forwards.
 # DVM_PORTS=(3000:3000 5173:5173)

@@ -66,14 +66,16 @@ rm -f "$tmp"
 sudo -u "$DVM_USER" -H bash -lc '
   set -Eeuo pipefail
   install -d -m 700 ~/.ssh
+
   if [ ! -f ~/.ssh/id_ed25519 ]; then
-    ssh-keygen -t ed25519 -N "" -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519
+    ssh-keygen -t ed25519 -N "" -C "${DVM_NAME}-dvm-git-deploy" -f ~/.ssh/id_ed25519
   fi
   cat ~/.ssh/id_ed25519.pub
 '
 ```
 
-Add the public key to your Git host. Do not copy host private keys into the VM.
+Add the public key to your Git host. The key comment identifies the VM and
+purpose. Do not copy host private keys into the VM.
 
 ## VM-local GPG key
 
@@ -114,7 +116,50 @@ Install `cloudflared` using Cloudflare's current repository instructions or a
 verified binary download. Store tunnel credentials inside the VM and avoid
 putting tokens in DVM config.
 
-## Docker
+## Rootless Docker
+
+Rootless Docker needs subordinate uid/gid ranges for `DVM_USER`. Enable them in
+the VM config before syncing:
+
+```bash
+DVM_SUBUID_COUNT=65536
+DVM_SUBGID_COUNT=65536
+```
+
+Then install Docker's rootless packages from the setup script:
+
+```bash
+sudo dnf5 install -y moby-engine moby-engine-rootless-extras \
+  docker-compose-plugin uidmap slirp4netns fuse-overlayfs
+
+uid="$(id -u "$DVM_USER")"
+group="$(id -gn "$DVM_USER")"
+sudo loginctl enable-linger "$DVM_USER"
+sudo systemctl start "user@$uid.service"
+sudo install -d -o "$DVM_USER" -g "$group" -m 700 "/run/user/$uid"
+
+sudo -u "$DVM_USER" -H env XDG_RUNTIME_DIR="/run/user/$uid" bash -lc '
+  set -Eeuo pipefail
+  if ! systemctl --user cat docker.service >/dev/null 2>&1; then
+    dockerd-rootless-setuptool.sh install
+  fi
+  systemctl --user enable --now docker
+  docker context use rootless >/dev/null 2>&1 || true
+'
+```
+
+Verify from the VM:
+
+```bash
+docker info --format '{{.SecurityOptions}}'
+docker compose version
+```
+
+Rootless Docker is still privileged inside the project VM from the perspective
+of project files and user-owned credentials, but it does not expose the
+root-owned Docker socket to the AI/user account.
+
+## Rootful Docker
 
 ```bash
 sudo dnf5 install -y moby-engine docker-compose || \

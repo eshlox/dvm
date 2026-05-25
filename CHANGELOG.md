@@ -12,6 +12,10 @@
   Bash.
 - `dvm cp` now runs guest file reads/writes as `DVM_USER` and resolves relative
   VM paths under the VM project directory.
+- Added `DVM_SUBUID_COUNT` and `DVM_SUBGID_COUNT` so VM users can be provisioned
+  with subordinate id ranges required by rootless Docker and Podman.
 - Added documentation for secure setup scripts, package installation, AI tools,
   verified downloads, VM-local keys, Docker risk, and Lima behavior.
+- Updated VM-local SSH key examples to use VM-specific key comments such as
+  `<vm-name>-dvm-git-deploy`.
 - Documented Fedora with `dnf5` as the supported guest setup path.
