@@ -16,4 +16,6 @@
   with subordinate id ranges required by rootless Docker and Podman.
 - Added documentation for secure setup scripts, package installation, AI tools,
   verified downloads, VM-local keys, Docker risk, and Lima behavior.
+- Updated VM-local SSH key examples to use VM-specific key comments such as
+  `<vm-name>-dvm-git-deploy`.
 - Documented Fedora with `dnf5` as the supported guest setup path.

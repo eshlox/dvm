@@ -40,7 +40,7 @@ Create a VM-local key in the setup script or manually after first sync:
 sudo -u "$DVM_USER" -H bash -lc '
   install -d -m 700 ~/.ssh
   test -f ~/.ssh/id_ed25519 ||
-    ssh-keygen -t ed25519 -N "" -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519
+    ssh-keygen -t ed25519 -N "" -C "${DVM_NAME}-dvm-git-deploy" -f ~/.ssh/id_ed25519
   cat ~/.ssh/id_ed25519.pub
 '
 ```

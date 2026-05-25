@@ -66,14 +66,16 @@ rm -f "$tmp"
 sudo -u "$DVM_USER" -H bash -lc '
   set -Eeuo pipefail
   install -d -m 700 ~/.ssh
+
   if [ ! -f ~/.ssh/id_ed25519 ]; then
-    ssh-keygen -t ed25519 -N "" -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519
+    ssh-keygen -t ed25519 -N "" -C "${DVM_NAME}-dvm-git-deploy" -f ~/.ssh/id_ed25519
   fi
   cat ~/.ssh/id_ed25519.pub
 '
 ```
 
-Add the public key to your Git host. Do not copy host private keys into the VM.
+Add the public key to your Git host. The key comment identifies the VM and
+purpose. Do not copy host private keys into the VM.
 
 ## VM-local GPG key
 

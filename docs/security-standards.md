@@ -112,11 +112,12 @@ Prefer VM-local keys:
 
 ```bash
 install -d -m 700 ~/.ssh
-ssh-keygen -t ed25519 -N "" -C "$USER@$HOSTNAME" -f ~/.ssh/id_ed25519
+ssh-keygen -t ed25519 -N "" -C "${DVM_NAME}-dvm-git-deploy" \
+  -f ~/.ssh/id_ed25519
 ```
 
-Add only the public key to GitHub/GitLab. Do not copy host private keys into the
-guest.
+Add only the public key to GitHub/GitLab. The key comment identifies the VM and
+purpose. Do not copy host private keys into the guest.
 
 ## Docker
 
