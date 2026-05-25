@@ -49,8 +49,8 @@ load_global() {
     DVM_MEMORY=4
     DVM_DISK=30
     DVM_USER=developer
-    DVM_SUBUID_COUNT=0
-    DVM_SUBGID_COUNT=0
+    DVM_SUBUID_COUNT=65536
+    DVM_SUBGID_COUNT=65536
     DVM_PORTS=()
     DVM_GLOBAL_SETUP=
     # shellcheck source=/dev/null
@@ -460,9 +460,9 @@ DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 
-# Enable these for rootless Docker/Podman inside the VM.
-# DVM_SUBUID_COUNT=65536
-# DVM_SUBGID_COUNT=65536
+# Subordinate id ranges support rootless Docker/Podman.
+DVM_SUBUID_COUNT=65536
+DVM_SUBGID_COUNT=65536
 
 # Localhost port forwards.
 # DVM_PORTS=(3000:3000 5173:5173)

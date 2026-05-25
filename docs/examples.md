@@ -119,7 +119,7 @@ putting tokens in DVM config.
 ## Rootless Docker
 
 Rootless Docker needs subordinate uid/gid ranges for `DVM_USER`. Enable them in
-the VM config before syncing:
+the VM config before syncing if you have overridden the defaults:
 
 ```bash
 DVM_SUBUID_COUNT=65536
