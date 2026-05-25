@@ -19,4 +19,8 @@
   verified downloads, VM-local keys, Docker risk, and Lima behavior.
 - Updated VM-local SSH key examples to use VM-specific key comments such as
   `<vm-name>-dvm-git-deploy`.
+- Updated rootless Docker examples to use Fedora package names available in
+  Fedora 43.
+- Removed redundant subordinate id settings from quick config examples and
+  documented how to run rootless Docker and Podman.
 - Documented Fedora with `dnf5` as the supported guest setup path.

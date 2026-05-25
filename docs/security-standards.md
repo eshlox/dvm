@@ -121,9 +121,31 @@ purpose. Do not copy host private keys into the guest.
 
 ## Docker
 
-Docker group access is root-equivalent inside the guest. If `DVM_USER` can talk
-to the Docker daemon, assume that user can become guest root and read all guest
-projects.
+Prefer rootless Docker or rootless Podman for AI development VMs. DVM creates
+subordinate uid/gid ranges for `DVM_USER` by default so rootless container
+engines can map container root to unprivileged guest ids.
+
+Run rootless containers as `DVM_USER`, without `sudo`:
+
+```bash
+docker run --rm hello-world
+podman run --rm alpine echo ok
+```
+
+This is the intended default because the AI/user account can build and run
+normal development containers without access to the guest's root-owned Docker
+socket. It is not host-dangerous in DVM's normal model: the containers run
+inside the Lima VM, DVM creates VMs with `--mount-none`, and rootless container
+root maps to unprivileged guest ids instead of host or guest root.
+
+Rootless containers are still powerful inside the project VM. They can read and
+modify project files and user-owned credentials available to `DVM_USER`. Treat
+them as project-local execution, not as a boundary against code you deliberately
+run in the VM.
+
+Docker group access is different: it is root-equivalent inside the guest. If
+`DVM_USER` can talk to the rootful Docker daemon, assume that user can become
+guest root and read all guest projects.
 
 Use a throwaway VM for Docker-heavy or untrusted work when isolation matters.
 
