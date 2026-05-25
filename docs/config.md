@@ -18,8 +18,8 @@ DVM_CPUS=2
 DVM_MEMORY=4
 DVM_DISK=30
 DVM_USER=developer
-DVM_SUBUID_COUNT=0
-DVM_SUBGID_COUNT=0
+DVM_SUBUID_COUNT=65536
+DVM_SUBGID_COUNT=65536
 DVM_GLOBAL_SETUP="$HOME/.config/dvm/setup.sh"
 ```
 
@@ -41,17 +41,17 @@ DVM_PORTS=(3000:3000 5173:5173)
 | `DVM_MEMORY` | `4` | GiB memory |
 | `DVM_DISK` | `30` | GiB disk |
 | `DVM_USER` | `developer` | main guest user |
-| `DVM_SUBUID_COUNT` | `0` | subordinate uid range size for `DVM_USER` |
-| `DVM_SUBGID_COUNT` | `0` | subordinate gid range size for `DVM_USER` |
+| `DVM_SUBUID_COUNT` | `65536` | subordinate uid range size for `DVM_USER` |
+| `DVM_SUBGID_COUNT` | `65536` | subordinate gid range size for `DVM_USER` |
 | `DVM_PORTS` | `()` | `host:guest` port forwards |
 | `DVM_GLOBAL_SETUP` | empty | absolute host path to setup script run for every VM |
 
 Names for VMs and `DVM_USER` must start with a lowercase letter and contain
 only lowercase letters, numbers, and hyphens.
 
-Set `DVM_SUBUID_COUNT=65536` and `DVM_SUBGID_COUNT=65536` before the first
-`dvm sync` when the guest user should run rootless Docker or Podman. If the
-guest user already exists, DVM adds missing subordinate id ranges during the
+The default subordinate id ranges support rootless Docker and Podman. Set both
+counts to `0` only when the VM user should not receive subordinate id ranges. If
+the guest user already exists, DVM adds missing subordinate id ranges during the
 next sync.
 
 The per-VM setup script uses the conventional path:
