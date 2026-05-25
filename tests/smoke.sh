@@ -179,7 +179,9 @@ grep -Fxq -- "--mount-none" "$DVM_TEST_LOG" || fail "start argv missing --mount-
 grep -Fxq -- "dvm-app" "$DVM_TEST_LOG" || fail "start argv missing dvm-app"
 grep -Fxq -- "template:fedora" "$DVM_TEST_LOG" || fail "start argv missing template"
 grep -Fxq -- "5173:5173" "$DVM_TEST_LOG" || fail "start argv missing second port"
-grep -Fq -- 'sudo useradd -m -s /bin/bash' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing user creation"
+grep -Fq -- 'sudo useradd -m -s /bin/bash -K SUB_UID_COUNT="$DVM_SUBUID_COUNT" -K SUB_GID_COUNT="$DVM_SUBGID_COUNT"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing user creation"
+grep -Fq -- 'ensure_subid_range "$DVM_USER" /etc/subuid --add-subuids "$DVM_SUBUID_COUNT"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing subuid setup"
+grep -Fq -- 'ensure_subid_range "$DVM_USER" /etc/subgid --add-subgids "$DVM_SUBGID_COUNT"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing subgid setup"
 grep -Fq -- 'sudo install -d -o "$DVM_USER" -g "$group" "$DVM_CODE_DIR"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing project dir"
 grep -Fq -- 'global setup for %s' "$DVM_TEST_GUEST/dvm-app.sh" || fail "global setup script did not run"
 grep -Fq -- '.dvm-project' "$DVM_TEST_GUEST/dvm-app.sh" || fail "VM setup script did not run"
@@ -229,6 +231,15 @@ if DVM_DRY_RUN=1 run_dvm sync bad-user >/dev/null 2>&1; then
 fi
 ok "invalid DVM_USER is rejected"
 
+mkdir -p "$DVM_CONFIG_DIR/vms/bad-subuid"
+cat >"$DVM_CONFIG_DIR/vms/bad-subuid/config.sh" <<'EOF'
+DVM_SUBUID_COUNT=lots
+EOF
+if DVM_DRY_RUN=1 run_dvm sync bad-subuid >/dev/null 2>&1; then
+    fail "invalid DVM_SUBUID_COUNT accepted"
+fi
+ok "invalid subordinate ID counts are rejected"
+
 BAD_PERMS="$TMP/bad-perms"
 mkdir -p "$BAD_PERMS/vms/app"
 printf '# config\n' >"$BAD_PERMS/config.sh"
@@ -256,6 +267,7 @@ out="$(run_dvm new fresh)"
 [ -f "$DVM_CONFIG_DIR/vms/fresh/setup.sh" ] || fail "new did not write setup script"
 case "$out" in *"wrote"*"fresh/config.sh"*"wrote"*"fresh/setup.sh"*) ;; *) fail "new did not print written paths" ;; esac
 grep -Fq 'DVM_CPUS=4' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing defaults"
+grep -Fq 'DVM_SUBUID_COUNT=65536' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing rootless container example"
 grep -Fq 'sudo dnf5 install -y' "$DVM_CONFIG_DIR/vms/fresh/setup.sh" || fail "new setup missing package example"
 ok "new writes starter config and setup script"
 

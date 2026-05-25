@@ -16,7 +16,8 @@ limactl start \
 ```
 
 Then DVM starts the instance, ensures `DVM_USER` exists, creates
-`/home/<DVM_USER>/code/<vm>`, and pipes trusted setup scripts through
+`/home/<DVM_USER>/code/<vm>`, optionally provisions subordinate uid/gid ranges
+for rootless container engines, and pipes trusted setup scripts through
 `limactl shell`.
 
 Lima also creates and uses its own default login account, commonly
