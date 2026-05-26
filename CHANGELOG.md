@@ -24,3 +24,7 @@
 - Removed redundant subordinate id settings from quick config examples and
   documented how to run rootless Docker and Podman.
 - Documented Fedora with `dnf5` as the supported guest setup path.
+- Restructured docs: trimmed README, merged the security guide and threat model
+  into `docs/security.md`, renamed `errors-and-recovery.md` to
+  `troubleshooting.md`, folded the roadmap into `CONTRIBUTING.md`, and split
+  setup examples into one file per topic under `examples/`.

@@ -1,16 +1,12 @@
 # Config
 
-DVM config is Bash.
+Config is Bash. Global loads first, per-VM config overrides it.
 
 ```text
-~/.config/dvm/config.sh
-~/.config/dvm/vms/<vm>/config.sh
-~/.config/dvm/vms/<vm>/setup.sh
+~/.config/dvm/config.sh            # global
+~/.config/dvm/vms/<vm>/config.sh   # per-VM
+~/.config/dvm/vms/<vm>/setup.sh    # per-VM setup script
 ```
-
-Global config loads first. VM config overrides it.
-
-## Example
 
 ```bash
 # ~/.config/dvm/config.sh
@@ -40,50 +36,36 @@ DVM_PORTS=(3000:3000 5173:5173)
 | `DVM_SUBUID_COUNT` | `65536` | subordinate uid range size for `DVM_USER` |
 | `DVM_SUBGID_COUNT` | `65536` | subordinate gid range size for `DVM_USER` |
 | `DVM_PORTS` | `()` | `host:guest` port forwards |
-| `DVM_GLOBAL_SETUP` | empty | absolute host path to setup script run for every VM |
+| `DVM_GLOBAL_SETUP` | empty | absolute host path to a setup script run for every VM |
 
-Names for VMs and `DVM_USER` must start with a lowercase letter and contain
-only lowercase letters, numbers, and hyphens.
+VM and `DVM_USER` names must start with a lowercase letter and contain only
+lowercase letters, numbers, and hyphens.
 
 The default subordinate id ranges support rootless Docker and Podman. Set both
-counts to `0` only when the VM user should not receive subordinate id ranges. If
-the guest user already exists, DVM adds missing subordinate id ranges during the
-next sync.
-
-The per-VM setup script uses the conventional path:
-
-```text
-~/.config/dvm/vms/app/setup.sh
-```
+counts to `0` only when the user should get no ranges. If the user already
+exists, DVM adds missing ranges on the next sync.
 
 ## Setup scripts
 
-Setup scripts run during `dvm sync` after the VM is created, started, and the
-guest user/project directory exist.
-
-Order:
+Run during `dvm sync` after the VM is created, started, and the user/project
+directory exist. Order:
 
 1. `DVM_GLOBAL_SETUP`
 2. `~/.config/dvm/vms/<vm>/setup.sh`, when present
 
-Scripts receive:
+DVM prepends `set -Eeuo pipefail` and exports these variables to each script:
 
 | Variable | Meaning |
 | --- | --- |
-| `DVM_NAME` | VM name from DVM config |
+| `DVM_NAME` | VM name from config |
 | `DVM_VM` | same as `DVM_NAME` |
 | `DVM_LIMA_NAME` | Lima instance name, such as `dvm-app` |
-| `DVM_USER` | guest development user |
+| `DVM_USER` | guest dev user |
 | `DVM_CODE_DIR` | guest project directory |
 | `DVM_PORTS` | comma-separated port forwards |
 | `DVM_SUBUID_COUNT` | configured subordinate uid range size |
 | `DVM_SUBGID_COUNT` | configured subordinate gid range size |
 
-Setup scripts are trusted provisioning code. DVM checks that configured scripts
-are owned by the current host user and are not group/world writable.
-
-```bash
-chmod go-w ~/.config/dvm ~/.config/dvm/config.sh
-chmod go-w ~/.config/dvm/vms/app ~/.config/dvm/vms/app/config.sh
-chmod go-w ~/.config/dvm/vms/app/setup.sh
-```
+Setup scripts are trusted provisioning code. DVM checks they are owned by you
+and not group/world writable (see [troubleshooting.md](troubleshooting.md) to
+repair). For snippets, see [examples](../examples/README.md).

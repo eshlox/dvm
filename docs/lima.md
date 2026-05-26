@@ -1,73 +1,44 @@
 # Lima
 
-DVM delegates VM lifecycle to Lima and avoids rendering its own YAML.
-
-For a new VM, DVM runs roughly:
+DVM delegates VM lifecycle to Lima and does not render its own YAML. For a new
+VM it runs roughly:
 
 ```bash
 limactl start \
   --name dvm-app \
-  --cpus 4 \
-  --memory 8 \
-  --disk 60 \
+  --cpus 4 --memory 8 --disk 60 \
   --mount-none \
   --port-forward 3000:3000 \
   template:fedora
 ```
 
-Then DVM starts the instance, ensures `DVM_USER` exists, creates
-`/home/<DVM_USER>/code/<vm>`, optionally provisions subordinate uid/gid ranges
-for rootless container engines, and pipes trusted setup scripts through
+Then it ensures `DVM_USER` exists, creates `/home/<DVM_USER>/code/<vm>`,
+provisions subordinate uid/gid ranges, and pipes setup scripts through
 `limactl shell`.
 
-Lima also creates and uses its own default login account, commonly
-`<host-user>.guest` on Linux guests. DVM treats that account as Lima
-infrastructure for shell access, bootstrap, and sudo-based setup. Project shells,
-commands, and file copies run as `DVM_USER`.
+Lima also creates its own default login account, commonly `<host-user>.guest`.
+DVM uses that account for shell access, bootstrap, and sudo-based setup. Project
+shells, commands, and copies run as `DVM_USER`.
 
 ## Names
 
-DVM VM `app` maps to Lima instance `dvm-app`. VM names must start with a
-lowercase letter and contain only lowercase letters, numbers, and hyphens.
+VM `app` maps to Lima instance `dvm-app`. Names must start with a lowercase
+letter and contain only lowercase letters, numbers, and hyphens.
 
 ## Template
 
-DVM always creates VMs from Lima's Fedora template:
-
-```text
-template:fedora
-```
-
-Setup examples assume Fedora with `dnf5`. Other guest distributions are outside
-the supported path for this project.
+DVM always uses Lima's Fedora template (`template:fedora`). Setup examples
+assume Fedora with `dnf5`. Other guest distributions are outside the supported
+path.
 
 ## Host mounts
 
-DVM passes `--mount-none` when it creates instances. This is deliberate: Lima
-otherwise commonly mounts host paths, which weakens the host protection goal.
-
-If you need host mounts or advanced Lima YAML, manage that VM directly with
-Lima. DVM does not expose a generic extra-args escape hatch.
+DVM always passes `--mount-none`. Lima otherwise commonly mounts host paths,
+which weakens host protection. If you need host mounts or advanced Lima YAML,
+manage that VM directly with Lima; DVM has no extra-args escape hatch.
 
 ## Ports
 
-DVM supports two-part port specs:
-
-```bash
-DVM_PORTS=(3000:3000 5173:5173)
-```
-
-Lima's short `--port-forward host:guest` form is localhost-oriented. Use
-Tailscale, Cloudflare Tunnel, or direct Lima networking when you need broader
-network access.
-
-## Code location
-
-DVM does not mount host project directories. Code lives inside the guest at:
-
-```text
-/home/<DVM_USER>/code/<DVM_NAME>
-```
-
-For `dvm cp`, relative VM paths use that directory as their base. For example,
-`dvm cp ./notes app:notes` writes to `/home/<DVM_USER>/code/app/notes`.
+`DVM_PORTS` takes two-part `host:guest` specs. Lima's short form is
+localhost-oriented. Use Tailscale, Cloudflare Tunnel, or direct Lima networking
+for broader access.
