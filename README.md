@@ -1,18 +1,16 @@
 # DVM
 
-DVM is a small Bash wrapper around Lima for disposable development VMs.
-
-It creates and starts Lima instances, keeps host files out of the guest by
-default, creates a development user, and runs user-owned setup scripts. Tool
-installation lives in those scripts.
+A small Bash wrapper around Lima for disposable development VMs. It creates and
+starts Lima instances, keeps host files out of the guest, creates a dev user,
+and runs your own setup scripts. Tool installation lives in those scripts.
 
 Defaults:
 
 - no host mounts
-- VM names map to `dvm-<name>`
-- code directory is `/home/<user>/code/<vm>`
-- config is in `~/.config/dvm`
-- setup scripts are permission checked before execution
+- VM `<name>` maps to Lima instance `dvm-<name>`
+- code lives at `/home/<user>/code/<vm>`
+- config in `~/.config/dvm`
+- setup scripts are ownership/permission checked before they run
 
 ## Install
 
@@ -21,64 +19,42 @@ Requirements: Bash and Lima 2.0+.
 ```bash
 git clone <repo-url> dvm
 cd dvm
-./install.sh
+./install.sh          # symlinks bin/dvm into ~/.local/bin (override with PREFIX)
 ```
 
-## Create a VM
+## Quickstart
 
 ```bash
-dvm new app
+dvm new app           # writes ~/.config/dvm/vms/app/{config.sh,setup.sh}
 ```
 
-`dvm new app` writes:
-
-```text
-~/.config/dvm/vms/app/config.sh
-~/.config/dvm/vms/app/setup.sh
-```
-
-Example VM config:
+Edit the config:
 
 ```bash
+# ~/.config/dvm/vms/app/config.sh
 DVM_CPUS=4
 DVM_MEMORY=8
 DVM_DISK=60
 DVM_PORTS=(3000:3000 5173:5173)
 ```
 
-Example setup script:
+Edit the setup script:
 
 ```bash
+# ~/.config/dvm/vms/app/setup.sh
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
 sudo dnf5 install -y git ripgrep fd-find tmux
-
-sudo -u "$DVM_USER" -H bash -lc '
-  mkdir -p "$HOME/.local/bin"
-'
 ```
 
-Run it:
+Build and enter:
 
 ```bash
-DVM_DRY_RUN=1 dvm sync app
+DVM_DRY_RUN=1 dvm sync app   # preview, no Lima contact
 dvm sync app
 dvm sh app
 ```
-
-## Security model
-
-DVM protects the host mainly by using a VM and passing `--mount-none` when it
-creates instances. Setup scripts are trusted provisioning code that you own and
-review. DVM refuses config and setup scripts that are not owned by the current
-host user or are group/world writable.
-
-Use the docs for secure examples:
-
-- [docs/security-standards.md](docs/security-standards.md)
-- [docs/examples.md](docs/examples.md)
-- [docs/threat-model.md](docs/threat-model.md)
 
 ## Commands
 
@@ -86,7 +62,7 @@ Use the docs for secure examples:
 dvm sync <vm> | --all
 dvm sh <vm>
 dvm ssh <vm> -- cmd...
-dvm cp src dst
+dvm cp <src> <dst>
 dvm ls [--only-config] [<vm>]
 dvm stop <vm> | --all [--only-config]
 dvm rm <vm> --yes [--config]
@@ -94,16 +70,18 @@ dvm new <vm>
 dvm version
 ```
 
+See [docs/commands.md](docs/commands.md) for details.
+
 ## Docs
 
-- [docs/howto.md](docs/howto.md): common workflows
-- [docs/config.md](docs/config.md): config variables and setup scripts
-- [docs/examples.md](docs/examples.md): secure setup script examples
-- [docs/commands.md](docs/commands.md): command reference
-- [docs/lima.md](docs/lima.md): Lima behavior and limits
-- [docs/security-standards.md](docs/security-standards.md): secure usage guide
+- [docs/commands.md](docs/commands.md) - command reference
+- [docs/config.md](docs/config.md) - config variables and setup scripts
+- [docs/security.md](docs/security.md) - security model and threats
+- [docs/lima.md](docs/lima.md) - Lima behavior and limits
+- [docs/troubleshooting.md](docs/troubleshooting.md) - errors and recovery
+- [examples/](examples/README.md) - copy/paste setup snippets
 
-Development check:
+Development check (runs the smoke test and ShellCheck):
 
 ```bash
 bash scripts/check

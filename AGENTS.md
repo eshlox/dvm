@@ -5,6 +5,10 @@ wrapper that runs trusted user-owned setup scripts. Keep core behavior focused;
 prefer docs and examples over adding framework code unless the core change is
 clearly justified.
 
+Docs layout: top-level `README.md` (entry), `docs/` (one topic per file:
+commands, config, security, lima, troubleshooting, release), `examples/` (one
+setup snippet per file). Keep each fact in one place and link to it.
+
 After every change:
 
 - Update user-facing docs when behavior, commands, config, workflows, security

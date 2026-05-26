@@ -1,15 +1,13 @@
 # DVM docs
 
-Start with [README.md](../README.md).
+Start with the [project README](../README.md).
 
 | Need | Read |
 | --- | --- |
-| common workflows | [howto.md](howto.md) |
-| config variables | [config.md](config.md) |
-| setup examples | [examples.md](examples.md) |
 | commands | [commands.md](commands.md) |
-| security guide | [security-standards.md](security-standards.md) |
-| threat model | [threat-model.md](threat-model.md) |
-| errors | [errors-and-recovery.md](errors-and-recovery.md) |
-| Lima notes | [lima.md](lima.md) |
+| config variables and setup scripts | [config.md](config.md) |
+| security model and threats | [security.md](security.md) |
+| Lima behavior and limits | [lima.md](lima.md) |
+| errors and recovery | [troubleshooting.md](troubleshooting.md) |
 | release process | [release.md](release.md) |
+| setup script snippets | [examples](../examples/README.md) |
