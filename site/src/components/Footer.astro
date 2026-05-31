@@ -1,0 +1,26 @@
+---
+// Extends Starlight's default footer with a maintainer credit.
+import Default from '@astrojs/starlight/components/Footer.astro';
+---
+
+<Default><slot /></Default>
+
+<p class="dvm-credit">
+  Built and maintained by
+  <a href="https://eshlox.net">Przemysław Kołodziejczyk (eshlox)</a>.
+</p>
+
+<style>
+  .dvm-credit {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-hairline);
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+    text-align: center;
+  }
+  .dvm-credit a {
+    color: var(--sl-color-text-accent);
+    font-weight: 600;
+  }
+</style>

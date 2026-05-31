@@ -2,6 +2,11 @@
 import '../styles/landing.css';
 
 const repo = 'https://github.com/eshlox/dvm';
+const author = {
+  name: 'Przemysław Kołodziejczyk',
+  handle: 'eshlox',
+  site: 'https://eshlox.net',
+};
 const title = 'DVM - Disposable development VMs';
 const description =
   'A small Bash wrapper around Lima for disposable development VMs. No host mounts, your own setup scripts, a clean host machine.';
@@ -211,10 +216,14 @@ const testimonials = [
     <!-- footer -->
     <footer class="foot">
       <div class="wrap">
-        <span>© DVM · MIT License</span>
+        <span>
+          Built and maintained by
+          <a href={author.site}>{author.name} ({author.handle})</a>. MIT License.
+        </span>
         <span class="links">
           <a href="/docs/">Docs</a>
           <a href="/docs/guides/security/">Security</a>
+          <a href={author.site}>eshlox.net</a>
           <a href={repo}>GitHub</a>
         </span>
       </div>

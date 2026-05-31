@@ -25,6 +25,9 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/eshlox/dvm/edit/main/site/',
       },
+      components: {
+        Footer: './src/components/Footer.astro',
+      },
       customCss: ['./src/styles/theme.css'],
       // Docs live under /docs/* (content nested in src/content/docs/docs/).
       // The site root "/" is served by src/pages/index.astro (the landing page).
