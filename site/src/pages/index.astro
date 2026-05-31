@@ -5,6 +5,50 @@ const repo = 'https://github.com/eshlox/dvm';
 const title = 'DVM - Disposable development VMs';
 const description =
   'A small Bash wrapper around Lima for disposable development VMs. No host mounts, your own setup scripts, a clean host machine.';
+
+// Entirely fictional. Any resemblance to real engineers is the joke.
+const testimonials = [
+  { quote: "I broke everything inside the VM, deleted it, and felt absolutely nothing. This is the closure my Dockerfiles never gave me.", who: "Dependency H.", role: "Recovering YAML Engineer" },
+  { quote: "My laptop fans haven't spun up since I switched. My cat is unsettled by the silence.", who: "A. Nonymous", role: "Staff Procrastinator" },
+  { quote: "Finally, a tool that respects boundaries better than my last three side projects did.", who: "Jane Doe-Notexist", role: "Principal Vibes Architect" },
+  { quote: "I <code>dvm rm</code>'d production. Kidding, there is no production. That's the entire point.", who: "Seg Fault", role: "CTO of a company I invented for this quote" },
+  { quote: "I used to pipe curl straight into sudo bash. Now I do it inside a VM I can throw away. Personal growth.", who: "Rm Dashrf", role: "Senior Move Fast Engineer" },
+  { quote: "My threat model used to be 'it works on my machine'. Now my machine is disposable, so checkmate.", who: "Bobby Tables", role: "Database Enthusiast" },
+  { quote: "I ran a sketchy install script with 4,000 stars and zero reviews. The VM died so my laptop didn't have to.", who: "Yolo Driven", role: "Lead Optimist" },
+  { quote: "Security asked where I run untrusted code. I pointed at a VM I delete every afternoon. They wept. Happy tears, I assume.", who: "Patch Tuesday", role: "Compliance Avoider" },
+  { quote: "I no longer read the install script. I just make sure it can't reach my SSH keys. We call this maturity.", who: "Copy Paste", role: "Stack Overflow Archaeologist" },
+  { quote: "I gave node_modules its own quarantine wing. It has earned nothing less.", who: "N. P. M", role: "Dependency Hoarder" },
+  { quote: "It's like a hotel room for my code. I trash it, check out, and leave no forwarding address.", who: "Vim Exiteer", role: "Modal Editor Survivor" },
+  { quote: "Spun up a VM to test one regex. Worth it. The regex still doesn't work, but my host is pristine.", who: "Greedy Match", role: "Backtracking Specialist" },
+  { quote: "I containerized my containers and then put them in a VM. My therapist and I are working through it.", who: "Kube Nettes", role: "Over-Engineer in Residence" },
+  { quote: "Zero host mounts means zero 'why is there a node_modules in my home directory' moments.", who: "Tilde Slash", role: "Filesystem Janitor" },
+  { quote: "I finally have a sandbox that isn't just /tmp and a prayer.", who: "Temp File", role: "Reckless Tester" },
+  { quote: "It boots faster than my standup ends, and is roughly as disposable.", who: "Daily Scrum", role: "Agile Skeptic" },
+  { quote: "I read the whole man page. Then I read it again. I have no notes. I am shaken.", who: "RTF Manual", role: "Documentation Believer" },
+  { quote: "My git history is a crime scene, but at least my host machine is clean.", who: "Force Push", role: "Friday Deployer" },
+  { quote: "Spin up. Break stuff. Delete. Repeat. It's basically meditation.", who: "Ohm Resolver", role: "Mindful Engineer" },
+  { quote: "I trust nothing and I mount nothing. We are the same.", who: "Air Gap", role: "Paranoid Architect" },
+  { quote: "Ten out of ten. Would dispose again.", who: "Five Stars", role: "Professional Reviewer" },
+  { quote: "It does one thing and flatly refuses to do my taxes. Respect.", who: "Scope Creep", role: "Feature Requester" },
+  { quote: "I came for the isolation. I stayed because I forgot I had other tabs open.", who: "Lost Focus", role: "Context Switcher" },
+  { quote: "Faster than reading the Dockerfile I copied from a 2019 blog post.", who: "Cache Hit", role: "Latency Connoisseur" },
+  { quote: "My VM has better boundaries than my calendar.", who: "Always Available", role: "Burned Out Lead" },
+  { quote: "I store secrets in env vars, in the VM, which I then delete. The secrets get deleted too. Nobody warned me.", who: "Plain Text", role: "Senior Oops Engineer" },
+  { quote: "I used to test in prod. Now I test in a VM that merely thinks it's prod. Therapy is going great.", who: "Hotfix Hank", role: "Incident Commander" },
+  { quote: "My password is still 'password', but the blast radius is one disposable VM now.", who: "Auth Zero", role: "Identity Crisis" },
+  { quote: "I disabled the firewall, SELinux, and my better judgment. The VM forgave all of it on delete.", who: "Setenforce Zero", role: "Hardening Skeptic" },
+  { quote: "Someone said 'supply chain attack' and I said 'not my host's problem anymore'.", who: "Lockfile Larry", role: "npm install --force" },
+  { quote: "I ran the malware in the VM on purpose. For science. The science was: yep, that's malware.", who: "Curious George", role: "Reverse Engineer, Allegedly" },
+  { quote: "I don't sanitize inputs, but I do sanitize my entire VM by deleting it. Net positive.", who: "Little Bobby", role: "Returning Character" },
+  { quote: "It's the only thing in my workflow that does exactly what the README claims.", who: "Honest Readme", role: "Rare Specimen" },
+  { quote: "I named my VMs after my regrets. Spinning up 'the-rewrite' was unexpectedly cathartic.", who: "Tech Debt", role: "Interest, Compounding" },
+  { quote: "My CI went green for the first time because I tested in a clean room before pushing.", who: "Flaky Test", role: "Reformed" },
+  { quote: "I gave up on perfect dotfiles. Now every VM gets the precise chaos it deserves, freshly.", who: "Chez Moi", role: "Config Drifter" },
+  { quote: "It quietly logs everything and shows me a checkmark. It is more emotionally available than I am.", who: "Spinner Loading", role: "Async Person" },
+  { quote: "I uninstalled my anxiety and reinstalled it as a VM I can delete.", who: "Heap Overflow", role: "Memory Leaker" },
+  { quote: "Works on my machine, and also on the disposable machine, which is the only machine I trust now.", who: "It Compiles", role: "Ship It Advocate" },
+  { quote: "I read 'no host mounts' and a single tear of joy rolled into my mechanical keyboard.", who: "Cherry MX", role: "Clack Evangelist" },
+];
 ---
 
 <!doctype html>
@@ -142,24 +186,14 @@ const description =
         Want to be the first? <a href={`${repo}/discussions`}>Tell me what you think</a>.
       </p>
       <div class="grid">
-        <figure class="quote">
-          <blockquote>“I broke everything inside the VM, deleted it, and felt absolutely nothing. This is the closure my Dockerfiles never gave me.”</blockquote>
-          <figcaption><span class="who">Dependency H.</span><span class="role">Recovering YAML Engineer</span></figcaption>
-        </figure>
-        <figure class="quote">
-          <blockquote>“My laptop fans haven't spun up since I switched. My cat is unsettled by the silence.”</blockquote>
-          <figcaption><span class="who">A. Nonymous</span><span class="role">Staff Procrastinator</span></figcaption>
-        </figure>
-        <figure class="quote">
-          <blockquote>“Finally, a tool that respects boundaries better than my last three side projects did.”</blockquote>
-          <figcaption><span class="who">Jane Doe-Notexist</span><span class="role">Principal Vibes Architect</span></figcaption>
-        </figure>
-        <figure class="quote">
-          <blockquote>“I <code>dvm rm</code>'d production. Kidding, there is no production. That's the entire point.”</blockquote>
-          <figcaption><span class="who">Seg Fault</span><span class="role">CTO, a company I invented for this quote</span></figcaption>
-        </figure>
+        {testimonials.map((t) => (
+          <figure class="quote">
+            <blockquote set:html={`&ldquo;${t.quote}&rdquo;`} />
+            <figcaption><span class="who">{t.who}</span><span class="role">{t.role}</span></figcaption>
+          </figure>
+        ))}
       </div>
-      <p class="disclaimer">* No developers were consulted in the making of these testimonials.</p>
+      <p class="disclaimer">* No developers were consulted in the making of these {testimonials.length} testimonials.</p>
     </section>
 
     <!-- bottom cta -->
