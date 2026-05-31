@@ -38,6 +38,19 @@ The global setup script path must be absolute:
 DVM_GLOBAL_SETUP="$HOME/.config/dvm/setup.sh"
 ```
 
+## systemd-binfmt failed on aarch64 Lima
+
+On some aarch64 Lima images `systemd-binfmt.service` reports `failed` even though
+the VM needs no foreign binary format handlers. It is harmless, but it makes
+`systemctl --failed` noisy. Mask it from a setup script to keep boot clean:
+
+```bash
+sudo systemctl mask --now systemd-binfmt.service || true
+sudo systemctl reset-failed systemd-binfmt.service || true
+```
+
+Skip this if you actually run foreign-architecture binaries in the guest.
+
 ## Debug
 
 ```bash
