@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added a documentation website (Astro + Starlight) under `site/`, published at
+  dvm.eshlox.net, with a landing page and the docs moved from `docs/` and
+  `examples/`. The repo `README` now links to the site.
 - Initial development version of DVM as a minimal Bash wrapper around Lima.
 - Added VM lifecycle commands for sync, shell, command execution, copy, list,
   stop, remove, and starter config generation.

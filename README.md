@@ -17,7 +17,7 @@ Defaults:
 Requirements: Bash and Lima 2.0+.
 
 ```bash
-git clone <repo-url> dvm
+git clone https://github.com/eshlox/dvm.git dvm
 cd dvm
 ./install.sh          # symlinks bin/dvm into ~/.local/bin (override with PREFIX)
 ```
@@ -70,16 +70,21 @@ dvm new <vm>
 dvm version
 ```
 
-See [docs/commands.md](docs/commands.md) for details.
+See the [command reference](https://dvm.eshlox.net/docs/reference/commands/) for details.
 
 ## Docs
 
-- [docs/commands.md](docs/commands.md) - command reference
-- [docs/config.md](docs/config.md) - config variables and setup scripts
-- [docs/security.md](docs/security.md) - security model and threats
-- [docs/lima.md](docs/lima.md) - Lima behavior and limits
-- [docs/troubleshooting.md](docs/troubleshooting.md) - errors and recovery
-- [examples/](examples/README.md) - copy/paste setup snippets
+Full documentation lives at **[dvm.eshlox.net](https://dvm.eshlox.net)**:
+
+- [Commands](https://dvm.eshlox.net/docs/reference/commands/) — command reference
+- [Config & setup scripts](https://dvm.eshlox.net/docs/reference/config/) — config variables and setup scripts
+- [Security model](https://dvm.eshlox.net/docs/guides/security/) — threats and trade-offs
+- [Lima behavior](https://dvm.eshlox.net/docs/reference/lima/) — Lima behavior and limits
+- [Troubleshooting](https://dvm.eshlox.net/docs/guides/troubleshooting/) — errors and recovery
+- [Examples](https://dvm.eshlox.net/docs/examples/) — copy/paste setup snippets
+
+The docs source lives in [`site/src/content/docs/`](site/). The website is an
+Astro + Starlight project under [`site/`](site/) — see [`site/README.md`](site/README.md).
 
 Development check (runs the smoke test and ShellCheck):
 

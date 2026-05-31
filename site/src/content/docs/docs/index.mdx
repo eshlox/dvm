@@ -1,0 +1,43 @@
+---
+title: "DVM documentation"
+description: "Disposable development VMs: a small Bash wrapper around Lima."
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+DVM creates and starts [Lima](https://lima-vm.io) instances, keeps host files
+out of the guest, creates a dev user, and runs your own setup scripts. Tool
+installation lives in those scripts.
+
+<CardGrid>
+  <Card title="No host mounts" icon="laptop">
+    Nothing from your machine is mounted into the guest by default.
+  </Card>
+  <Card title="Your setup, your scripts" icon="seti:shell">
+    Provisioning is plain Bash you own and review.
+  </Card>
+  <Card title="Checked before they run" icon="approve-check">
+    Setup scripts are ownership- and permission-checked first.
+  </Card>
+  <Card title="Disposable by design" icon="trash">
+    Spin up, build, throw away. The host stays clean.
+  </Card>
+</CardGrid>
+
+## Start here
+
+<CardGrid>
+  <LinkCard title="Install" href="/docs/getting-started/install/" description="Requirements and setup." />
+  <LinkCard title="Quickstart" href="/docs/getting-started/quickstart/" description="From zero to a running VM in four commands." />
+  <LinkCard title="Commands" href="/docs/reference/commands/" description="The full dvm CLI reference." />
+  <LinkCard title="Examples" href="/docs/examples/" description="Copy/paste setup-script snippets." />
+</CardGrid>
+
+## Learn more
+
+<CardGrid>
+  <LinkCard title="Config & setup scripts" href="/docs/reference/config/" description="Every config variable and how setup scripts run." />
+  <LinkCard title="Lima behavior" href="/docs/reference/lima/" description="How DVM drives Lima, and its limits." />
+  <LinkCard title="Security model" href="/docs/guides/security/" description="Threats addressed and trade-offs." />
+  <LinkCard title="Troubleshooting" href="/docs/guides/troubleshooting/" description="Errors and recovery." />
+</CardGrid>

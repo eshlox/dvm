@@ -1,2 +1,7 @@
 .DS_Store
 *.tmp
+
+# website (site/)
+site/node_modules/
+site/dist/
+site/.astro/
