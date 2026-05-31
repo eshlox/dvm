@@ -1,6 +1,9 @@
 .DS_Store
 *.tmp
 
+# Designer hand-off archive; extracted assets live in brand/
+DVM.zip
+
 # website (site/)
 site/node_modules/
 site/dist/
