@@ -6,8 +6,11 @@
   --border: #1e2630;
   --text: #e6edf3;
   --muted: #8b96a5;
-  --accent: #2dd4a7;
+  --accent: #2dd4a7;          /* brand green, used for fills/borders */
+  --accent-ink: #2dd4a7;      /* accent used as text (AA contrast on bg) */
   --accent-soft: rgba(45, 212, 167, 0.12);
+  --grad-a: #2dd4a7;          /* hero gradient stops */
+  --grad-b: #67e8f9;
   --shadow: rgba(0, 0, 0, 0.8);
 
   /* terminal stays dark in both themes */
@@ -29,8 +32,11 @@
   --border: #d8dee4;
   --text: #1f2328;
   --muted: #59636e;
-  --accent: #0f9d76;
+  --accent: #0f9d76;          /* fill: 4.84:1 with dark button text */
+  --accent-ink: #047857;      /* text: 5.48:1 on white (AA) */
   --accent-soft: rgba(15, 157, 118, 0.12);
+  --grad-a: #047857;
+  --grad-b: #0e7490;
   --shadow: rgba(140, 149, 159, 0.3);
 }
 @media (prefers-color-scheme: light) {
@@ -42,7 +48,10 @@
     --text: #1f2328;
     --muted: #59636e;
     --accent: #0f9d76;
+    --accent-ink: #047857;
     --accent-soft: rgba(15, 157, 118, 0.12);
+    --grad-a: #047857;
+    --grad-b: #0e7490;
     --shadow: rgba(140, 149, 159, 0.3);
   }
 }
@@ -67,6 +76,28 @@ body.landing {
 }
 
 a { color: inherit; }
+
+/* respect users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .cursor { animation: none; }
+  .btn:hover, .card:hover, .quote:hover { transform: none; }
+}
+
+/* visible keyboard focus for all interactive elements */
+.landing a:focus-visible,
+.btn:focus-visible,
+.theme-toggle:focus-visible,
+.install button:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
 
 .wrap {
   max-width: 1040px;
@@ -137,7 +168,7 @@ a { color: inherit; }
   font-size: 0.8rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-ink);
   background: var(--accent-soft);
   border: 1px solid rgba(45, 212, 167, 0.25);
   padding: 5px 12px;
@@ -152,7 +183,7 @@ a { color: inherit; }
   letter-spacing: -0.02em;
 }
 .hero h1 .grad {
-  background: linear-gradient(120deg, #2dd4a7, #67e8f9);
+  background: linear-gradient(120deg, var(--grad-a), var(--grad-b));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -202,7 +233,7 @@ a { color: inherit; }
   font-size: 0.92rem;
   color: var(--text);
 }
-.install .dollar { color: var(--accent); user-select: none; }
+.install .dollar { color: var(--accent-ink); user-select: none; }
 .install button {
   background: transparent;
   border: 1px solid var(--border);
@@ -288,7 +319,7 @@ a { color: inherit; }
   display: grid; place-items: center;
   border-radius: 9px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-ink);
   margin-bottom: 14px;
   font-size: 1.1rem;
 }
