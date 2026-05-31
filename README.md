@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo-lockup-dark.svg">
+    <img alt="DVM" src="brand/logo-lockup-light.svg" width="280">
+  </picture>
+</p>
+
 # DVM
 
 A small Bash wrapper around Lima for disposable development VMs. It creates and
