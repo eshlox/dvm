@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `dvm sync` now creates the Lima instance with `limactl start --yes`, so the
+  first sync no longer stops at Lima's interactive proceed/edit/exit prompt.
 - Added a documentation website (Astro + Starlight) under `site/`, published at
   dvm.eshlox.net, with a landing page and the docs moved from `docs/` and
   `examples/`. The repo `README` now links to the site.

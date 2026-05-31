@@ -132,7 +132,7 @@ port_forward_args() {
 }
 
 build_lima_start() {
-    DVM_ARGV=("$LIMACTL" start --name "$DVM_LIMA_NAME"
+    DVM_ARGV=("$LIMACTL" start --yes --name "$DVM_LIMA_NAME"
         --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
         --mount-none)
     port_forward_args
