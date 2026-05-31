@@ -21,6 +21,21 @@ export default defineConfig({
           label: 'GitHub',
           href: 'https://github.com/eshlox/dvm',
         },
+        {
+          icon: 'mastodon',
+          label: 'Mastodon',
+          href: 'https://fosstodon.org/@eshlox',
+        },
+        {
+          icon: 'x.com',
+          label: 'X',
+          href: 'https://x.com/eshlox',
+        },
+        {
+          icon: 'blueSky',
+          label: 'Bluesky',
+          href: 'https://bsky.app/profile/eshlox.net',
+        },
       ],
       editLink: {
         baseUrl: 'https://github.com/eshlox/dvm/edit/main/site/',

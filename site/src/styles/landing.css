@@ -399,3 +399,6 @@ a { color: inherit; }
 .foot a { color: var(--muted); text-decoration: none; }
 .foot a:hover { color: var(--text); }
 .foot .links { display: flex; gap: 22px; }
+.foot .social { display: inline-flex; gap: 14px; margin-left: 10px; }
+.foot .social a { color: var(--accent-ink); }
+.foot .social a:hover { color: var(--text); }
