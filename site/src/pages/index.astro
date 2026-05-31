@@ -3,7 +3,6 @@ import '../styles/landing.css';
 
 const repo = 'https://github.com/eshlox/dvm';
 const author = {
-  name: 'Przemysław Kołodziejczyk',
   handle: 'eshlox',
   site: 'https://eshlox.net',
 };
@@ -223,7 +222,7 @@ const testimonials = [
       <div class="wrap">
         <span>
           Built and maintained by
-          <a href={author.site}>{author.name} ({author.handle})</a>. MIT License.
+          <a href={author.site}>{author.handle}</a>. MIT License.
           <span class="social">
             {socials.map((s) => (
               <a href={s.href} rel={s.rel}>{s.label}</a>
