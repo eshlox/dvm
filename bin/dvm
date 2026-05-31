@@ -16,11 +16,14 @@ DVM_STATE_DIR="${DVM_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dvm}"
 vm_log() { printf '%s/%s/%s.log\n' "$DVM_STATE_DIR" "$DVM_NAME" "$1"; }
 
 # Progress output: colored/animated only when stderr is a real terminal and the
-# user has not opted out via NO_COLOR or TERM=dumb.
+# user has not opted out via NO_COLOR or TERM=dumb. The same condition gates the
+# spinner, so NO_COLOR/TERM=dumb fall back to plain per-step lines.
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
     _c_cyan=$'\033[36m'; _c_green=$'\033[32m'; _c_red=$'\033[31m'; _c_dim=$'\033[2m'; _c_reset=$'\033[0m'
+    _use_spinner=1
 else
     _c_cyan=; _c_green=; _c_red=; _c_dim=; _c_reset=
+    _use_spinner=0
 fi
 
 # Lima is noisy at INFO; full output is captured to the log regardless. Quiet
@@ -44,19 +47,30 @@ _spin() {
 }
 
 step_ok() {
-    [ -t 2 ] && printf '\r\033[K' >&2
+    [ "$_use_spinner" = "1" ] && printf '\r\033[K' >&2
     printf '%s✓%s %s\n' "$_c_green" "$_c_reset" "$1" >&2
 }
 
 step_fail() {
     # step_fail <label> <logfile> <exit-code>
-    [ -t 2 ] && printf '\r\033[K' >&2
+    [ "$_use_spinner" = "1" ] && printf '\r\033[K' >&2
     printf '%s✗%s %s\n' "$_c_red" "$_c_reset" "$1" >&2
     printf '  %s exited %s. full log: %s\n' "$DVM_NAME" "$3" "$2" >&2
     if [ -s "$2" ]; then
         printf '  %slast lines of %s:%s\n' "$_c_dim" "$(basename "$2")" "$_c_reset" >&2
         tail -n 20 "$2" | sed 's/^/  /' >&2
     fi
+}
+
+# Step logs capture Lima and setup-script output, which can include secrets
+# (tokens echoed by a setup script, etc.). Create the state dir and logs so only
+# the owner can read them, regardless of the caller's umask.
+# ensure_logfile <path> [truncate]
+ensure_logfile() {
+    ( umask 077
+      mkdir -p "$(dirname "$1")"
+      if [ "${2:-}" = "truncate" ]; then : >"$1"; else [ -e "$1" ] || : >"$1"; fi
+    )
 }
 
 # run_step <label> <logfile> <cmd> [args...]
@@ -67,11 +81,11 @@ step_fail() {
 run_step() {
     local label="$1" log="$2"; shift 2
     local rc=0
-    mkdir -p "$(dirname "$log")"
+    ensure_logfile "$log"
     if [ "${DVM_VERBOSE:-0}" = "1" ]; then
         printf '%s•%s %s\n' "$_c_cyan" "$_c_reset" "$label" >&2
         "$@" 2>&1 | tee -a "$log" || rc=$?
-    elif [ ! -t 2 ]; then
+    elif [ "$_use_spinner" != "1" ]; then
         printf '%s•%s %s\n' "$_c_cyan" "$_c_reset" "$label" >&2
         "$@" >>"$log" 2>&1 || rc=$?
     else
@@ -297,7 +311,7 @@ exec_setup_script() {
 # goes to the lima log; only failures surface (with the log path).
 ensure_running_quiet() {
     local log; log="$(vm_log lima)"
-    mkdir -p "$(dirname "$log")"
+    ensure_logfile "$log"
     "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME" >>"$log" 2>&1 \
         || die "failed to start $DVM_LIMA_NAME (see $log)"
     run_guest_bootstrap >>"$log" 2>&1 \
@@ -340,9 +354,8 @@ cmd_sync() {
     local lima_log setup_log
     lima_log="$(vm_log lima)"
     setup_log="$(vm_log setup)"
-    mkdir -p "$(dirname "$lima_log")"
-    : >"$lima_log"
-    : >"$setup_log"
+    ensure_logfile "$lima_log" truncate
+    ensure_logfile "$setup_log" truncate
 
     if ! lima_has "$DVM_LIMA_NAME"; then
         build_lima_start
@@ -438,7 +451,7 @@ cmd_cp() {
         esac
         base="$(basename "$src")"
         "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
-            'dst="$1"; base="$2"; if [[ "$dst" = */ ]]; then install -d "$dst"; cat >"$dst/$base"; else install -d "$(dirname "$dst")"; cat >"$dst"; fi' \
+            'dst="$1"; base="$2"; if [[ "$dst" = */ ]] || [ -d "$dst" ]; then install -d "$dst"; cat >"$dst/$base"; else install -d "$(dirname "$dst")"; cat >"$dst"; fi' \
             bash "$remote" "$base" <"$src"
     fi
 }

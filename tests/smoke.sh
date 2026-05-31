@@ -191,6 +191,13 @@ grep -Fq -- 'global setup for %s' "$DVM_TEST_GUEST/dvm-app.sh" || fail "global s
 grep -Fq -- '.dvm-project' "$DVM_TEST_GUEST/dvm-app.sh" || fail "VM setup script did not run"
 ok "sync starts VM and runs bootstrap plus setup scripts"
 
+# Logs may capture setup output that includes secrets; the state dir and logs
+# must be readable only by the owner regardless of umask.
+[ "$(stat -c '%a' "$DVM_STATE_DIR/app")" = "700" ] || fail "per-VM state dir is not owner-only"
+[ "$(stat -c '%a' "$DVM_STATE_DIR/app/lima.log")" = "600" ] || fail "lima log is not owner-only"
+[ "$(stat -c '%a' "$DVM_STATE_DIR/app/setup.log")" = "600" ] || fail "setup log is not owner-only"
+ok "sync writes logs and state dir readable only by the owner"
+
 : >"$DVM_TEST_LOG"
 run_dvm sh app >/dev/null
 grep -Fq -- 'getent passwd "$USER"' "$DVM_TEST_LOG" || fail "sh command does not resolve login shell"
@@ -216,6 +223,11 @@ grep -Fxq -- "/tmp/file" "$DVM_TEST_LOG" || fail "copy did not preserve absolute
 run_dvm cp "$TMP/local" app:notes.txt >/dev/null
 grep -Fxq -- "/home/developer/code/app/notes.txt" "$DVM_TEST_LOG" || fail "copy did not resolve relative VM path in project directory"
 ok "cp runs as DVM_USER and maps relative vm:path to the project directory"
+
+: >"$DVM_TEST_LOG"
+run_dvm cp "$TMP/local" app: >/dev/null
+grep -Fxq -- "/home/developer/code/app" "$DVM_TEST_LOG" || fail "copy to bare vm: did not resolve to the project directory"
+ok "cp to a bare vm: target resolves to the project directory"
 
 mkdir -p "$DVM_CONFIG_DIR/vms/bad-port"
 cat >"$DVM_CONFIG_DIR/vms/bad-port/config.sh" <<'EOF'
