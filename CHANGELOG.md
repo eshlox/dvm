@@ -4,6 +4,13 @@
 
 - `dvm sync` now creates the Lima instance with `limactl start --yes`, so the
   first sync no longer stops at Lima's interactive proceed/edit/exit prompt.
+- `dvm sync` now shows a per-step spinner with `✓`/`✗` and captures the full
+  output of Lima and setup scripts to per-VM logs under
+  `${XDG_STATE_HOME:-~/.local/state}/dvm/<vm>/` (`lima.log`, `setup.log`)
+  instead of printing it. On failure it reports the failing step, the log path,
+  and the log's last lines. `DVM_VERBOSE=1` streams everything live; color and
+  the spinner are disabled when stderr is not a terminal or `NO_COLOR` is set.
+  Logs are configurable with `DVM_STATE_DIR`.
 - Added a documentation website (Astro + Starlight) under `site/`, published at
   dvm.eshlox.net, with a landing page and the docs moved from `docs/` and
   `examples/`. The repo `README` now links to the site.

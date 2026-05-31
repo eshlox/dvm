@@ -11,6 +11,7 @@ ok() { printf 'ok - %s\n' "$*"; }
 export HOME="$TMP/home"
 export DVM_CONFIG_DIR="$TMP/config"
 export DVM_CACHE_DIR="$TMP/cache"
+export DVM_STATE_DIR="$TMP/state-dir"
 mkdir -p "$TMP/bin" "$HOME" "$DVM_CONFIG_DIR/vms/app" "$DVM_CONFIG_DIR/vms/defaults-only" "$TMP/guest"
 
 export DVM_TEST_STATE="$TMP/state"
@@ -41,6 +42,9 @@ log_argv() {
     shift
     for arg in "$@"; do printf '%s\n' "$arg" >>"$log"; done
 }
+
+# Skip global flags that dvm may pass before the subcommand (e.g. --log-level warn).
+while [ "${1:-}" = "--log-level" ]; do shift 2; done
 
 cmd="${1:-}"
 shift || true

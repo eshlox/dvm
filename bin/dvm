@@ -11,6 +11,83 @@ have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
 
+# Per-VM logs live under XDG state (runtime data, not config or cache).
+DVM_STATE_DIR="${DVM_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dvm}"
+vm_log() { printf '%s/%s/%s.log\n' "$DVM_STATE_DIR" "$DVM_NAME" "$1"; }
+
+# Progress output: colored/animated only when stderr is a real terminal and the
+# user has not opted out via NO_COLOR or TERM=dumb.
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+    _c_cyan=$'\033[36m'; _c_green=$'\033[32m'; _c_red=$'\033[31m'; _c_dim=$'\033[2m'; _c_reset=$'\033[0m'
+else
+    _c_cyan=; _c_green=; _c_red=; _c_dim=; _c_reset=
+fi
+
+# Lima is noisy at INFO; full output is captured to the log regardless. Quiet
+# the terminal-bound copy to warnings by default. DVM_VERBOSE=1 streams Lima's
+# full output live (still logged) instead of running it behind the spinner.
+if [ "${DVM_VERBOSE:-0}" = "1" ]; then
+    DVM_LIMA_LOG_LEVEL="${DVM_LIMA_LOG_LEVEL:-info}"
+else
+    DVM_LIMA_LOG_LEVEL="${DVM_LIMA_LOG_LEVEL:-warn}"
+fi
+
+_spin() {
+    local pid="$1" label="$2" i=0
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    printf '\033[?25l' >&2
+    while kill -0 "$pid" 2>/dev/null; do
+        printf '\r%s%s%s %s' "$_c_cyan" "${frames[i++ % ${#frames[@]}]}" "$_c_reset" "$label" >&2
+        sleep 0.08
+    done
+    printf '\033[?25h' >&2
+}
+
+step_ok() {
+    [ -t 2 ] && printf '\r\033[K' >&2
+    printf '%s✓%s %s\n' "$_c_green" "$_c_reset" "$1" >&2
+}
+
+step_fail() {
+    # step_fail <label> <logfile> <exit-code>
+    [ -t 2 ] && printf '\r\033[K' >&2
+    printf '%s✗%s %s\n' "$_c_red" "$_c_reset" "$1" >&2
+    printf '  %s exited %s. full log: %s\n' "$DVM_NAME" "$3" "$2" >&2
+    if [ -s "$2" ]; then
+        printf '  %slast lines of %s:%s\n' "$_c_dim" "$(basename "$2")" "$_c_reset" >&2
+        tail -n 20 "$2" | sed 's/^/  /' >&2
+    fi
+}
+
+# run_step <label> <logfile> <cmd> [args...]
+# Runs cmd with all output captured to logfile. Shows a spinner on a TTY, the
+# label plus live output when DVM_VERBOSE=1, and reports failure with the log
+# path and a tail. cmd must be a single command or a function (not a raw
+# pipeline) so its exit status is preserved.
+run_step() {
+    local label="$1" log="$2"; shift 2
+    local rc=0
+    mkdir -p "$(dirname "$log")"
+    if [ "${DVM_VERBOSE:-0}" = "1" ]; then
+        printf '%s•%s %s\n' "$_c_cyan" "$_c_reset" "$label" >&2
+        "$@" 2>&1 | tee -a "$log" || rc=$?
+    elif [ ! -t 2 ]; then
+        printf '%s•%s %s\n' "$_c_cyan" "$_c_reset" "$label" >&2
+        "$@" >>"$log" 2>&1 || rc=$?
+    else
+        local pid
+        "$@" >>"$log" 2>&1 &
+        pid=$!
+        _spin "$pid" "$label"
+        wait "$pid" || rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
+        step_fail "$label" "$log" "$rc"
+        return "$rc"
+    fi
+    step_ok "$label"
+}
+
 stat_uid() {
     stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null
 }
@@ -117,7 +194,7 @@ lock_vm() {
     if ! mkdir "$d" 2>/dev/null; then
         die "VM \"$1\" busy: another dvm operation is in progress (rm $d if stale)"
     fi
-    trap 'rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
+    trap '[ -t 2 ] && printf "\033[?25h" >&2; rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
 }
 
 DVM_ARGV=()
@@ -132,7 +209,7 @@ port_forward_args() {
 }
 
 build_lima_start() {
-    DVM_ARGV=("$LIMACTL" start --yes --name "$DVM_LIMA_NAME"
+    DVM_ARGV=("$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start --yes --name "$DVM_LIMA_NAME"
         --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
         --mount-none)
     port_forward_args
@@ -207,15 +284,24 @@ run_guest_bootstrap() {
     guest_bootstrap_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
 }
 
-run_setup_script() {
-    local label="$1" path="$2"
-    [ -n "$path" ] || return 0
-    printf 'dvm: running %s: %s\n' "$label" "$path" >&2
+exec_setup_script() {
+    local path="$1"
     {
         guest_core_exports
         printf 'set -Eeuo pipefail\n'
         cat "$path"
     } | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
+}
+
+# Start an existing instance and re-run bootstrap quietly for sh/ssh/cp. Output
+# goes to the lima log; only failures surface (with the log path).
+ensure_running_quiet() {
+    local log; log="$(vm_log lima)"
+    mkdir -p "$(dirname "$log")"
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME" >>"$log" 2>&1 \
+        || die "failed to start $DVM_LIMA_NAME (see $log)"
+    run_guest_bootstrap >>"$log" 2>&1 \
+        || die "failed to provision $DVM_LIMA_NAME (see $log)"
 }
 
 print_setup_plan() {
@@ -250,14 +336,25 @@ cmd_sync() {
 
     lock_vm "$DVM_NAME"
     require_lima
+
+    local lima_log setup_log
+    lima_log="$(vm_log lima)"
+    setup_log="$(vm_log setup)"
+    mkdir -p "$(dirname "$lima_log")"
+    : >"$lima_log"
+    : >"$setup_log"
+
     if ! lima_has "$DVM_LIMA_NAME"; then
         build_lima_start
-        "${DVM_ARGV[@]}"
+        run_step "creating instance $DVM_LIMA_NAME" "$lima_log" "${DVM_ARGV[@]}"
+    else
+        run_step "starting instance $DVM_LIMA_NAME" "$lima_log" \
+            "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME"
     fi
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
-    run_setup_script "global setup" "$DVM_GLOBAL_SETUP"
-    run_setup_script "VM setup" "$VM_SETUP"
+    run_step "ensuring user \"$DVM_USER\" and $DVM_CODE_DIR" "$lima_log" run_guest_bootstrap
+    [ -n "$DVM_GLOBAL_SETUP" ] && run_step "running global setup" "$setup_log" exec_setup_script "$DVM_GLOBAL_SETUP"
+    [ -n "$VM_SETUP" ] && run_step "running VM setup" "$setup_log" exec_setup_script "$VM_SETUP"
+    step_ok "$DVM_NAME ready"
 }
 
 cmd_sh() {
@@ -265,8 +362,7 @@ cmd_sh() {
     load_vm "$1"
     require_lima
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
+    ensure_running_quiet
     local sh_script
     # shellcheck disable=SC2016
     sh_script='cd "$1" 2>/dev/null || cd; shell="$(getent passwd "$USER" | cut -d: -f7)"; [ -n "$shell" ] || shell=/bin/bash; exec "$shell" -l'
@@ -282,8 +378,7 @@ cmd_ssh() {
     [ "${1:-}" = "--" ] && shift
     [ "$#" -gt 0 ] || die "usage: dvm ssh <vm> -- cmd..."
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
+    ensure_running_quiet
     local sh_script
     # shellcheck disable=SC2016
     sh_script='cd "$1" 2>/dev/null || cd; shift; exec "$@"'
@@ -309,8 +404,7 @@ cmd_cp() {
     load_vm "$vm"
     require_lima
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
+    ensure_running_quiet
 
     local remote local_path parent base tmp
     if [ "$src_is_vm" = "1" ]; then
