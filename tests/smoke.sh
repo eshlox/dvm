@@ -281,7 +281,7 @@ ok "unsafe config and setup permissions are rejected"
 out="$(run_dvm new fresh)"
 [ -f "$DVM_CONFIG_DIR/vms/fresh/config.sh" ] || fail "new did not write config"
 [ -f "$DVM_CONFIG_DIR/vms/fresh/setup.sh" ] || fail "new did not write setup script"
-case "$out" in *"wrote"*"fresh/config.sh"*"wrote"*"fresh/setup.sh"*) ;; *) fail "new did not print written paths" ;; esac
+case "$out" in *"wrote"*"vms/fresh/{config.sh,setup.sh}"*) ;; *) fail "new did not print written paths" ;; esac
 grep -Fq 'DVM_CPUS=4' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing defaults"
 grep -Fq 'DVM_SUBUID_COUNT=65536' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing rootless container example"
 grep -Fq 'sudo dnf5 install -y' "$DVM_CONFIG_DIR/vms/fresh/setup.sh" || fail "new setup missing package example"

@@ -502,7 +502,15 @@ cmd_stop() {
                     if [ "$only_config" = "1" ] && ! vm_config_exists "${n#dvm-}"; then
                         continue
                     fi
-                    "$LIMACTL" stop "$n" || { rc=1; printf 'dvm: stop %s failed\n' "$n" >&2; }
+                    DVM_NAME="${n#dvm-}"
+                    local lima_log; lima_log="$(vm_log lima)"
+                    ensure_logfile "$lima_log" truncate
+                    if run_step "stopping instance $n" "$lima_log" \
+                        "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" stop "$n"; then
+                        step_ok "$DVM_NAME stopped"
+                    else
+                        rc=1
+                    fi
                     ;;
             esac
         done <<<"$rows"
@@ -510,9 +518,14 @@ cmd_stop() {
     fi
     [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
     require_lima
-    local name; name="$(lima_name "$1")"
+    DVM_NAME="$1"
+    local name; name="$(lima_name "$DVM_NAME")"
     lima_has "$name" || return 0
-    "$LIMACTL" stop "$name"
+    local lima_log; lima_log="$(vm_log lima)"
+    ensure_logfile "$lima_log" truncate
+    run_step "stopping instance $name" "$lima_log" \
+        "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" stop "$name"
+    step_ok "$DVM_NAME stopped"
 }
 
 cmd_rm() {
@@ -587,8 +600,9 @@ set -Eeuo pipefail
 # sudo -u "$DVM_USER" -H bash -lc 'mkdir -p "$HOME/.local/bin"'
 EOF
     )
-    printf 'wrote %s\n' "$f"
-    printf 'wrote %s\n' "$setup"
+    local disp="$d"
+    case "$disp" in "$HOME"/*) disp="~${disp#"$HOME"}" ;; esac
+    printf 'wrote %s/{config.sh,setup.sh}\n' "$disp"
 }
 
 usage() {
