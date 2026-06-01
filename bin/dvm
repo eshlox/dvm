@@ -136,9 +136,38 @@ require_lima() {
     have "$LIMACTL" || die "limactl not found: $LIMACTL"
 }
 
+# Host logical CPU count, used to size the DVM_CPUS default. Falls back to 2
+# when it cannot be read (unknown platform, restricted environment).
+host_cpus() {
+    local n=
+    if have nproc; then
+        n="$(nproc 2>/dev/null)"
+    elif have sysctl; then
+        n="$(sysctl -n hw.ncpu 2>/dev/null)"
+    fi
+    case "$n" in ''|*[!0-9]*) n=2 ;; esac
+    [ "$n" -ge 1 ] || n=2
+    printf '%s\n' "$n"
+}
+
+# Default vCPU count. vCPUs are time-shared, not pinned: an idle VM costs no
+# host CPU and a busy one can burst up to this many cores, so the default is the
+# host count minus a small reserve kept free for the host (and dvm/limactl
+# itself) when a VM saturates its share. Floor of 2; reserve 1 core on hosts up
+# to 4 cores, 2 beyond. Unlike memory, oversubscribing CPUs across VMs is safe.
+default_cpus() {
+    local c reserve n
+    c="$(host_cpus)"
+    reserve=2
+    [ "$c" -le 4 ] && reserve=1
+    n=$((c - reserve))
+    [ "$n" -ge 2 ] || n=2
+    printf '%s\n' "$n"
+}
+
 load_global() {
     [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
-    DVM_CPUS=2
+    DVM_CPUS="$(default_cpus)"
     DVM_MEMORY=2
     DVM_DISK=30
     DVM_USER=developer
@@ -600,7 +629,9 @@ ensure_global_config() {
 
 DVM_USER=$user
 
-# Defaults shown; uncomment to change them for every VM.
+# DVM_CPUS auto-detects: host CPUs minus a core or two, never below 2. It is a
+# time-shared ceiling, so a high value is safe (idle VMs cost nothing). Memory
+# and disk use the values below. Uncomment any line to pin it for every VM.
 # DVM_CPUS=2
 # DVM_MEMORY=2
 # DVM_DISK=30
@@ -623,6 +654,7 @@ cmd_new() {
         cat > "$f" <<EOF
 # shellcheck shell=bash
 # Per-VM overrides. Defaults and global config load first; uncomment to override.
+# DVM_CPUS auto-detects from host cores unless pinned here or globally.
 
 # DVM_CPUS=2
 # DVM_MEMORY=2

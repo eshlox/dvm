@@ -19,7 +19,8 @@ first `dvm new` scaffolds the global config for you.
 # ~/.config/dvm/config.sh
 DVM_USER=developer
 
-# Defaults shown; uncomment to change them for every VM.
+# DVM_CPUS auto-detects from host cores; memory and disk use the values below.
+# Uncomment any line to pin it for every VM.
 # DVM_CPUS=2
 # DVM_MEMORY=2
 # DVM_DISK=30
@@ -36,7 +37,7 @@ DVM_PORTS=(3000:3000 5173:5173)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DVM_CPUS` | `2` | CPUs (oversubscribed, not pinned to host cores) |
+| `DVM_CPUS` | host cores minus 1-2 (min 2) | vCPUs, a time-shared ceiling not pinned to host cores |
 | `DVM_MEMORY` | `2` | GiB memory (the one knob that reserves host RAM) |
 | `DVM_DISK` | `30` | GiB disk (thin-provisioned ceiling, costs only what is used) |
 | `DVM_USER` | `developer` | main guest user |
@@ -48,6 +49,29 @@ The defaults aim at a minimal but workable disposable VM: enough to run editor,
 shell, AI CLIs, and a dev server at once. Bump `DVM_MEMORY` per VM for heavy
 Docker builds. Lowering `DVM_DISK` saves nothing (the qcow2 disk is thin) and
 only risks running out of space, so leave it unless you need a larger ceiling.
+
+### CPUs vs memory
+
+`DVM_CPUS` and `DVM_MEMORY` behave differently, which is why only one of them
+auto-detects:
+
+- **CPUs are time-shared, not reserved.** A vCPU is just a host thread that the
+  host scheduler runs on a physical core only when the guest has work. An idle
+  VM's vCPUs consume effectively no host CPU, and a busy VM can burst up to its
+  vCPU count. So `DVM_CPUS` is a per-VM ceiling, not a slice carved out of the
+  host: five idle VMs do not stop a sixth from using every core. Because of
+  this, the default leaves the host a small reserve (1 core on hosts up to 4
+  cores, 2 beyond, floored at 2) so the host and `dvm`/`limactl` stay responsive
+  when one VM saturates its share. Oversubscribing is safe; the only cost is
+  contention (visible as guest "steal time") when several VMs are busy at once.
+- **Memory is reserved.** Depending on the Lima backend, `DVM_MEMORY` is
+  committed up front, so it does not auto-scale and `5 × max` would over-commit
+  the host and fail to start or push it into swap. Set it to what each VM
+  actually needs.
+
+To override the auto-detected CPU count, set `DVM_CPUS` globally or per VM.
+Existing VMs keep the value they were created with; changing the default only
+affects VMs created afterward.
 
 VM and `DVM_USER` names must start with a lowercase letter and contain only
 lowercase letters, numbers, and hyphens.

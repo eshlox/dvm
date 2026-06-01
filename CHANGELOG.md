@@ -11,9 +11,16 @@
 - The global setup script is now convention-based at `~/.config/dvm/setup.sh`,
   matching the per-VM `setup.sh`. The `DVM_GLOBAL_SETUP` config variable is
   removed; create the file to enable the script, remove it to disable it.
-- Lowered the default `DVM_MEMORY` to `2` GiB. Defaults are now 2 CPUs,
-  2 GiB memory, and a 30 GiB (thin-provisioned) disk: minimal but enough to run
-  an editor, shell, AI CLIs, and a dev server in a disposable VM at once.
+- `DVM_CPUS` now defaults to the host CPU count minus a small reserve (1 core on
+  hosts up to 4 cores, 2 beyond, floored at 2) instead of a fixed `2`. vCPUs are
+  a time-shared ceiling, not pinned, so this lets a single busy VM use most of
+  the host while idle VMs still cost nothing; the reserve keeps the host and
+  `dvm`/`limactl` responsive under load. Pin `DVM_CPUS` globally or per VM to
+  override. Existing VMs are unaffected; the value applies to VMs created after.
+- Lowered the default `DVM_MEMORY` to `2` GiB. Defaults are now an auto-detected
+  CPU count, 2 GiB memory, and a 30 GiB (thin-provisioned) disk: minimal but
+  enough to run an editor, shell, AI CLIs, and a dev server in a disposable VM
+  at once.
 - `dvm sync` now creates the Lima instance with `limactl start --yes`, so the
   first sync no longer stops at Lima's interactive proceed/edit/exit prompt.
 - `dvm sync` now shows a per-step spinner with `✓`/`✗` and captures the full
