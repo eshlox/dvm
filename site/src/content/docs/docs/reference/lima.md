@@ -44,6 +44,21 @@ DVM always uses Lima's Fedora template (`template:fedora`). Setup examples
 assume Fedora with `dnf5`. Other guest distributions are outside the supported
 path.
 
+## CPUs
+
+`--cpus` sets how many vCPUs Lima presents to the guest. These are time-shared
+host threads, not pinned cores: the host scheduler runs them on physical cores
+only when the guest has work, so an idle VM's vCPUs consume effectively no host
+CPU and several idle VMs never block a busy one from using every core. The count
+is a per-VM ceiling on parallelism, and oversubscribing across VMs is safe; the
+only cost is contention (guest "steal time") when multiple VMs are busy at once.
+
+DVM auto-detects the default (host cores minus a small reserve kept free for the
+host, floored at 2) and bakes the value into the instance at create time, so it
+applies to VMs created afterward and existing VMs keep what they were made with.
+Memory, by contrast, is reserved up front. See
+[CPUs vs memory](/docs/reference/config/#cpus-vs-memory).
+
 ## Host mounts
 
 DVM always passes `--mount-none`. Lima otherwise commonly mounts host paths,

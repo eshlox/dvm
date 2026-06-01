@@ -45,6 +45,13 @@ DVM_MEMORY=4                       # more RAM than the global default for this V
 DVM_PORTS=(3000:3000 5173:5173)    # extra forwards on top of Lima's automatic ones
 ```
 
+`DVM_CPUS` auto-detects from host cores and is a time-shared ceiling, not a
+reservation: idle VMs cost no host CPU and a busy one can burst to most of the
+machine, so a high value is safe. `DVM_MEMORY` is the opposite, reserved up
+front, so set it to what each VM actually needs. See the
+[config reference](https://dvm.eshlox.net/docs/reference/config/#cpus-vs-memory)
+for details.
+
 Edit the setup script:
 
 ```bash
