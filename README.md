@@ -33,16 +33,16 @@ cd dvm
 
 ```bash
 dvm new app           # writes ~/.config/dvm/vms/app/{config.sh,setup.sh}
+                      # and scaffolds ~/.config/dvm/config.sh on first run
 ```
 
-Edit the config:
+Resource and user settings live in the global `~/.config/dvm/config.sh` and apply
+to every VM. The per-VM config only holds what this VM needs to differ on:
 
 ```bash
 # ~/.config/dvm/vms/app/config.sh
-DVM_CPUS=4
-DVM_MEMORY=8
-DVM_DISK=60
-DVM_PORTS=(3000:3000 5173:5173)
+DVM_MEMORY=4                       # more RAM than the global default for this VM
+DVM_PORTS=(3000:3000 5173:5173)    # extra forwards on top of Lima's automatic ones
 ```
 
 Edit the setup script:

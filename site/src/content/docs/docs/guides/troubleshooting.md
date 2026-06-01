@@ -27,16 +27,14 @@ DVM refuses config and setup scripts that are not owned by you or are
 group/world writable. Repair:
 
 ```bash
-chmod go-w ~/.config/dvm ~/.config/dvm/config.sh
+chmod go-w ~/.config/dvm ~/.config/dvm/config.sh ~/.config/dvm/setup.sh
 chmod go-w ~/.config/dvm/vms/app ~/.config/dvm/vms/app/config.sh
 chmod go-w ~/.config/dvm/vms/app/setup.sh
 ```
 
-The global setup script path must be absolute:
-
-```bash
-DVM_GLOBAL_SETUP="$HOME/.config/dvm/setup.sh"
-```
+The global setup script runs by convention from `~/.config/dvm/setup.sh`, and the
+per-VM script from `~/.config/dvm/vms/<vm>/setup.sh`. Neither is a config
+variable; create the file to enable it, remove it to disable it.
 
 ## systemd-binfmt failed on aarch64 Lima
 

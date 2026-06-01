@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Config now inherits cleanly: `dvm new` writes a per-VM `config.sh` whose
+  resource settings are commented out, so VMs inherit defaults and global
+  config instead of each pinning its own copy. Set a value once globally and
+  every VM follows it.
+- `dvm new` scaffolds `~/.config/dvm/config.sh` (with `DVM_USER` and the
+  resource defaults) the first time it runs, giving global settings one home.
+- The global setup script is now convention-based at `~/.config/dvm/setup.sh`,
+  matching the per-VM `setup.sh`. The `DVM_GLOBAL_SETUP` config variable is
+  removed; create the file to enable the script, remove it to disable it.
+- Lowered the default `DVM_MEMORY` to `2` GiB. Defaults are now 2 CPUs,
+  2 GiB memory, and a 30 GiB (thin-provisioned) disk: minimal but enough to run
+  an editor, shell, AI CLIs, and a dev server in a disposable VM at once.
 - `dvm sync` now creates the Lima instance with `limactl start --yes`, so the
   first sync no longer stops at Lima's interactive proceed/edit/exit prompt.
 - `dvm sync` now shows a per-step spinner with `✓`/`✗` and captures the full

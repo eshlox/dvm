@@ -3,28 +3,32 @@ title: "Config & setup scripts"
 description: "Config variables, environment, and how per-VM and global setup scripts run."
 ---
 
-Config is Bash. Global loads first, per-VM config overrides it.
+Config is Bash. Built-in defaults load first, then global config, then per-VM
+config, each overriding the last. Set a value once in global config and every VM
+inherits it; per-VM config only holds what that one VM needs to differ on. The
+first `dvm new` scaffolds the global config for you.
 
 ```text
-~/.config/dvm/config.sh            # global
-~/.config/dvm/vms/<vm>/config.sh   # per-VM
+~/.config/dvm/config.sh            # global config
+~/.config/dvm/setup.sh             # global setup script (optional)
+~/.config/dvm/vms/<vm>/config.sh   # per-VM config
 ~/.config/dvm/vms/<vm>/setup.sh    # per-VM setup script
 ```
 
 ```bash
 # ~/.config/dvm/config.sh
-DVM_CPUS=2
-DVM_MEMORY=4
-DVM_DISK=30
 DVM_USER=developer
-DVM_GLOBAL_SETUP="$HOME/.config/dvm/setup.sh"
+
+# Defaults shown; uncomment to change them for every VM.
+# DVM_CPUS=2
+# DVM_MEMORY=2
+# DVM_DISK=30
 ```
 
 ```bash
 # ~/.config/dvm/vms/app/config.sh
-DVM_CPUS=4
-DVM_MEMORY=8
-DVM_DISK=60
+# Only what this VM needs beyond the global config.
+DVM_MEMORY=4
 DVM_PORTS=(3000:3000 5173:5173)
 ```
 
@@ -32,14 +36,18 @@ DVM_PORTS=(3000:3000 5173:5173)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DVM_CPUS` | `2` | CPUs |
-| `DVM_MEMORY` | `4` | GiB memory |
-| `DVM_DISK` | `30` | GiB disk |
+| `DVM_CPUS` | `2` | CPUs (oversubscribed, not pinned to host cores) |
+| `DVM_MEMORY` | `2` | GiB memory (the one knob that reserves host RAM) |
+| `DVM_DISK` | `30` | GiB disk (thin-provisioned ceiling, costs only what is used) |
 | `DVM_USER` | `developer` | main guest user |
 | `DVM_SUBUID_COUNT` | `65536` | subordinate uid range size for `DVM_USER` |
 | `DVM_SUBGID_COUNT` | `65536` | subordinate gid range size for `DVM_USER` |
-| `DVM_PORTS` | `()` | `host:guest` port forwards |
-| `DVM_GLOBAL_SETUP` | empty | absolute host path to a setup script run for every VM |
+| `DVM_PORTS` | `()` | extra `host:guest` port forwards |
+
+The defaults aim at a minimal but workable disposable VM: enough to run editor,
+shell, AI CLIs, and a dev server at once. Bump `DVM_MEMORY` per VM for heavy
+Docker builds. Lowering `DVM_DISK` saves nothing (the qcow2 disk is thin) and
+only risks running out of space, so leave it unless you need a larger ceiling.
 
 VM and `DVM_USER` names must start with a lowercase letter and contain only
 lowercase letters, numbers, and hyphens.
@@ -83,10 +91,14 @@ written to the logs) when debugging a VM that will not come up.
 ## Setup scripts
 
 Run during `dvm sync` after the VM is created, started, and the user/project
-directory exist. Order:
+directory exist. Both are convention-based paths, run in order when present:
 
-1. `DVM_GLOBAL_SETUP`
-2. `~/.config/dvm/vms/<vm>/setup.sh`, when present
+1. `~/.config/dvm/setup.sh` (global, runs for every VM)
+2. `~/.config/dvm/vms/<vm>/setup.sh` (per-VM)
+
+Put shared provisioning in the global script and VM-specific steps in the per-VM
+script. Neither is a config variable, so per-VM config cannot redirect the
+global one.
 
 DVM prepends `set -Eeuo pipefail` and exports these variables to each script:
 

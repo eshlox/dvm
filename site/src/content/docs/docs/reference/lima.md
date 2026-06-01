@@ -52,6 +52,8 @@ manage that VM directly with Lima; DVM has no extra-args escape hatch.
 
 ## Ports
 
-`DVM_PORTS` takes two-part `host:guest` specs. Lima's short form is
-localhost-oriented. Use Tailscale, Cloudflare Tunnel, or direct Lima networking
-for broader access.
+Lima already forwards guest ports to `localhost` on the host automatically, so
+leaving `DVM_PORTS` empty still reaches a dev server on its bound port.
+`DVM_PORTS` adds explicit two-part `host:guest` specs on top, mainly to remap a
+guest port to a different host port. Lima's short form is localhost-oriented; use
+Tailscale, Cloudflare Tunnel, or direct Lima networking for broader access.

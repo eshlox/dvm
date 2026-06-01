@@ -137,21 +137,30 @@ require_lima() {
 load_global() {
     [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
     DVM_CPUS=2
-    DVM_MEMORY=4
+    DVM_MEMORY=2
     DVM_DISK=30
     DVM_USER=developer
     DVM_SUBUID_COUNT=65536
     DVM_SUBGID_COUNT=65536
     DVM_PORTS=()
-    DVM_GLOBAL_SETUP=
     # shellcheck source=/dev/null
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
         assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
         . "$DVM_CONFIG_DIR/config.sh"
     fi
+    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
     assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
+}
+
+# The global setup script is convention-based: ~/.config/dvm/setup.sh when
+# present. It is not a config variable, so per-VM config cannot redirect it.
+resolve_global_setup() {
+    DVM_GLOBAL_SETUP=
+    if [ -f "$DVM_CONFIG_DIR/setup.sh" ]; then
+        DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
+    fi
 }
 
 load_vm() {
@@ -166,6 +175,7 @@ load_vm() {
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     # shellcheck source=/dev/null
     . "$f"
+    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
@@ -562,6 +572,35 @@ cmd_rm() {
     fi
 }
 
+# Scaffold a global config the first time a VM is created, so resource and user
+# settings have one obvious home that every VM inherits. Never overwrites an
+# existing config.
+ensure_global_config() {
+    local g="$DVM_CONFIG_DIR/config.sh" user
+    [ -e "$g" ] && return 0
+    user="${USER:-developer}"
+    valid_name "$user" || user="developer"
+    (
+        umask 077
+        mkdir -p "$DVM_CONFIG_DIR"
+        cat > "$g" <<EOF
+# shellcheck shell=bash
+# Global config. Loaded for every VM; per-VM config overrides it.
+# A sibling setup.sh here, when present, runs for every VM before each VM's own.
+
+DVM_USER=$user
+
+# Defaults shown; uncomment to change them for every VM.
+# DVM_CPUS=2
+# DVM_MEMORY=2
+# DVM_DISK=30
+EOF
+    )
+    local disp="$g"
+    case "$disp" in "$HOME"/*) disp="~${disp#"$HOME"}" ;; esac
+    printf 'wrote %s (global)\n' "$disp"
+}
+
 cmd_new() {
     [ "$#" -eq 1 ] || die "usage: dvm new <vm>"
     valid_name "$1" || die "invalid VM name: $1"
@@ -569,22 +608,20 @@ cmd_new() {
     f="$d/config.sh"
     setup="$d/setup.sh"
     [ ! -e "$d" ] || die "VM directory already exists: $d"
+    ensure_global_config
     (
         umask 077
         mkdir -p "$d"
         cat > "$f" <<EOF
 # shellcheck shell=bash
-# Per-VM config. Global config loads first.
+# Per-VM overrides. Defaults and global config load first; uncomment to override.
 
-DVM_CPUS=4
-DVM_MEMORY=8
-DVM_DISK=60
+# DVM_CPUS=2
+# DVM_MEMORY=2
+# DVM_DISK=30
 
-# Subordinate id ranges support rootless Docker/Podman.
-DVM_SUBUID_COUNT=65536
-DVM_SUBGID_COUNT=65536
-
-# Localhost port forwards.
+# Localhost port forwards. Lima already forwards guest ports to localhost
+# automatically; add explicit host:guest pairs only to remap.
 # DVM_PORTS=(3000:3000 5173:5173)
 
 # Optional setup script: $setup
