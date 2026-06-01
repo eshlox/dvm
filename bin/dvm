@@ -10,6 +10,8 @@ die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+# Shorten $HOME to ~ for paths printed to the user.
+disp_path() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
 # Per-VM logs live under XDG state (runtime data, not config or cache).
 DVM_STATE_DIR="${DVM_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dvm}"
@@ -558,18 +560,26 @@ cmd_rm() {
     require_lima
     lock_vm "$DVM_NAME"
     if lima_has "$DVM_LIMA_NAME"; then
-        "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
-        "$LIMACTL" delete --force "$DVM_LIMA_NAME"
-        printf 'removed %s\n' "$DVM_NAME"
+        local lima_log; lima_log="$(vm_log lima)"
+        ensure_logfile "$lima_log" truncate
+        run_step "removing instance $DVM_LIMA_NAME" "$lima_log" remove_lima_instance
+        step_ok "$DVM_NAME removed"
     else
         printf 'no Lima instance: %s\n' "$DVM_NAME"
     fi
     if [ "$remove_config" = "1" ]; then
         rm -rf "$DVM_CONFIG_DIR/vms/$DVM_NAME"
-        printf 'removed config %s\n' "$DVM_CONFIG_DIR/vms/$DVM_NAME"
+        printf 'removed config %s\n' "$(disp_path "$DVM_CONFIG_DIR/vms/$DVM_NAME")"
     elif [ -f "$config_file" ]; then
-        printf 'warning: config remains at %s (use --config to remove it)\n' "$DVM_CONFIG_DIR/vms/$DVM_NAME" >&2
+        printf 'warning: config remains at %s (use --config to remove it)\n' "$(disp_path "$DVM_CONFIG_DIR/vms/$DVM_NAME")" >&2
     fi
+}
+
+# Stop (if running) and delete the Lima instance. Output is captured to the
+# lima log by run_step; stop chatter is dropped since delete --force implies it.
+remove_lima_instance() {
+    "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" delete --force "$DVM_LIMA_NAME"
 }
 
 # Scaffold a global config the first time a VM is created, so resource and user
@@ -596,9 +606,7 @@ DVM_USER=$user
 # DVM_DISK=30
 EOF
     )
-    local disp="$g"
-    case "$disp" in "$HOME"/*) disp="~${disp#"$HOME"}" ;; esac
-    printf 'wrote %s (global)\n' "$disp"
+    printf 'wrote %s (global)\n' "$(disp_path "$g")"
 }
 
 cmd_new() {
@@ -637,9 +645,7 @@ set -Eeuo pipefail
 # sudo -u "$DVM_USER" -H bash -lc 'mkdir -p "$HOME/.local/bin"'
 EOF
     )
-    local disp="$d"
-    case "$disp" in "$HOME"/*) disp="~${disp#"$HOME"}" ;; esac
-    printf 'wrote %s/{config.sh,setup.sh}\n' "$disp"
+    printf 'wrote %s/{config.sh,setup.sh}\n' "$(disp_path "$d")"
 }
 
 usage() {
