@@ -11,6 +11,7 @@ ok() { printf 'ok - %s\n' "$*"; }
 export HOME="$TMP/home"
 export DVM_CONFIG_DIR="$TMP/config"
 export DVM_CACHE_DIR="$TMP/cache"
+export DVM_STATE_DIR="$TMP/state-dir"
 mkdir -p "$TMP/bin" "$HOME" "$DVM_CONFIG_DIR/vms/app" "$DVM_CONFIG_DIR/vms/defaults-only" "$TMP/guest"
 
 export DVM_TEST_STATE="$TMP/state"
@@ -41,6 +42,9 @@ log_argv() {
     shift
     for arg in "$@"; do printf '%s\n' "$arg" >>"$log"; done
 }
+
+# Skip global flags that dvm may pass before the subcommand (e.g. --log-level warn).
+while [ "${1:-}" = "--log-level" ]; do shift 2; done
 
 cmd="${1:-}"
 shift || true
@@ -115,8 +119,8 @@ printf 'global setup for %s\n' "$DVM_NAME"
 sudo -u "$DVM_USER" -H bash -lc 'mkdir -p "$HOME/.local/bin"'
 EOF
 
-cat >"$DVM_CONFIG_DIR/config.sh" <<EOF
-DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
+cat >"$DVM_CONFIG_DIR/config.sh" <<'EOF'
+# Global setup runs by convention from the sibling setup.sh.
 EOF
 
 cat >"$DVM_CONFIG_DIR/vms/app/setup.sh" <<'EOF'
@@ -187,6 +191,13 @@ grep -Fq -- 'global setup for %s' "$DVM_TEST_GUEST/dvm-app.sh" || fail "global s
 grep -Fq -- '.dvm-project' "$DVM_TEST_GUEST/dvm-app.sh" || fail "VM setup script did not run"
 ok "sync starts VM and runs bootstrap plus setup scripts"
 
+# Logs may capture setup output that includes secrets; the state dir and logs
+# must be readable only by the owner regardless of umask.
+[ "$(stat -c '%a' "$DVM_STATE_DIR/app")" = "700" ] || fail "per-VM state dir is not owner-only"
+[ "$(stat -c '%a' "$DVM_STATE_DIR/app/lima.log")" = "600" ] || fail "lima log is not owner-only"
+[ "$(stat -c '%a' "$DVM_STATE_DIR/app/setup.log")" = "600" ] || fail "setup log is not owner-only"
+ok "sync writes logs and state dir readable only by the owner"
+
 : >"$DVM_TEST_LOG"
 run_dvm sh app >/dev/null
 grep -Fq -- 'getent passwd "$USER"' "$DVM_TEST_LOG" || fail "sh command does not resolve login shell"
@@ -212,6 +223,11 @@ grep -Fxq -- "/tmp/file" "$DVM_TEST_LOG" || fail "copy did not preserve absolute
 run_dvm cp "$TMP/local" app:notes.txt >/dev/null
 grep -Fxq -- "/home/developer/code/app/notes.txt" "$DVM_TEST_LOG" || fail "copy did not resolve relative VM path in project directory"
 ok "cp runs as DVM_USER and maps relative vm:path to the project directory"
+
+: >"$DVM_TEST_LOG"
+run_dvm cp "$TMP/local" app: >/dev/null
+grep -Fxq -- "/home/developer/code/app" "$DVM_TEST_LOG" || fail "copy to bare vm: did not resolve to the project directory"
+ok "cp to a bare vm: target resolves to the project directory"
 
 mkdir -p "$DVM_CONFIG_DIR/vms/bad-port"
 cat >"$DVM_CONFIG_DIR/vms/bad-port/config.sh" <<'EOF'
@@ -250,7 +266,6 @@ if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; t
 fi
 chmod g-w "$BAD_PERMS/config.sh"
 printf '# setup\n' >"$BAD_PERMS/setup.sh"
-printf 'DVM_GLOBAL_SETUP="%s/setup.sh"\n' "$BAD_PERMS" >"$BAD_PERMS/config.sh"
 chmod o+w "$BAD_PERMS/setup.sh"
 if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; then
     fail "unsafe global setup permissions accepted"
@@ -265,11 +280,22 @@ ok "unsafe config and setup permissions are rejected"
 out="$(run_dvm new fresh)"
 [ -f "$DVM_CONFIG_DIR/vms/fresh/config.sh" ] || fail "new did not write config"
 [ -f "$DVM_CONFIG_DIR/vms/fresh/setup.sh" ] || fail "new did not write setup script"
-case "$out" in *"wrote"*"fresh/config.sh"*"wrote"*"fresh/setup.sh"*) ;; *) fail "new did not print written paths" ;; esac
-grep -Fq 'DVM_CPUS=4' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing defaults"
-grep -Fq 'DVM_SUBUID_COUNT=65536' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing rootless container example"
+case "$out" in *"wrote"*"vms/fresh/{config.sh,setup.sh}"*) ;; *) fail "new did not print written paths" ;; esac
+grep -Fq '# DVM_CPUS=2' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing commented resource override"
+grep -Fq '# DVM_PORTS=' "$DVM_CONFIG_DIR/vms/fresh/config.sh" || fail "new config missing commented port example"
+grep -Eq '^[^#]*DVM_CPUS=' "$DVM_CONFIG_DIR/vms/fresh/config.sh" && fail "new config should not set resources, only inherit"
 grep -Fq 'sudo dnf5 install -y' "$DVM_CONFIG_DIR/vms/fresh/setup.sh" || fail "new setup missing package example"
 ok "new writes starter config and setup script"
+
+NEW_GLOBAL="$TMP/new-global"
+mkdir -p "$NEW_GLOBAL"
+out="$(DVM_CONFIG_DIR="$NEW_GLOBAL" run_dvm new first)"
+[ -f "$NEW_GLOBAL/config.sh" ] || fail "new did not auto-create global config"
+grep -Eq '^DVM_USER=' "$NEW_GLOBAL/config.sh" || fail "auto-created global config missing DVM_USER"
+case "$out" in *"wrote"*"config.sh (global)"*) ;; *) fail "new did not report global config creation" ;; esac
+out="$(DVM_CONFIG_DIR="$NEW_GLOBAL" run_dvm new second)"
+case "$out" in *"(global)"*) fail "new recreated existing global config" ;; *) ;; esac
+ok "new auto-creates the global config once"
 
 run_dvm stop missing
 ok "stop of missing VM is a no-op"

@@ -1,0 +1,20 @@
+# Supply-chain hardening — see https://eshlox.net/npm-supply-chain-security
+#
+# Only install package versions published at least 7 days (10080 min) ago.
+# Most malicious releases are caught and pulled within hours.
+minimumReleaseAge: 10080
+# Block all dependency lifecycle scripts by default; only those listed in
+# allowBuilds may run. A new dependency that wants to build fails install
+# loudly instead of running silently.
+strictDepBuilds: true
+# Reject a version whose trust evidence is weaker than an earlier-published
+# one (possible package takeover). Currently DISABLED: with minimumReleaseAge
+# pinning astro to 6.3.7, its transitive tinyexec@1.2.2 trips this because it
+# carries provenance attestation where earlier versions had a trusted
+# publisher — not an actual security regression, but it hard-blocks install.
+# Re-enable once the tree resolves clean (e.g. newer astro ages past 7 days),
+# or add a pnpm override pinning a trusted tinyexec.
+# trustPolicy: no-downgrade
+allowBuilds:
+  esbuild: true
+  sharp: true

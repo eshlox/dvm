@@ -16,4 +16,4 @@ than Lima, the guest OS, Linux permissions, SSH, or the tools you run inside the
 VM. Host protection is `--mount-none` plus keeping code inside the guest.
 
 Full model, defaults, trust boundaries, and threats:
-[docs/security.md](docs/security.md).
+[Security model](https://dvm.eshlox.net/docs/guides/security/).

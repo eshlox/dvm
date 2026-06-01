@@ -10,6 +10,99 @@ die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+# Shorten $HOME to ~ for paths printed to the user.
+disp_path() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
+
+# Per-VM logs live under XDG state (runtime data, not config or cache).
+DVM_STATE_DIR="${DVM_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dvm}"
+vm_log() { printf '%s/%s/%s.log\n' "$DVM_STATE_DIR" "$DVM_NAME" "$1"; }
+
+# Progress output: colored/animated only when stderr is a real terminal and the
+# user has not opted out via NO_COLOR or TERM=dumb. The same condition gates the
+# spinner, so NO_COLOR/TERM=dumb fall back to plain per-step lines.
+if [ -t 2 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+    _c_cyan=$'\033[36m'; _c_green=$'\033[32m'; _c_red=$'\033[31m'; _c_dim=$'\033[2m'; _c_reset=$'\033[0m'
+    _use_spinner=1
+else
+    _c_cyan=; _c_green=; _c_red=; _c_dim=; _c_reset=
+    _use_spinner=0
+fi
+
+# Lima is noisy at INFO; full output is captured to the log regardless. Quiet
+# the terminal-bound copy to warnings by default. DVM_VERBOSE=1 streams Lima's
+# full output live (still logged) instead of running it behind the spinner.
+if [ "${DVM_VERBOSE:-0}" = "1" ]; then
+    DVM_LIMA_LOG_LEVEL="${DVM_LIMA_LOG_LEVEL:-info}"
+else
+    DVM_LIMA_LOG_LEVEL="${DVM_LIMA_LOG_LEVEL:-warn}"
+fi
+
+_spin() {
+    local pid="$1" label="$2" i=0
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    printf '\033[?25l' >&2
+    while kill -0 "$pid" 2>/dev/null; do
+        printf '\r%s%s%s %s' "$_c_cyan" "${frames[i++ % ${#frames[@]}]}" "$_c_reset" "$label" >&2
+        sleep 0.08
+    done
+    printf '\033[?25h' >&2
+}
+
+step_ok() {
+    [ "$_use_spinner" = "1" ] && printf '\r\033[K' >&2
+    printf '%s✓%s %s\n' "$_c_green" "$_c_reset" "$1" >&2
+}
+
+step_fail() {
+    # step_fail <label> <logfile> <exit-code>
+    [ "$_use_spinner" = "1" ] && printf '\r\033[K' >&2
+    printf '%s✗%s %s\n' "$_c_red" "$_c_reset" "$1" >&2
+    printf '  %s exited %s. full log: %s\n' "$DVM_NAME" "$3" "$2" >&2
+    if [ -s "$2" ]; then
+        printf '  %slast lines of %s:%s\n' "$_c_dim" "$(basename "$2")" "$_c_reset" >&2
+        tail -n 20 "$2" | sed 's/^/  /' >&2
+    fi
+}
+
+# Step logs capture Lima and setup-script output, which can include secrets
+# (tokens echoed by a setup script, etc.). Create the state dir and logs so only
+# the owner can read them, regardless of the caller's umask.
+# ensure_logfile <path> [truncate]
+ensure_logfile() {
+    ( umask 077
+      mkdir -p "$(dirname "$1")"
+      if [ "${2:-}" = "truncate" ]; then : >"$1"; else [ -e "$1" ] || : >"$1"; fi
+    )
+}
+
+# run_step <label> <logfile> <cmd> [args...]
+# Runs cmd with all output captured to logfile. Shows a spinner on a TTY, the
+# label plus live output when DVM_VERBOSE=1, and reports failure with the log
+# path and a tail. cmd must be a single command or a function (not a raw
+# pipeline) so its exit status is preserved.
+run_step() {
+    local label="$1" log="$2"; shift 2
+    local rc=0
+    ensure_logfile "$log"
+    if [ "${DVM_VERBOSE:-0}" = "1" ]; then
+        printf '%s•%s %s\n' "$_c_cyan" "$_c_reset" "$label" >&2
+        "$@" 2>&1 | tee -a "$log" || rc=$?
+    elif [ "$_use_spinner" != "1" ]; then
+        printf '%s•%s %s\n' "$_c_cyan" "$_c_reset" "$label" >&2
+        "$@" >>"$log" 2>&1 || rc=$?
+    else
+        local pid
+        "$@" >>"$log" 2>&1 &
+        pid=$!
+        _spin "$pid" "$label"
+        wait "$pid" || rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
+        step_fail "$label" "$log" "$rc"
+        return "$rc"
+    fi
+    step_ok "$label"
+}
 
 stat_uid() {
     stat -c '%u' "$1" 2>/dev/null || stat -f '%u' "$1" 2>/dev/null
@@ -43,24 +136,62 @@ require_lima() {
     have "$LIMACTL" || die "limactl not found: $LIMACTL"
 }
 
+# Host logical CPU count, used to size the DVM_CPUS default. Falls back to 2
+# when it cannot be read (unknown platform, restricted environment).
+host_cpus() {
+    local n=
+    if have nproc; then
+        n="$(nproc 2>/dev/null)"
+    elif have sysctl; then
+        n="$(sysctl -n hw.ncpu 2>/dev/null)"
+    fi
+    case "$n" in ''|*[!0-9]*) n=2 ;; esac
+    [ "$n" -ge 1 ] || n=2
+    printf '%s\n' "$n"
+}
+
+# Default vCPU count. vCPUs are time-shared, not pinned: an idle VM costs no
+# host CPU and a busy one can burst up to this many cores, so the default is the
+# host count minus a small reserve kept free for the host (and dvm/limactl
+# itself) when a VM saturates its share. Floor of 2; reserve 1 core on hosts up
+# to 4 cores, 2 beyond. Unlike memory, oversubscribing CPUs across VMs is safe.
+default_cpus() {
+    local c reserve n
+    c="$(host_cpus)"
+    reserve=2
+    [ "$c" -le 4 ] && reserve=1
+    n=$((c - reserve))
+    [ "$n" -ge 2 ] || n=2
+    printf '%s\n' "$n"
+}
+
 load_global() {
     [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
-    DVM_CPUS=2
-    DVM_MEMORY=4
+    DVM_CPUS="$(default_cpus)"
+    DVM_MEMORY=2
     DVM_DISK=30
     DVM_USER=developer
     DVM_SUBUID_COUNT=65536
     DVM_SUBGID_COUNT=65536
     DVM_PORTS=()
-    DVM_GLOBAL_SETUP=
     # shellcheck source=/dev/null
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
         assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
         . "$DVM_CONFIG_DIR/config.sh"
     fi
+    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
     assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
+}
+
+# The global setup script is convention-based: ~/.config/dvm/setup.sh when
+# present. It is not a config variable, so per-VM config cannot redirect it.
+resolve_global_setup() {
+    DVM_GLOBAL_SETUP=
+    if [ -f "$DVM_CONFIG_DIR/setup.sh" ]; then
+        DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
+    fi
 }
 
 load_vm() {
@@ -75,6 +206,7 @@ load_vm() {
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     # shellcheck source=/dev/null
     . "$f"
+    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
@@ -117,7 +249,7 @@ lock_vm() {
     if ! mkdir "$d" 2>/dev/null; then
         die "VM \"$1\" busy: another dvm operation is in progress (rm $d if stale)"
     fi
-    trap 'rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
+    trap '[ -t 2 ] && printf "\033[?25h" >&2; rmdir "'"$d"'" 2>/dev/null || true' EXIT INT TERM
 }
 
 DVM_ARGV=()
@@ -132,7 +264,7 @@ port_forward_args() {
 }
 
 build_lima_start() {
-    DVM_ARGV=("$LIMACTL" start --name "$DVM_LIMA_NAME"
+    DVM_ARGV=("$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start --yes --name "$DVM_LIMA_NAME"
         --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
         --mount-none)
     port_forward_args
@@ -207,15 +339,24 @@ run_guest_bootstrap() {
     guest_bootstrap_script | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
 }
 
-run_setup_script() {
-    local label="$1" path="$2"
-    [ -n "$path" ] || return 0
-    printf 'dvm: running %s: %s\n' "$label" "$path" >&2
+exec_setup_script() {
+    local path="$1"
     {
         guest_core_exports
         printf 'set -Eeuo pipefail\n'
         cat "$path"
     } | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
+}
+
+# Start an existing instance and re-run bootstrap quietly for sh/ssh/cp. Output
+# goes to the lima log; only failures surface (with the log path).
+ensure_running_quiet() {
+    local log; log="$(vm_log lima)"
+    ensure_logfile "$log"
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME" >>"$log" 2>&1 \
+        || die "failed to start $DVM_LIMA_NAME (see $log)"
+    run_guest_bootstrap >>"$log" 2>&1 \
+        || die "failed to provision $DVM_LIMA_NAME (see $log)"
 }
 
 print_setup_plan() {
@@ -250,14 +391,24 @@ cmd_sync() {
 
     lock_vm "$DVM_NAME"
     require_lima
+
+    local lima_log setup_log
+    lima_log="$(vm_log lima)"
+    setup_log="$(vm_log setup)"
+    ensure_logfile "$lima_log" truncate
+    ensure_logfile "$setup_log" truncate
+
     if ! lima_has "$DVM_LIMA_NAME"; then
         build_lima_start
-        "${DVM_ARGV[@]}"
+        run_step "creating instance $DVM_LIMA_NAME" "$lima_log" "${DVM_ARGV[@]}"
+    else
+        run_step "starting instance $DVM_LIMA_NAME" "$lima_log" \
+            "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME"
     fi
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
-    run_setup_script "global setup" "$DVM_GLOBAL_SETUP"
-    run_setup_script "VM setup" "$VM_SETUP"
+    run_step "ensuring user \"$DVM_USER\" and $DVM_CODE_DIR" "$lima_log" run_guest_bootstrap
+    [ -n "$DVM_GLOBAL_SETUP" ] && run_step "running global setup" "$setup_log" exec_setup_script "$DVM_GLOBAL_SETUP"
+    [ -n "$VM_SETUP" ] && run_step "running VM setup" "$setup_log" exec_setup_script "$VM_SETUP"
+    step_ok "$DVM_NAME ready"
 }
 
 cmd_sh() {
@@ -265,8 +416,7 @@ cmd_sh() {
     load_vm "$1"
     require_lima
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
+    ensure_running_quiet
     local sh_script
     # shellcheck disable=SC2016
     sh_script='cd "$1" 2>/dev/null || cd; shell="$(getent passwd "$USER" | cut -d: -f7)"; [ -n "$shell" ] || shell=/bin/bash; exec "$shell" -l'
@@ -282,8 +432,7 @@ cmd_ssh() {
     [ "${1:-}" = "--" ] && shift
     [ "$#" -gt 0 ] || die "usage: dvm ssh <vm> -- cmd..."
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
+    ensure_running_quiet
     local sh_script
     # shellcheck disable=SC2016
     sh_script='cd "$1" 2>/dev/null || cd; shift; exec "$@"'
@@ -309,8 +458,7 @@ cmd_cp() {
     load_vm "$vm"
     require_lima
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
-    "$LIMACTL" start "$DVM_LIMA_NAME" >/dev/null 2>&1 || "$LIMACTL" start "$DVM_LIMA_NAME"
-    run_guest_bootstrap
+    ensure_running_quiet
 
     local remote local_path parent base tmp
     if [ "$src_is_vm" = "1" ]; then
@@ -344,7 +492,7 @@ cmd_cp() {
         esac
         base="$(basename "$src")"
         "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc \
-            'dst="$1"; base="$2"; if [[ "$dst" = */ ]]; then install -d "$dst"; cat >"$dst/$base"; else install -d "$(dirname "$dst")"; cat >"$dst"; fi' \
+            'dst="$1"; base="$2"; if [[ "$dst" = */ ]] || [ -d "$dst" ]; then install -d "$dst"; cat >"$dst/$base"; else install -d "$(dirname "$dst")"; cat >"$dst"; fi' \
             bash "$remote" "$base" <"$src"
     fi
 }
@@ -395,7 +543,15 @@ cmd_stop() {
                     if [ "$only_config" = "1" ] && ! vm_config_exists "${n#dvm-}"; then
                         continue
                     fi
-                    "$LIMACTL" stop "$n" || { rc=1; printf 'dvm: stop %s failed\n' "$n" >&2; }
+                    DVM_NAME="${n#dvm-}"
+                    local lima_log; lima_log="$(vm_log lima)"
+                    ensure_logfile "$lima_log" truncate
+                    if run_step "stopping instance $n" "$lima_log" \
+                        "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" stop "$n"; then
+                        step_ok "$DVM_NAME stopped"
+                    else
+                        rc=1
+                    fi
                     ;;
             esac
         done <<<"$rows"
@@ -403,9 +559,14 @@ cmd_stop() {
     fi
     [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
     require_lima
-    local name; name="$(lima_name "$1")"
+    DVM_NAME="$1"
+    local name; name="$(lima_name "$DVM_NAME")"
     lima_has "$name" || return 0
-    "$LIMACTL" stop "$name"
+    local lima_log; lima_log="$(vm_log lima)"
+    ensure_logfile "$lima_log" truncate
+    run_step "stopping instance $name" "$lima_log" \
+        "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" stop "$name"
+    step_ok "$DVM_NAME stopped"
 }
 
 cmd_rm() {
@@ -428,18 +589,55 @@ cmd_rm() {
     require_lima
     lock_vm "$DVM_NAME"
     if lima_has "$DVM_LIMA_NAME"; then
-        "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
-        "$LIMACTL" delete --force "$DVM_LIMA_NAME"
-        printf 'removed %s\n' "$DVM_NAME"
+        local lima_log; lima_log="$(vm_log lima)"
+        ensure_logfile "$lima_log" truncate
+        run_step "removing instance $DVM_LIMA_NAME" "$lima_log" remove_lima_instance
+        step_ok "$DVM_NAME removed"
     else
         printf 'no Lima instance: %s\n' "$DVM_NAME"
     fi
     if [ "$remove_config" = "1" ]; then
         rm -rf "$DVM_CONFIG_DIR/vms/$DVM_NAME"
-        printf 'removed config %s\n' "$DVM_CONFIG_DIR/vms/$DVM_NAME"
+        printf 'removed config %s\n' "$(disp_path "$DVM_CONFIG_DIR/vms/$DVM_NAME")"
     elif [ -f "$config_file" ]; then
-        printf 'warning: config remains at %s (use --config to remove it)\n' "$DVM_CONFIG_DIR/vms/$DVM_NAME" >&2
+        printf 'warning: config remains at %s (use --config to remove it)\n' "$(disp_path "$DVM_CONFIG_DIR/vms/$DVM_NAME")" >&2
     fi
+}
+
+# Stop (if running) and delete the Lima instance. Output is captured to the
+# lima log by run_step; stop chatter is dropped since delete --force implies it.
+remove_lima_instance() {
+    "$LIMACTL" stop --force "$DVM_LIMA_NAME" >/dev/null 2>&1 || true
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" delete --force "$DVM_LIMA_NAME"
+}
+
+# Scaffold a global config the first time a VM is created, so resource and user
+# settings have one obvious home that every VM inherits. Never overwrites an
+# existing config.
+ensure_global_config() {
+    local g="$DVM_CONFIG_DIR/config.sh" user
+    [ -e "$g" ] && return 0
+    user="${USER:-developer}"
+    valid_name "$user" || user="developer"
+    (
+        umask 077
+        mkdir -p "$DVM_CONFIG_DIR"
+        cat > "$g" <<EOF
+# shellcheck shell=bash
+# Global config. Loaded for every VM; per-VM config overrides it.
+# A sibling setup.sh here, when present, runs for every VM before each VM's own.
+
+DVM_USER=$user
+
+# DVM_CPUS auto-detects: host CPUs minus a core or two, never below 2. It is a
+# time-shared ceiling, so a high value is safe (idle VMs cost nothing). Memory
+# and disk use the values below. Uncomment any line to pin it for every VM.
+# DVM_CPUS=2
+# DVM_MEMORY=2
+# DVM_DISK=30
+EOF
+    )
+    printf 'wrote %s (global)\n' "$(disp_path "$g")"
 }
 
 cmd_new() {
@@ -449,22 +647,21 @@ cmd_new() {
     f="$d/config.sh"
     setup="$d/setup.sh"
     [ ! -e "$d" ] || die "VM directory already exists: $d"
+    ensure_global_config
     (
         umask 077
         mkdir -p "$d"
         cat > "$f" <<EOF
 # shellcheck shell=bash
-# Per-VM config. Global config loads first.
+# Per-VM overrides. Defaults and global config load first; uncomment to override.
+# DVM_CPUS auto-detects from host cores unless pinned here or globally.
 
-DVM_CPUS=4
-DVM_MEMORY=8
-DVM_DISK=60
+# DVM_CPUS=2
+# DVM_MEMORY=2
+# DVM_DISK=30
 
-# Subordinate id ranges support rootless Docker/Podman.
-DVM_SUBUID_COUNT=65536
-DVM_SUBGID_COUNT=65536
-
-# Localhost port forwards.
+# Localhost port forwards. Lima already forwards guest ports to localhost
+# automatically; add explicit host:guest pairs only to remap.
 # DVM_PORTS=(3000:3000 5173:5173)
 
 # Optional setup script: $setup
@@ -480,8 +677,7 @@ set -Eeuo pipefail
 # sudo -u "$DVM_USER" -H bash -lc 'mkdir -p "$HOME/.local/bin"'
 EOF
     )
-    printf 'wrote %s\n' "$f"
-    printf 'wrote %s\n' "$setup"
+    printf 'wrote %s/{config.sh,setup.sh}\n' "$(disp_path "$d")"
 }
 
 usage() {

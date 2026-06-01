@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo-lockup-dark.svg">
+    <img alt="DVM" src="brand/logo-lockup-light.svg" width="280">
+  </picture>
+</p>
+
 # DVM
 
 A small Bash wrapper around Lima for disposable development VMs. It creates and
@@ -17,7 +24,7 @@ Defaults:
 Requirements: Bash and Lima 2.0+.
 
 ```bash
-git clone <repo-url> dvm
+git clone https://github.com/eshlox/dvm.git dvm
 cd dvm
 ./install.sh          # symlinks bin/dvm into ~/.local/bin (override with PREFIX)
 ```
@@ -26,17 +33,24 @@ cd dvm
 
 ```bash
 dvm new app           # writes ~/.config/dvm/vms/app/{config.sh,setup.sh}
+                      # and scaffolds ~/.config/dvm/config.sh on first run
 ```
 
-Edit the config:
+Resource and user settings live in the global `~/.config/dvm/config.sh` and apply
+to every VM. The per-VM config only holds what this VM needs to differ on:
 
 ```bash
 # ~/.config/dvm/vms/app/config.sh
-DVM_CPUS=4
-DVM_MEMORY=8
-DVM_DISK=60
-DVM_PORTS=(3000:3000 5173:5173)
+DVM_MEMORY=4                       # more RAM than the global default for this VM
+DVM_PORTS=(3000:3000 5173:5173)    # extra forwards on top of Lima's automatic ones
 ```
+
+`DVM_CPUS` auto-detects from host cores and is a time-shared ceiling, not a
+reservation: idle VMs cost no host CPU and a busy one can burst to most of the
+machine, so a high value is safe. `DVM_MEMORY` is the opposite, reserved up
+front, so set it to what each VM actually needs. See the
+[config reference](https://dvm.eshlox.net/docs/reference/config/#cpus-vs-memory)
+for details.
 
 Edit the setup script:
 
@@ -70,16 +84,21 @@ dvm new <vm>
 dvm version
 ```
 
-See [docs/commands.md](docs/commands.md) for details.
+See the [command reference](https://dvm.eshlox.net/docs/reference/commands/) for details.
 
 ## Docs
 
-- [docs/commands.md](docs/commands.md) - command reference
-- [docs/config.md](docs/config.md) - config variables and setup scripts
-- [docs/security.md](docs/security.md) - security model and threats
-- [docs/lima.md](docs/lima.md) - Lima behavior and limits
-- [docs/troubleshooting.md](docs/troubleshooting.md) - errors and recovery
-- [examples/](examples/README.md) - copy/paste setup snippets
+Full documentation lives at **[dvm.eshlox.net](https://dvm.eshlox.net)**:
+
+- [Commands](https://dvm.eshlox.net/docs/reference/commands/) — command reference
+- [Config & setup scripts](https://dvm.eshlox.net/docs/reference/config/) — config variables and setup scripts
+- [Security model](https://dvm.eshlox.net/docs/guides/security/) — threats and trade-offs
+- [Lima behavior](https://dvm.eshlox.net/docs/reference/lima/) — Lima behavior and limits
+- [Troubleshooting](https://dvm.eshlox.net/docs/guides/troubleshooting/) — errors and recovery
+- [Examples](https://dvm.eshlox.net/docs/examples/) — copy/paste setup snippets
+
+The docs source lives in [`site/src/content/docs/`](site/). The website is an
+Astro + Starlight project under [`site/`](site/) — see [`site/README.md`](site/README.md).
 
 Development check (runs the smoke test and ShellCheck):
 

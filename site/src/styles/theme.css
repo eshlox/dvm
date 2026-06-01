@@ -1,0 +1,19 @@
+/* DVM Starlight theme: terminal-green accent */
+:root {
+  --sl-color-accent-low: #022c22;
+  --sl-color-accent: #10b981;
+  --sl-color-accent-high: #a7f3d0;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #d1fae5;
+  /* emerald-700: 5.48:1 on white, meets WCAG AA for link text */
+  --sl-color-accent: #047857;
+  --sl-color-accent-high: #064e3b;
+}
+
+/* Slightly tighter, code-friendly feel */
+:root {
+  --sl-font-system-mono: ui-monospace, 'SF Mono', 'Cascadia Code',
+    'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+}

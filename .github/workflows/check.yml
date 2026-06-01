@@ -26,18 +26,39 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           SERVER_URL: ${{ github.server_url }}
           SHA: ${{ github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           git init .
           git remote add origin "$SERVER_URL/$REPOSITORY.git"
           git -c protocol.version=2 fetch --no-tags --depth=1 origin "$SHA"
           git checkout --detach FETCH_HEAD
+          # Fetch the PR base so we can diff which paths changed.
+          if [ -n "${BASE_SHA:-}" ]; then
+            git -c protocol.version=2 fetch --no-tags --depth=1 origin "$BASE_SHA"
+          fi
 
-      - name: Install test tools
+      # This job is a required status check, so the workflow must always run
+      # and the job must always succeed. On PRs that only touch site/** we skip
+      # the actual check below instead of filtering the workflow out (a skipped
+      # required check would block merges).
+      - name: Detect relevant changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck
+          run=true
+          if [ -n "${BASE_SHA:-}" ]; then
+            if git diff --name-only "$BASE_SHA" HEAD | grep -qvE '^site/'; then
+              run=true
+            else
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
+      # shellcheck is preinstalled on the ubuntu-24.04 runner image.
       - name: Check
+        if: steps.changes.outputs.run == 'true'
         run: bash scripts/check

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>DVM OG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; box-sizing: border-box; }
+  html, body { background: #11161f; }
+  .og {
+    width: 1200px; height: 630px; position: relative; overflow: hidden;
+    background: #0a0e14; font-family: 'JetBrains Mono', monospace; color: #e6edf3;
+  }
+  .grid { position: absolute; inset: 0;
+    background-image: linear-gradient(#ffffff09 1px, transparent 1px), linear-gradient(90deg, #ffffff09 1px, transparent 1px);
+    background-size: 52px 52px; }
+  .glow { position: absolute; right: -140px; top: -160px; width: 620px; height: 620px;
+    border-radius: 50%; background: radial-gradient(circle, rgba(45,212,167,0.18), transparent 68%); }
+  .glow2 { position: absolute; right: 60px; bottom: -220px; width: 480px; height: 480px;
+    border-radius: 50%; background: radial-gradient(circle, rgba(103,232,249,0.12), transparent 70%); }
+  .pad { position: absolute; inset: 0; padding: 86px 92px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 28px; }
+  .word { font-size: 96px; font-weight: 800; letter-spacing: -4px; line-height: 1;
+    background: linear-gradient(120deg, #2dd4a7, #67e8f9); -webkit-background-clip: text;
+    background-clip: text; color: transparent; }
+  .tag { margin-top: 54px; font-size: 48px; font-weight: 700; color: #f1f5f8; line-height: 1.12; letter-spacing: -1px; }
+  .sub { margin-top: 22px; font-size: 26px; font-weight: 500; color: #8b96a5; line-height: 1.55; max-width: 860px; }
+  .foot { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; }
+  .cmd { display: flex; align-items: center; gap: 16px; background: #0d1117;
+    border: 1px solid #1e2630; border-radius: 12px; padding: 18px 24px; font-size: 26px; white-space: nowrap; }
+  .dollar { color: #2dd4a7; }
+  .cmdtext { color: #c7d0da; }
+  .cursor { width: 13px; height: 26px; background: #2dd4a7; border-radius: 2px; display: inline-block; }
+  .url { font-size: 22px; color: #59636e; letter-spacing: 0.5px; }
+</style>
+</head>
+<body>
+<div class="og" id="ogcard">
+  <div class="grid"></div>
+  <div class="glow"></div>
+  <div class="glow2"></div>
+  <div class="pad">
+    <div class="brand">
+      <svg viewBox="0 0 300 96" width="380" height="122" aria-label="dvm">
+        <defs>
+          <linearGradient id="ogGrad" x1="42" y1="42" x2="74" y2="74" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#2dd4a7"/><stop offset="1" stop-color="#67e8f9"/>
+          </linearGradient>
+          <linearGradient id="ogWord" x1="92" y1="20" x2="290" y2="80" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#2dd4a7"/><stop offset="1" stop-color="#67e8f9"/>
+          </linearGradient>
+        </defs>
+        <g transform="translate(0,12) scale(0.72)">
+          <rect x="21.5" y="21.5" width="57" height="57" rx="13.5" fill="none" stroke="#2dd4a7" stroke-width="7.5"/>
+          <rect x="42" y="42" width="32" height="32" rx="7" fill="url(#ogGrad)"/>
+        </g>
+        <g transform="translate(92,-4)" fill="none" stroke="url(#ogWord)" stroke-width="10"
+           stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="33" cy="57" r="22"/>
+          <line x1="55" y1="15" x2="55" y2="79"/>
+          <path d="M74 35 L98 79 L122 35"/>
+          <path d="M142 79 L142 47 Q142 35 154 35 Q166 35 166 47 L166 79"/>
+          <path d="M166 47 Q166 35 178 35 Q190 35 190 47 L190 79"/>
+        </g>
+      </svg>
+    </div>
+    <div class="tag">Keep your supply chain in a VM.</div>
+    <div class="sub">A tiny Bash&nbsp;+&nbsp;Lima wrapper for isolated, disposable Fedora dev environments on macOS.</div>
+    <div class="foot">
+      <div class="cmd">
+        <span class="dollar">$</span><span class="cmdtext">dvm new app</span><span class="cursor"></span>
+      </div>
+      <div class="url">github.com/eshlox/dvm</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
