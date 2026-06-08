@@ -48,7 +48,7 @@ DVM_PORTS=(3000:3000 5173:5173)
 | `DVM_SUBUID_COUNT` | `65536` | subordinate uid range size for `DVM_USER` |
 | `DVM_SUBGID_COUNT` | `65536` | subordinate gid range size for `DVM_USER` |
 | `DVM_PORTS` | `()` | extra `host:guest` port forwards |
-| `DVM_VM_TYPE` | unset | Lima VM type; set `vz` on Apple Silicon for lighter overhead |
+| `DVM_VM_TYPE` | `vz` on Apple Silicon, else unset | Lima VM type; `vz` is lighter than QEMU and reclaims idle VM memory better |
 
 The defaults aim at a minimal but workable disposable VM: enough to run editor,
 shell, AI CLIs, and a dev server at once. Bump `DVM_MEMORY` per VM for heavy
@@ -85,10 +85,12 @@ The default subordinate id ranges support rootless Docker and Podman. Set both
 counts to `0` only when the user should get no ranges. If the user already
 exists, DVM adds missing ranges on the next sync.
 
-`DVM_VM_TYPE` is empty by default, letting Lima pick its backend (QEMU). On
-Apple Silicon, `DVM_VM_TYPE=vz` uses Apple's Virtualization framework, which has
-lighter overhead and lets the host reclaim idle VM memory more readily, useful
-when running many VMs at once.
+`DVM_VM_TYPE` defaults to `vz` on Apple Silicon macOS, using Apple's
+Virtualization framework: lighter overhead than QEMU, and it lets the host
+reclaim idle VM memory far more readily, which matters when running many VMs at
+once. Elsewhere it is empty and Lima picks its own backend. Set it explicitly to
+override, including `DVM_VM_TYPE=qemu` to force software emulation. See
+[Why Lima, not Tart or Apple `container`](/docs/reference/lima/#why-lima-not-tart-or-apple-container).
 
 ## Environment
 

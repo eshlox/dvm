@@ -206,6 +206,16 @@ default_cpus() {
     printf '%s\n' "$n"
 }
 
+# Default Lima VM type. On Apple Silicon macOS, "vz" (Apple's Virtualization
+# framework) is lighter than QEMU and returns freed guest memory to the host far
+# better when many VMs run at once, so default to it there. Everywhere else,
+# empty lets Lima choose its platform default. Override via DVM_VM_TYPE in config.
+default_vm_type() {
+    if [ "$(uname -s)" = Darwin ] && [ "$(host_arch)" = aarch64 ]; then
+        printf 'vz\n'
+    fi
+}
+
 load_global() {
     [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
     DVM_CPUS="$(default_cpus)"
@@ -215,9 +225,10 @@ load_global() {
     DVM_SUBUID_COUNT=65536
     DVM_SUBGID_COUNT=65536
     DVM_PORTS=()
-    # Lima VM type. Empty lets Lima choose (qemu). Set to "vz" on Apple Silicon
-    # for lighter overhead and friendlier host memory reclaim across many VMs.
-    DVM_VM_TYPE="${DVM_VM_TYPE:-}"
+    # Lima VM type. Defaults to "vz" on Apple Silicon (lighter than QEMU, far
+    # better host memory reclaim across many VMs); empty elsewhere lets Lima
+    # choose its platform default. Set DVM_VM_TYPE in config to override.
+    DVM_VM_TYPE="${DVM_VM_TYPE:-$(default_vm_type)}"
     # shellcheck source=/dev/null
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
         assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
@@ -710,6 +721,10 @@ DVM_USER=$user
 # DVM_CPUS=2
 # DVM_MEMORY=2
 # DVM_DISK=30
+
+# VM type. Defaults to "vz" (Apple Virtualization) on Apple Silicon and to
+# Lima's platform default elsewhere. Set to "qemu" to force software emulation.
+# DVM_VM_TYPE=vz
 EOF
     )
     printf 'wrote %s (global)\n' "$(disp_path "$g")"

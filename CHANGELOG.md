@@ -14,9 +14,10 @@
   mask); the developer user, SSH keys, and dotfiles are still created per VM at
   sync time. See the base image reference. The `dvm-builder` instance is hidden
   from `dvm ls` and `dvm stop --all`.
-- Added `DVM_VM_TYPE`, passed through as `limactl start --vm-type`. Set `vz` on
-  Apple Silicon for lighter overhead and friendlier host memory reclaim when
-  running many VMs at once. Empty by default (Lima picks QEMU).
+- Added `DVM_VM_TYPE`, passed through as `limactl start --vm-type`. Defaults to
+  `vz` on Apple Silicon for lighter overhead than QEMU and far better host memory
+  reclaim when running many VMs at once; empty elsewhere (Lima picks its platform
+  default). Set `DVM_VM_TYPE=qemu` to force software emulation.
 - Base-image hardening: the generated Lima template normalizes the host arch to
   Lima's canonical form (`arm64`/`amd64` to `aarch64`/`x86_64`) so base-image
   sync works on Apple Silicon; `base` and the builder instance name are reserved
