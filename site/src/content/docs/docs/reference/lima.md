@@ -40,9 +40,19 @@ letter and contain only lowercase letters, numbers, and hyphens.
 
 ## Template
 
-DVM always uses Lima's Fedora template (`template:fedora`). Setup examples
-assume Fedora with `dnf5`. Other guest distributions are outside the supported
-path.
+Without a base image, DVM uses Lima's Fedora template (`template:fedora`) and
+provisions it with your setup scripts on every sync. With a
+[base image](/docs/reference/base/), DVM instead points Lima at a generated
+one-line template referencing the built qcow2, so the VM boots with your tooling
+already baked in. Either way the guest is Fedora; setup examples assume Fedora
+with `dnf5`, and other guest distributions are outside the supported path.
+
+## VM type
+
+`DVM_VM_TYPE` is passed through as `limactl start --vm-type`. It is empty by
+default (Lima picks QEMU). On Apple Silicon, `DVM_VM_TYPE=vz` selects Apple's
+Virtualization framework: lighter overhead and friendlier host memory reclaim
+when several VMs run at once.
 
 ## CPUs
 

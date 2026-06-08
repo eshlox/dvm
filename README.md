@@ -81,10 +81,25 @@ dvm ls [--only-config] [<vm>]
 dvm stop <vm> | --all [--only-config]
 dvm rm <vm> --yes [--config]
 dvm new <vm>
+dvm base <subcommand>
 dvm version
 ```
 
 See the [command reference](https://dvm.eshlox.net/docs/reference/commands/) for details.
+
+## Base image
+
+When every VM installs the same tooling, baking it once into a base image makes
+`dvm sync` boot a ready VM in seconds instead of re-provisioning from scratch:
+
+```bash
+dvm base init     # writes ~/.config/dvm/base/Containerfile (FROM dvm-base)
+dvm base build    # builds the image in a throwaway Lima builder VM
+dvm sync app      # boots from the base image
+```
+
+Per-VM `setup.sh` still handles unique, stateful steps (SSH keys, dotfiles).
+See the [base image reference](https://dvm.eshlox.net/docs/reference/base/).
 
 ## Docs
 

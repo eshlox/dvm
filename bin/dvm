@@ -4,12 +4,53 @@ set -Eeuo pipefail
 DVM_CONFIG_DIR="${DVM_CONFIG_DIR:-$HOME/.config/dvm}"
 DVM_CACHE_DIR="${DVM_CACHE_DIR:-$HOME/.cache/dvm}"
 LIMACTL="${DVM_LIMACTL:-limactl}"
-DVM_VERSION="0.1.0-dev"
+DVM_VERSION="3.0.0-dev"
+
+# Base image. `dvm base build` bakes a bootc image (your tools, baked once) into
+# a qcow2 under the cache; every `dvm sync` then boots from it instead of
+# downloading and provisioning Fedora from scratch. The Containerfile that
+# defines it lives in the config dir; the build runs in a throwaway Lima VM.
+DVM_BASE_DIR="${DVM_BASE_DIR:-$DVM_CONFIG_DIR/base}"
+DVM_BASE_CACHE="${DVM_BASE_CACHE:-$DVM_CACHE_DIR/base}"
+DVM_BASE_IMAGE="${DVM_BASE_IMAGE:-$DVM_BASE_CACHE/disk.qcow2}"
+DVM_BUILDER_LIMA="${DVM_BUILDER_LIMA:-dvm-builder}"
+DVM_BUILDER_MEMORY="${DVM_BUILDER_MEMORY:-4}"
+DVM_BUILDER_DISK="${DVM_BUILDER_DISK:-50}"
+# Upstream images dvm builds on, pinned by digest the same way upstream binaries
+# are pinned by SHA256: these are dvm-owned defaults, not set per user. `dvm base
+# build` builds dvm-base FROM DVM_BOOTC_BASE and runs DVM_BISC_IMAGE as a
+# privileged container whose output becomes every VM's base image, so a digest
+# pin keeps a moved tag from silently changing what is baked. The `# track:`
+# comment names the tag each digest follows; `scripts/update-pins` (run weekly
+# by the update-pins workflow) refreshes the digests and opens a pull request.
+# These (and the DVM_BASE_*/DVM_BUILDER_* paths above) are environment-only, not
+# read from config.sh; override via the environment for a custom base.
+DVM_BOOTC_BASE="${DVM_BOOTC_BASE:-quay.io/fedora/fedora-bootc@sha256:REPLACE_WITH_DIGEST}"  # track: quay.io/fedora/fedora-bootc:42
+DVM_BISC_IMAGE="${DVM_BISC_IMAGE:-quay.io/centos-bootc/bootc-image-builder@sha256:REPLACE_WITH_DIGEST}"  # track: quay.io/centos-bootc/bootc-image-builder:latest
 
 die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+
+# Lima image arch values are canonical (aarch64/x86_64). The host's `uname -m`
+# is not: Apple Silicon reports arm64, some Linux hosts amd64. Map to Lima's.
+host_arch() {
+    case "$(uname -m)" in
+        arm64|aarch64) printf 'aarch64\n' ;;
+        amd64|x86_64) printf 'x86_64\n' ;;
+        *) uname -m ;;
+    esac
+}
+
+# Reject VM names that collide with the base-image workflow: "base" shares the
+# lock/state namespace used by `dvm base`, and any name mapping to the builder
+# Lima instance would let VM commands operate on the build infrastructure.
+assert_vm_name_free() {
+    [ "$1" != base ] || die "\"base\" is reserved by dvm base"
+    [ "$(lima_name "$1")" != "$DVM_BUILDER_LIMA" ] \
+        || die "\"$1\" is reserved for the base-image builder ($DVM_BUILDER_LIMA)"
+}
 # Shorten $HOME to ~ for paths printed to the user.
 disp_path() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
@@ -174,28 +215,21 @@ load_global() {
     DVM_SUBUID_COUNT=65536
     DVM_SUBGID_COUNT=65536
     DVM_PORTS=()
+    # Lima VM type. Empty lets Lima choose (qemu). Set to "vz" on Apple Silicon
+    # for lighter overhead and friendlier host memory reclaim across many VMs.
+    DVM_VM_TYPE="${DVM_VM_TYPE:-}"
     # shellcheck source=/dev/null
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
         assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
         . "$DVM_CONFIG_DIR/config.sh"
     fi
-    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
-    assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
-}
-
-# The global setup script is convention-based: ~/.config/dvm/setup.sh when
-# present. It is not a config variable, so per-VM config cannot redirect it.
-resolve_global_setup() {
-    DVM_GLOBAL_SETUP=
-    if [ -f "$DVM_CONFIG_DIR/setup.sh" ]; then
-        DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
-    fi
 }
 
 load_vm() {
     valid_name "$1" || die "invalid VM name: $1"
+    assert_vm_name_free "$1"
     local f="$DVM_CONFIG_DIR/vms/$1/config.sh" setup="$DVM_CONFIG_DIR/vms/$1/setup.sh"
     [ -f "$f" ] || die "no config for VM \"$1\" at $f"
     load_global
@@ -206,14 +240,12 @@ load_vm() {
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     # shellcheck source=/dev/null
     . "$f"
-    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
     VM_SETUP=
     [ -f "$setup" ] && VM_SETUP="$setup"
     validate_ports
-    assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
     assert_setup_script "$VM_SETUP" "VM setup script"
 }
 
@@ -263,12 +295,33 @@ port_forward_args() {
     done
 }
 
+base_template_path() { printf '%s/template.yaml\n' "$DVM_BASE_CACHE"; }
+
+# Lima accepts a YAML template path as its positional source. When a base image
+# exists, point Lima at a one-line template referencing the qcow2 instead of
+# downloading template:fedora.
+write_base_template() {
+    local f arch
+    f="$(base_template_path)"
+    arch="$(host_arch)"
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_CACHE"
+        printf 'images:\n- location: "%s"\n  arch: "%s"\n' "$DVM_BASE_IMAGE" "$arch" >"$f"
+    )
+}
+
 build_lima_start() {
     DVM_ARGV=("$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start --yes --name "$DVM_LIMA_NAME"
         --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
         --mount-none)
+    [ -n "${DVM_VM_TYPE:-}" ] && DVM_ARGV+=(--vm-type "$DVM_VM_TYPE")
     port_forward_args
-    DVM_ARGV+=(template:fedora)
+    if [ -f "$DVM_BASE_IMAGE" ]; then
+        DVM_ARGV+=("$(base_template_path)")
+    else
+        DVM_ARGV+=(template:fedora)
+    fi
 }
 
 print_argv() {
@@ -360,12 +413,23 @@ ensure_running_quiet() {
 }
 
 print_setup_plan() {
-    printf 'setup scripts:\n'
-    printf '  global: %s\n' "${DVM_GLOBAL_SETUP:-<none>}"
-    printf '  vm:     %s\n' "${VM_SETUP:-<none>}"
+    printf 'setup script: %s\n' "${VM_SETUP:-<none>}"
+}
+
+# The global setup script was removed. Warn once if a stale ~/.config/dvm/setup.sh
+# is still present, so its silent no-op does not read as "my tools stopped
+# installing". DVM_SETUP_WARNED is exported so a single sync --all warns once.
+warn_legacy_global_setup() {
+    [ -z "${DVM_SETUP_WARNED:-}" ] || return 0
+    export DVM_SETUP_WARNED=1
+    [ -f "$DVM_CONFIG_DIR/setup.sh" ] || return 0
+    printf 'dvm: warning: %s is no longer used.\n' "$(disp_path "$DVM_CONFIG_DIR/setup.sh")" >&2
+    printf '     The global setup script was removed; move shared tooling into the\n' >&2
+    printf '     base image (dvm base init) and VM-specific steps into the per-VM setup.sh.\n' >&2
 }
 
 cmd_sync() {
+    warn_legacy_global_setup
     if [ "${1:-}" = "--all" ]; then
         local rc=0 f n
         for f in "$DVM_CONFIG_DIR"/vms/*/config.sh; do
@@ -382,6 +446,11 @@ cmd_sync() {
 
     if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
         printf 'VM: %s (lima: %s)\n' "$DVM_NAME" "$DVM_LIMA_NAME"
+        if [ -f "$DVM_BASE_IMAGE" ]; then
+            printf 'base image: %s\n' "$(disp_path "$DVM_BASE_IMAGE")"
+        else
+            printf 'base image: <none> (boots template:fedora; run dvm base build)\n'
+        fi
         build_lima_start
         printf 'limactl start argv:\n'
         print_argv
@@ -399,6 +468,7 @@ cmd_sync() {
     ensure_logfile "$setup_log" truncate
 
     if ! lima_has "$DVM_LIMA_NAME"; then
+        [ -f "$DVM_BASE_IMAGE" ] && write_base_template
         build_lima_start
         run_step "creating instance $DVM_LIMA_NAME" "$lima_log" "${DVM_ARGV[@]}"
     else
@@ -406,7 +476,6 @@ cmd_sync() {
             "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME"
     fi
     run_step "ensuring user \"$DVM_USER\" and $DVM_CODE_DIR" "$lima_log" run_guest_bootstrap
-    [ -n "$DVM_GLOBAL_SETUP" ] && run_step "running global setup" "$setup_log" exec_setup_script "$DVM_GLOBAL_SETUP"
     [ -n "$VM_SETUP" ] && run_step "running VM setup" "$setup_log" exec_setup_script "$VM_SETUP"
     step_ok "$DVM_NAME ready"
 }
@@ -516,6 +585,7 @@ cmd_ls() {
     printf '%-20s %-10s %-5s %-10s\n' VM STATE CPU MEMORY
     while IFS=$'\t' read -r name status cpus mem; do
         [ -n "$name" ] || continue
+        [ "$name" = "$DVM_BUILDER_LIMA" ] && continue
         case "$name" in dvm-*) short="${name#dvm-}" ;; *) continue ;; esac
         if [ -n "$filter" ] && [ "$short" != "$filter" ]; then continue; fi
         if [ "$only_config" = "1" ] && ! vm_config_exists "$short"; then continue; fi
@@ -538,6 +608,7 @@ cmd_stop() {
         local rc=0 n rows
         rows="$("$LIMACTL" list -q)" || die "failed to list Lima instances"
         while IFS= read -r n; do
+            [ "$n" = "$DVM_BUILDER_LIMA" ] && continue
             case "$n" in
                 dvm-*)
                     if [ "$only_config" = "1" ] && ! vm_config_exists "${n#dvm-}"; then
@@ -558,6 +629,8 @@ cmd_stop() {
         return $rc
     fi
     [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
+    valid_name "$1" || die "invalid VM name: $1"
+    assert_vm_name_free "$1"
     require_lima
     DVM_NAME="$1"
     local name; name="$(lima_name "$DVM_NAME")"
@@ -583,6 +656,7 @@ cmd_rm() {
     done
     [ "$yes" = "1" ] || die "dvm rm requires --yes"
     valid_name "$name" || die "invalid VM name: $name"
+    assert_vm_name_free "$name"
     DVM_NAME="$name"
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     config_file="$DVM_CONFIG_DIR/vms/$DVM_NAME/config.sh"
@@ -625,7 +699,8 @@ ensure_global_config() {
         cat > "$g" <<EOF
 # shellcheck shell=bash
 # Global config. Loaded for every VM; per-VM config overrides it.
-# A sibling setup.sh here, when present, runs for every VM before each VM's own.
+# Shared tooling goes in the base image (dvm base init); per-VM setup.sh
+# handles VM-specific steps.
 
 DVM_USER=$user
 
@@ -643,6 +718,7 @@ EOF
 cmd_new() {
     [ "$#" -eq 1 ] || die "usage: dvm new <vm>"
     valid_name "$1" || die "invalid VM name: $1"
+    assert_vm_name_free "$1"
     local d="$DVM_CONFIG_DIR/vms/$1" f setup
     f="$d/config.sh"
     setup="$d/setup.sh"
@@ -680,6 +756,299 @@ EOF
     printf 'wrote %s/{config.sh,setup.sh}\n' "$(disp_path "$d")"
 }
 
+# ---------------------------------------------------------------------------
+# Base image (`dvm base`)
+#
+# A base image bakes your tooling once so every VM boots ready instead of
+# re-running a large setup on each create. dvm owns a small "plumbing" layer
+# (the dvm-base image: zram, the rootless-docker unit, binfmt mask); your
+# Containerfile starts FROM dvm-base and adds packages/binaries on top. The
+# build runs in a throwaway Lima VM with podman + bootc-image-builder, and the
+# resulting qcow2 is copied to the host cache. The developer user, SSH keys, and
+# dotfiles are still created per VM at sync time, not baked into the image.
+# ---------------------------------------------------------------------------
+
+# The dvm-owned plumbing layer. Generated, never edited by the user. Only /usr
+# and /etc are touched so it is safe to bake into a bootc image (the developer
+# user and home live in per-machine state, created at sync time).
+base_plumbing_containerfile() {
+    printf 'FROM %s\n' "$DVM_BOOTC_BASE"
+    cat <<'EOF'
+# dvm-base: plumbing every dvm VM image inherits. Do not edit; regenerated by
+# `dvm base build` from the installed dvm, so updates land on the next build.
+RUN dnf5 install -y --setopt=install_weak_deps=False \
+        cloud-init zram-generator zsh shadow-utils slirp4netns fuse-overlayfs \
+    && dnf5 clean all
+
+# Compressed swap so a low DVM_MEMORY survives build spikes instead of OOMing.
+RUN printf '[zram0]\nzram-size = ram\ncompression-algorithm = zstd\n' \
+        > /etc/systemd/zram-generator.conf
+RUN printf 'vm.swappiness = 180\nvm.page-cluster = 0\n' \
+        > /etc/sysctl.d/90-dvm.conf
+
+# Rootless Docker, enabled for every user session; rootful + binfmt masked.
+RUN mkdir -p /etc/systemd/user && cat > /etc/systemd/user/docker.service <<'UNIT'
+[Unit]
+Description=Rootless Docker
+After=network.target
+[Service]
+Environment=PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart=/usr/bin/dockerd-rootless.sh
+Restart=always
+RestartSec=2
+TimeoutStartSec=0
+[Install]
+WantedBy=default.target
+UNIT
+RUN systemctl --global enable docker.service 2>/dev/null || true \
+ && systemctl mask systemd-binfmt.service 2>/dev/null || true
+EOF
+}
+
+base_init() {
+    [ "$#" -eq 0 ] || die "usage: dvm base init"
+    local f="$DVM_BASE_DIR/Containerfile"
+    [ ! -e "$f" ] || die "base Containerfile already exists: $f"
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_DIR"
+        cat >"$f" <<'EOF'
+# Your dvm base image, built by `dvm base build` into a qcow2 every VM boots
+# from. Start FROM dvm-base (dvm's plumbing: zram, the rootless-docker unit,
+# binfmt mask) and add your tools on top. The developer user, SSH keys, and
+# dotfiles are created per VM at `dvm sync`, not baked here.
+FROM dvm-base
+
+# Packages from Fedora repos.
+RUN dnf5 install -y --setopt=install_weak_deps=False \
+        git git-delta helix bat fzf just chezmoi jq \
+        nodejs npm podman podman-compose \
+        moby-engine moby-engine-rootless-extras docker-compose \
+    && dnf5 clean all
+
+# Upstream binaries: pin a version + SHA256, one RUN each so a bump rebuilds
+# only that layer. Repeat for yazi, fnm, sops, herdr, ...
+# ARG ZELLIJ_VERSION=0.44.3
+# ARG ZELLIJ_SHA256=replace-with-release-sha256
+# RUN url="https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-aarch64-unknown-linux-musl.tar.gz" \
+#  && curl -fsSL "$url" -o /tmp/z.tgz \
+#  && echo "${ZELLIJ_SHA256}  /tmp/z.tgz" | sha256sum -c - \
+#  && tar -xzf /tmp/z.tgz -C /usr/local/bin zellij && rm /tmp/z.tgz
+
+# AI coding CLIs.
+# RUN npm install -g @anthropic-ai/claude-code @openai/codex
+
+# Override a dvm default if you want, e.g. a smaller zram device:
+# RUN printf '[zram0]\nzram-size = min(ram, 4096)\n' > /etc/systemd/zram-generator.conf
+EOF
+    )
+    printf 'wrote %s\n' "$(disp_path "$f")"
+    printf 'edit it, then run: dvm base build\n'
+}
+
+builder_create() {
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start --yes --name "$DVM_BUILDER_LIMA" \
+        --cpus "$(default_cpus)" --memory "$DVM_BUILDER_MEMORY" --disk "$DVM_BUILDER_DISK" \
+        --mount-none template:fedora
+}
+
+builder_remove() {
+    "$LIMACTL" stop --force "$DVM_BUILDER_LIMA" >/dev/null 2>&1 || true
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" delete --force "$DVM_BUILDER_LIMA"
+}
+
+# Install podman and pre-pull bootc-image-builder in the builder. Idempotent, so
+# a persistent builder keeps its podman layer cache warm between builds.
+builder_provision() {
+    {
+        printf 'set -Eeuo pipefail\n'
+        printf 'BISC=%q\n' "$DVM_BISC_IMAGE"
+        cat <<'EOS'
+command -v podman >/dev/null 2>&1 \
+    || sudo dnf5 install -y --setopt=install_weak_deps=False podman
+sudo podman pull "$BISC"
+EOS
+    } | "$LIMACTL" shell --workdir / "$DVM_BUILDER_LIMA" bash -s
+}
+
+# Ship the build context (your base dir + dvm's generated plumbing Containerfile)
+# into the builder as a tarball and unpack it.
+builder_upload_context() {
+    local ctx tar
+    ctx="$(mktemp -d)"
+    tar="$(mktemp)"
+    cp -R "$DVM_BASE_DIR/." "$ctx/"
+    base_plumbing_containerfile >"$ctx/Containerfile.dvm-base"
+    tar -C "$ctx" -czf "$tar" .
+    "$LIMACTL" copy "$tar" "$DVM_BUILDER_LIMA:/tmp/dvm-ctx.tgz"
+    "$LIMACTL" shell --workdir / "$DVM_BUILDER_LIMA" bash -s <<'EOS'
+set -Eeuo pipefail
+rm -rf /tmp/dvm-build
+mkdir -p /tmp/dvm-build
+tar -C /tmp/dvm-build -xzf /tmp/dvm-ctx.tgz
+EOS
+    rm -rf "$ctx" "$tar"
+}
+
+# Build dvm-base (plumbing), then your image FROM it, then assemble a qcow2.
+builder_build() {
+    local no_cache="$1" cache_arg=""
+    [ "$no_cache" = "1" ] && cache_arg="--no-cache"
+    {
+        printf 'set -Eeuo pipefail\n'
+        printf 'CACHE=%q\nBISC=%q\n' "$cache_arg" "$DVM_BISC_IMAGE"
+        cat <<'EOS'
+cd /tmp/dvm-build
+sudo podman build $CACHE -t dvm-base -f Containerfile.dvm-base .
+sudo podman build $CACHE -t dvm-target -f Containerfile .
+rm -rf out && mkdir -p out
+sudo podman run --rm --privileged \
+    -v /var/lib/containers/storage:/var/lib/containers/storage \
+    -v "$PWD/out":/output \
+    "$BISC" --type qcow2 --local dvm-target
+EOS
+    } | "$LIMACTL" shell --workdir / "$DVM_BUILDER_LIMA" bash -s
+}
+
+# Pull the qcow2 out of the builder and swap it into place atomically so a failed
+# build never leaves a half-written base image.
+builder_extract() {
+    (umask 077; mkdir -p "$(dirname "$DVM_BASE_IMAGE")")
+    local tmp="$DVM_BASE_IMAGE.tmp"
+    rm -f "$tmp"
+    "$LIMACTL" copy "$DVM_BUILDER_LIMA:/tmp/dvm-build/out/qcow2/disk.qcow2" "$tmp"
+    mv "$tmp" "$DVM_BASE_IMAGE"
+}
+
+write_base_metadata() {
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_CACHE"
+        printf '{"built":"%s","arch":"%s","bootc_base":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(host_arch)" "$DVM_BOOTC_BASE" \
+            >"$DVM_BASE_CACHE/metadata.json"
+    )
+}
+
+base_build() {
+    local clean=0 no_cache=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --clean) clean=1 ;;
+            --no-cache) no_cache=1 ;;
+            *) die "usage: dvm base build [--clean] [--no-cache]" ;;
+        esac
+        shift
+    done
+    [ -f "$DVM_BASE_DIR/Containerfile" ] \
+        || die "no base Containerfile: run 'dvm base init' first ($(disp_path "$DVM_BASE_DIR/Containerfile"))"
+    assert_safe_path "$DVM_BASE_DIR" "base directory"
+    assert_safe_path "$DVM_BASE_DIR/Containerfile" "base Containerfile"
+    require_lima
+    lock_vm "base"
+
+    DVM_NAME=base
+    local log; log="$(vm_log build)"
+    ensure_logfile "$log" truncate
+
+    if [ "$clean" = "1" ] && lima_has "$DVM_BUILDER_LIMA"; then
+        run_step "removing builder $DVM_BUILDER_LIMA" "$log" builder_remove
+    fi
+    if ! lima_has "$DVM_BUILDER_LIMA"; then
+        run_step "creating builder $DVM_BUILDER_LIMA" "$log" builder_create
+    else
+        run_step "starting builder $DVM_BUILDER_LIMA" "$log" \
+            "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_BUILDER_LIMA"
+    fi
+    run_step "provisioning builder (podman, bootc-image-builder)" "$log" builder_provision
+    run_step "uploading build context" "$log" builder_upload_context
+    run_step "building base image" "$log" builder_build "$no_cache"
+    run_step "extracting qcow2 to $(disp_path "$DVM_BASE_IMAGE")" "$log" builder_extract
+    write_base_metadata
+    step_ok "base image ready ($(disp_path "$DVM_BASE_IMAGE"))"
+}
+
+base_status() {
+    [ "$#" -eq 0 ] || die "usage: dvm base status"
+    require_lima
+    if [ -f "$DVM_BASE_IMAGE" ]; then
+        printf 'base image: %s\n' "$(disp_path "$DVM_BASE_IMAGE")"
+        [ -f "$DVM_BASE_CACHE/metadata.json" ] \
+            && printf 'built:      %s\n' "$(cat "$DVM_BASE_CACHE/metadata.json")"
+    else
+        printf 'base image: <none> (run: dvm base build)\n'
+    fi
+    if [ -f "$DVM_BASE_DIR/Containerfile" ]; then
+        printf 'definition: %s\n' "$(disp_path "$DVM_BASE_DIR/Containerfile")"
+    else
+        printf 'definition: <none> (run: dvm base init)\n'
+    fi
+    if lima_has "$DVM_BUILDER_LIMA"; then
+        printf 'builder:    %s present\n' "$DVM_BUILDER_LIMA"
+    else
+        printf 'builder:    <none>\n'
+    fi
+}
+
+base_rm() {
+    local rm_builder=0 rm_image=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --builder) rm_builder=1 ;;
+            --image) rm_image=1 ;;
+            *) die "usage: dvm base rm [--builder] [--image]" ;;
+        esac
+        shift
+    done
+    if [ "$rm_builder" = "0" ] && [ "$rm_image" = "0" ]; then
+        rm_builder=1; rm_image=1
+    fi
+    require_lima
+    if [ "$rm_image" = "1" ]; then
+        # Remove the configured image and its sibling cache artifacts by exact
+        # path (not a blanket rm -rf), so a custom DVM_BASE_IMAGE is honored and
+        # a misconfigured cache dir can never delete something unexpected.
+        rm -f "$DVM_BASE_IMAGE" "$DVM_BASE_IMAGE.tmp" \
+            "$(base_template_path)" "$DVM_BASE_CACHE/metadata.json"
+        printf 'removed base image %s\n' "$(disp_path "$DVM_BASE_IMAGE")"
+    fi
+    if [ "$rm_builder" = "1" ]; then
+        if lima_has "$DVM_BUILDER_LIMA"; then
+            DVM_NAME=base
+            local log; log="$(vm_log lima)"
+            ensure_logfile "$log" truncate
+            run_step "removing builder $DVM_BUILDER_LIMA" "$log" builder_remove
+            step_ok "builder removed"
+        else
+            printf 'no builder instance\n'
+        fi
+    fi
+}
+
+base_usage() {
+    cat <<'EOF'
+dvm base <subcommand>
+  init                           scaffold ~/.config/dvm/base/Containerfile
+  build [--clean] [--no-cache]   build the base image (qcow2) every VM boots from
+  status                         show the cached base image and builder state
+  rm [--builder] [--image]       remove the builder VM and/or cached image
+EOF
+}
+
+cmd_base() {
+    local sub="${1:-}"
+    [ "$#" -gt 0 ] && shift
+    case "$sub" in
+        init) base_init "$@" ;;
+        build) base_build "$@" ;;
+        status) base_status "$@" ;;
+        rm) base_rm "$@" ;;
+        ""|help|-h|--help) base_usage ;;
+        *) base_usage >&2; die "unknown base subcommand: $sub" ;;
+    esac
+}
+
 usage() {
     cat <<'EOF'
 dvm <command> [args]
@@ -691,6 +1060,7 @@ dvm <command> [args]
   stop <vm> | --all [--only-config] stop running VMs
   rm <vm> --yes [--config] stop and delete the Lima instance
   new <vm>                write starter VM config and setup script
+  base <subcommand>       build/manage the base image VMs boot from
   version                 print DVM version
 EOF
 }
@@ -705,6 +1075,7 @@ case "$cmd" in
     stop) cmd_stop "$@" ;;
     rm) cmd_rm "$@" ;;
     new) cmd_new "$@" ;;
+    base) cmd_base "$@" ;;
     version) [ "$#" -eq 0 ] || die "usage: dvm version"; printf 'dvm %s\n' "$DVM_VERSION" ;;
     help|-h|--help) usage ;;
     *) usage >&2; die "unknown command: $cmd" ;;

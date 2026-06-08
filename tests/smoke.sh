@@ -97,6 +97,12 @@ case "$cmd" in
         ;;
     copy)
         log_argv copy "$@"
+        # When the destination is a host path (absolute, no instance: prefix),
+        # create it so the caller's atomic rename of an extracted artifact works.
+        dst="${@: -1}"
+        case "$dst" in
+            /*) printf 'fake-qcow2\n' >"$dst" ;;
+        esac
         ;;
     stop)
         log_argv stop "$@"
@@ -112,15 +118,23 @@ case "$cmd" in
 esac
 EOF
 chmod +x "$TMP/bin/limactl"
+
+# uname shim so the arch-mapping test can simulate Apple Silicon (arm64) on a
+# Linux CI host. Passes through to the real uname unless FAKE_UNAME_M is set.
+cat >"$TMP/bin/uname" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-m" ] && [ -n "${FAKE_UNAME_M:-}" ]; then
+    printf '%s\n' "$FAKE_UNAME_M"
+    exit 0
+fi
+exec /usr/bin/uname "$@"
+EOF
+chmod +x "$TMP/bin/uname"
+
 export PATH="$TMP/bin:$PATH"
 
-cat >"$DVM_CONFIG_DIR/setup.sh" <<'EOF'
-printf 'global setup for %s\n' "$DVM_NAME"
-sudo -u "$DVM_USER" -H bash -lc 'mkdir -p "$HOME/.local/bin"'
-EOF
-
 cat >"$DVM_CONFIG_DIR/config.sh" <<'EOF'
-# Global setup runs by convention from the sibling setup.sh.
+# Global config.
 EOF
 
 cat >"$DVM_CONFIG_DIR/vms/app/setup.sh" <<'EOF'
@@ -161,8 +175,8 @@ case "$out" in
     *) fail "dry-run missing Lima argv" ;;
 esac
 case "$out" in
-    *"setup scripts:"*"global:"*"$DVM_CONFIG_DIR/setup.sh"*"vm:"*"$DVM_CONFIG_DIR/vms/app/setup.sh"*) ;;
-    *) fail "dry-run missing setup script order" ;;
+    *"setup script: $DVM_CONFIG_DIR/vms/app/setup.sh"*) ;;
+    *) fail "dry-run missing setup script" ;;
 esac
 [ ! -s "$DVM_TEST_LOG" ] || fail "dry-run called limactl"
 ok "dry-run shows setup plan without contacting Lima"
@@ -175,7 +189,7 @@ DVM_CONFIG_DIR="$NO_GLOBAL" DVM_DRY_RUN=1 run_dvm sync tiny >/dev/null
 ok "sync works without a global config file"
 
 out="$(DVM_DRY_RUN=1 run_dvm sync defaults-only)"
-case "$out" in *"global:"*"$DVM_CONFIG_DIR/setup.sh"*"vm:     <none>"*) ok "VM setup is optional" ;; *) fail "optional VM setup output wrong" ;; esac
+case "$out" in *"setup script: <none>"*) ok "VM setup is optional" ;; *) fail "optional VM setup output wrong" ;; esac
 
 run_dvm sync app
 grep -Fxq -- "--name" "$DVM_TEST_LOG" || fail "start argv missing --name"
@@ -187,9 +201,8 @@ grep -Fq -- 'sudo useradd -m -s /bin/bash -K SUB_UID_COUNT="$DVM_SUBUID_COUNT" -
 grep -Fq -- 'ensure_subid_range "$DVM_USER" /etc/subuid --add-subuids "$DVM_SUBUID_COUNT"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing subuid setup"
 grep -Fq -- 'ensure_subid_range "$DVM_USER" /etc/subgid --add-subgids "$DVM_SUBGID_COUNT"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing subgid setup"
 grep -Fq -- 'sudo install -d -o "$DVM_USER" -g "$group" "$DVM_CODE_DIR"' "$DVM_TEST_GUEST/dvm-app.sh" || fail "guest bootstrap missing project dir"
-grep -Fq -- 'global setup for %s' "$DVM_TEST_GUEST/dvm-app.sh" || fail "global setup script did not run"
 grep -Fq -- '.dvm-project' "$DVM_TEST_GUEST/dvm-app.sh" || fail "VM setup script did not run"
-ok "sync starts VM and runs bootstrap plus setup scripts"
+ok "sync starts VM and runs bootstrap plus the VM setup script"
 
 # Logs may capture setup output that includes secrets; the state dir and logs
 # must be readable only by the owner regardless of umask.
@@ -265,11 +278,6 @@ if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; t
     fail "unsafe config permissions accepted"
 fi
 chmod g-w "$BAD_PERMS/config.sh"
-printf '# setup\n' >"$BAD_PERMS/setup.sh"
-chmod o+w "$BAD_PERMS/setup.sh"
-if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; then
-    fail "unsafe global setup permissions accepted"
-fi
 printf '# vm setup\n' >"$BAD_PERMS/vms/app/setup.sh"
 chmod g+w "$BAD_PERMS/vms/app/setup.sh"
 if DVM_CONFIG_DIR="$BAD_PERMS" DVM_DRY_RUN=1 run_dvm sync app >/dev/null 2>&1; then
@@ -329,5 +337,112 @@ if DVM_LIMACTL=/no/such/limactl run_dvm ls >/dev/null 2>&1; then
     fail "missing limactl accepted"
 fi
 ok "commands fail clearly when limactl is missing"
+
+# A stale global setup.sh is no longer used; sync warns instead of silently
+# dropping it.
+printf '# legacy global setup\n' >"$DVM_CONFIG_DIR/setup.sh"
+err="$(DVM_DRY_RUN=1 run_dvm sync app 2>&1 >/dev/null)"
+case "$err" in *"is no longer used"*) ok "sync warns about a stale global setup.sh" ;; *) fail "missing stale global setup.sh warning" ;; esac
+rm -f "$DVM_CONFIG_DIR/setup.sh"
+
+# --- base image ---
+if run_dvm base build >/dev/null 2>&1; then
+    fail "base build accepted without a Containerfile"
+fi
+ok "base build requires a Containerfile"
+
+out="$(run_dvm base init)"
+[ -f "$DVM_CONFIG_DIR/base/Containerfile" ] || fail "base init did not write Containerfile"
+grep -Fq 'FROM dvm-base' "$DVM_CONFIG_DIR/base/Containerfile" || fail "base Containerfile missing FROM dvm-base"
+case "$out" in *"wrote"*"base/Containerfile"*) ;; *) fail "base init did not report the written path" ;; esac
+if run_dvm base init >/dev/null 2>&1; then
+    fail "base init overwrote an existing Containerfile"
+fi
+ok "base init scaffolds the Containerfile once"
+
+: >"$DVM_TEST_GUEST/dvm-builder.sh"
+run_dvm base build >/dev/null
+grep -Fxq -- "dvm-builder" "$DVM_TEST_STATE" || fail "base build did not create the builder instance"
+b="$DVM_TEST_GUEST/dvm-builder.sh"
+grep -Fq 'podman build' "$b" || fail "base build did not run podman build in the builder"
+grep -Fq 'Containerfile.dvm-base' "$b" || fail "base build did not build the dvm-base plumbing layer"
+grep -Fq -- '-t dvm-target' "$b" || fail "base build did not build the target image"
+grep -Fq 'bootc-image-builder' "$b" || fail "base build did not invoke bootc-image-builder"
+grep -Fq '@sha256:' "$b" || fail "base build did not use digest-pinned upstream images"
+[ -f "$DVM_CACHE_DIR/base/disk.qcow2" ] || fail "base build did not produce the qcow2"
+[ -f "$DVM_CACHE_DIR/base/metadata.json" ] || fail "base build did not write metadata"
+ok "base build provisions a builder and produces the qcow2"
+
+[ "$(stat -c '%a' "$DVM_STATE_DIR/base/build.log")" = "600" ] || fail "base build log is not owner-only"
+ok "base build log is readable only by the owner"
+
+out="$(run_dvm base status)"
+case "$out" in *"base image:"*"disk.qcow2"*) ok "base status reports the cached image" ;; *) fail "base status output wrong" ;; esac
+
+# With a base image present, sync boots the generated template, not template:fedora.
+out="$(DVM_DRY_RUN=1 run_dvm sync app)"
+case "$out" in
+    *"base image:"*"$DVM_CACHE_DIR/base/template.yaml"*) ;;
+    *) fail "sync did not use the base image template" ;;
+esac
+case "$out" in *"template:fedora"*) fail "sync still used template:fedora with a base image present" ;; *) ;; esac
+ok "sync boots from the base image when one exists"
+
+# DVM_VM_TYPE flows into the Lima start argv.
+out="$(DVM_VM_TYPE=vz DVM_DRY_RUN=1 run_dvm sync app)"
+case "$out" in *"--vm-type"*"vz"*) ok "DVM_VM_TYPE is passed to limactl" ;; *) fail "DVM_VM_TYPE not passed to limactl" ;; esac
+
+# The generated template uses Lima's canonical arch. Simulate Apple Silicon
+# (arm64) and confirm it is normalized to aarch64. defaults-only has no instance
+# yet, so its first sync takes the create path that writes the template.
+FAKE_UNAME_M=arm64 run_dvm sync defaults-only >/dev/null
+grep -Fq 'arch: "aarch64"' "$DVM_CACHE_DIR/base/template.yaml" || fail "base template arch not normalized to aarch64"
+! grep -Fq 'arm64' "$DVM_CACHE_DIR/base/template.yaml" || fail "base template leaked the raw uname arch"
+ok "base template normalizes host arch to Lima's canonical value"
+
+# Names that collide with the base-image workflow are refused everywhere, even
+# though a dvm-builder instance exists.
+if run_dvm new builder >/dev/null 2>&1; then fail "new accepted the reserved builder name"; fi
+if run_dvm new base >/dev/null 2>&1; then fail "new accepted the reserved base name"; fi
+if run_dvm sync builder >/dev/null 2>&1; then fail "sync operated on the builder"; fi
+if run_dvm rm builder --yes >/dev/null 2>&1; then fail "rm operated on the builder"; fi
+grep -Fxq -- "dvm-builder" "$DVM_TEST_STATE" || fail "guard removed the builder instance"
+ok "VM commands refuse reserved base/builder names"
+
+out="$(run_dvm ls)"
+case "$out" in *"builder"*) fail "ls listed the builder instance" ;; *) ok "ls hides the builder instance" ;; esac
+
+# base rm --image removes the configured image by exact path, honoring a custom
+# DVM_BASE_IMAGE outside the default cache.
+CUSTOM_IMG="$TMP/custom/base.qcow2"
+mkdir -p "$(dirname "$CUSTOM_IMG")"
+printf 'img\n' >"$CUSTOM_IMG"
+DVM_BASE_IMAGE="$CUSTOM_IMG" run_dvm base rm --image >/dev/null
+[ ! -e "$CUSTOM_IMG" ] || fail "base rm --image ignored a custom DVM_BASE_IMAGE"
+ok "base rm --image honors a custom DVM_BASE_IMAGE"
+
+run_dvm base rm --image >/dev/null
+[ ! -e "$DVM_CACHE_DIR/base/disk.qcow2" ] || fail "base rm --image left the cached image"
+ok "base rm --image removes the cached image"
+
+# scripts/update-pins must actually rewrite the digest pins (regression guard:
+# the rewrite once silently no-opped on a mismatched pattern). Run it against a
+# throwaway copy with a stubbed crane on PATH.
+PIN_ROOT="$TMP/pinroot"
+mkdir -p "$PIN_ROOT/bin" "$PIN_ROOT/scripts"
+cp "$ROOT/bin/dvm" "$PIN_ROOT/bin/dvm"
+cp "$ROOT/scripts/update-pins" "$PIN_ROOT/scripts/update-pins"
+FAKE_DIGEST="sha256:$(printf 'c%.0s' {1..64})"
+cat >"$TMP/bin/crane" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "$FAKE_DIGEST"
+EOF
+chmod +x "$TMP/bin/crane"
+bash "$PIN_ROOT/scripts/update-pins" >/dev/null
+grep -Fq "$FAKE_DIGEST" "$PIN_ROOT/bin/dvm" || fail "update-pins did not write the resolved digest"
+! grep -Fq 'REPLACE_WITH_DIGEST' "$PIN_ROOT/bin/dvm" || fail "update-pins left a placeholder digest"
+grep -Fq '# track: quay.io/fedora/fedora-bootc:42' "$PIN_ROOT/bin/dvm" || fail "update-pins dropped a track comment"
+rm -f "$TMP/bin/crane"
+ok "update-pins rewrites the digest pins"
 
 printf 'all smoke tests passed\n'

@@ -7,17 +7,23 @@ Recommended for AI/dev VMs. Containers run as `DVM_USER` with no root-owned
 Docker socket and no `docker` group. Container root maps to unprivileged guest
 ids via the subordinate ranges DVM creates by default.
 
-Needs `DVM_SUBUID_COUNT`/`DVM_SUBGID_COUNT` > 0 (the default). If the user
-already existed, run `dvm sync` once more so DVM adds the ranges.
+`dvm-base` already ships the rootless-docker user service, masks rootful Docker
+and binfmt, and installs the rootless dependencies (`slirp4netns`,
+`fuse-overlayfs`). You install the engine in your Containerfile and bring it up
+per VM.
+
+Install the engine in your base image:
+
+```dockerfile
+RUN dnf5 install -y moby-engine moby-engine-rootless-extras docker-compose \
+ && dnf5 clean all
+```
+
+Then bring it up per VM. Needs `DVM_SUBUID_COUNT`/`DVM_SUBGID_COUNT` > 0 (the
+default); if the user already existed, run `dvm sync` once more so DVM adds the
+ranges.
 
 ```bash
-sudo dnf5 install -y moby-engine moby-engine-rootless-extras \
-  docker-compose shadow-utils slirp4netns fuse-overlayfs
-
-# Avoid rootful Docker; the socket can silently reactivate the daemon.
-sudo systemctl disable --now docker.service docker.socket 2>/dev/null || true
-sudo rm -f /var/run/docker.sock 2>/dev/null || true
-
 uid="$(id -u "$DVM_USER")"
 group="$(id -gn "$DVM_USER")"
 

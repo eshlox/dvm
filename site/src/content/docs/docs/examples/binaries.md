@@ -1,79 +1,86 @@
 ---
 title: "Verified binary download"
-description: "Download and verify upstream binaries inside the guest."
+description: "Install upstream binaries not in dnf as verified, pinned Containerfile layers."
 ---
 
-Avoid `curl | sh`. Prefer a pinned versioned URL, a published SHA-256 checked
-before install, and a root-owned destination.
+For tools not packaged in Fedora, avoid `curl | sh`. Pin a versioned URL, verify
+a published SHA-256 before install, and write to a root-owned destination. In a
+Containerfile each tool is one `RUN` layer, so a version bump rebuilds only that
+layer.
+
+The versions and checksums below are examples. DVM does not track them: pin the
+version you want, and update the `SHA256` from the release asset page whenever
+you bump it. The URLs are `aarch64`; change the arch for your host.
 
 ## Pattern
 
-```bash
-url="https://example.invalid/tool-v1.2.3-linux-aarch64"
-sha256="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-tmp="$(mktemp)"
-
-curl --proto '=https' --tlsv1.2 -fsSL \
-  --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
-  "$url" -o "$tmp"
-printf '%s  %s\n' "$sha256" "$tmp" | sha256sum -c -
-sudo install -m 0755 "$tmp" /usr/local/bin/tool
-rm -f "$tmp"
+```dockerfile
+ARG TOOL_VERSION=1.2.3
+ARG TOOL_SHA256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+RUN url="https://example.invalid/tool-v${TOOL_VERSION}-linux-aarch64" \
+ && curl --proto '=https' --tlsv1.2 -fsSL \
+      --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
+      "$url" -o /tmp/tool \
+ && printf '%s  %s\n' "$TOOL_SHA256" /tmp/tool | sha256sum -c - \
+ && install -m 0755 /tmp/tool /usr/local/bin/tool \
+ && rm -f /tmp/tool
 ```
 
-`--proto '=https' --tlsv1.2` refuses anything but modern HTTPS, and the
-`--retry`/`--connect-timeout` flags let the download survive a flaky network
-rather than leaving a truncated file. When you bump the version, also update the
-SHA-256 from the release asset page.
+`--proto '=https' --tlsv1.2` refuses anything but modern HTTPS; the `--retry`
+flags survive a flaky network instead of leaving a truncated file. No idempotency
+guard is needed: the build caches the layer and skips it until the `ARG` changes.
 
-## Skip if already installed
+## Tarball (zellij)
 
-Idempotent guard so re-runs are cheap:
-
-```bash
-version="0.44.3"
-if zellij --version 2>/dev/null | grep -Fq "$version"; then
-  echo "zellij $version already installed"
-else
-  url="https://github.com/zellij-org/zellij/releases/download/v${version}/zellij-aarch64-unknown-linux-musl.tar.gz"
-  sha256="15e6534d42644d66973d136c590c49739dcfd6a1a2a0d3d917973f16c81b45fb"
-  tmp="$(mktemp -d)"
-  curl --proto '=https' --tlsv1.2 -fsSL \
-    --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
-    "$url" -o "$tmp/zellij.tar.gz"
-  printf '%s  %s\n' "$sha256" "$tmp/zellij.tar.gz" | sha256sum -c -
-  tar -xzf "$tmp/zellij.tar.gz" -C "$tmp" zellij
-  sudo install -m 0755 "$tmp/zellij" /usr/local/bin/zellij
-  rm -rf "$tmp"
-fi
+```dockerfile
+ARG ZELLIJ_VERSION=0.44.3
+ARG ZELLIJ_SHA256=15e6534d42644d66973d136c590c49739dcfd6a1a2a0d3d917973f16c81b45fb
+RUN url="https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-aarch64-unknown-linux-musl.tar.gz" \
+ && curl --proto '=https' --tlsv1.2 -fsSL \
+      --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
+      "$url" -o /tmp/zellij.tgz \
+ && printf '%s  %s\n' "$ZELLIJ_SHA256" /tmp/zellij.tgz | sha256sum -c - \
+ && tar -xzf /tmp/zellij.tgz -C /usr/local/bin zellij \
+ && rm -f /tmp/zellij.tgz
 ```
 
-The same shape works for `yazi`/`ya` (zip) and `fnm` (zip): download, check
-SHA-256, unzip, `sudo install` into `/usr/local/bin`.
+## Zip (yazi, fnm)
 
-## From an upstream RPM
+`yazi` ships `yazi` and `ya` in a versioned subdirectory; `fnm` ships a bare
+binary. Same shape, `unzip` instead of `tar`:
 
-Some tools publish a `.rpm` release asset instead of a bare binary (for example
-[`sops`](https://github.com/getsops/sops)). Download it, verify the SHA-256, and
-hand the local file to `dnf5` so its dependencies resolve normally:
-
-```bash
-version="3.13.1"
-if sops --version 2>/dev/null | grep -Fq "$version"; then
-  echo "sops $version already installed"
-else
-  url="https://github.com/getsops/sops/releases/download/v${version}/sops-${version}-1.aarch64.rpm"
-  sha256="bc2d83b897102a4640cf1cac708c96c39cbf232360c188124394c48f47120fba"
-  tmp="$(mktemp -d)"
-  curl --proto '=https' --tlsv1.2 -fsSL \
-    --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
-    "$url" -o "$tmp/sops.rpm"
-  printf '%s  %s\n' "$sha256" "$tmp/sops.rpm" | sha256sum -c -
-  sudo dnf5 install -y "$tmp/sops.rpm"
-  rm -rf "$tmp"
-fi
+```dockerfile
+ARG YAZI_VERSION=26.5.6
+ARG YAZI_SHA256=c38b07961e7fc4c76503fd0f4a1b4bd0b379a99835b818cd899b0315c728e1e1
+RUN url="https://github.com/sxyazi/yazi/releases/download/v${YAZI_VERSION}/yazi-aarch64-unknown-linux-gnu.zip" \
+ && curl --proto '=https' --tlsv1.2 -fsSL \
+      --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
+      "$url" -o /tmp/yazi.zip \
+ && printf '%s  %s\n' "$YAZI_SHA256" /tmp/yazi.zip | sha256sum -c - \
+ && unzip -q /tmp/yazi.zip -d /tmp/yazi \
+ && install -m 0755 /tmp/yazi/yazi-*/yazi /usr/local/bin/yazi \
+ && install -m 0755 /tmp/yazi/yazi-*/ya /usr/local/bin/ya \
+ && rm -rf /tmp/yazi /tmp/yazi.zip
 ```
 
-`dnf5 install` accepts a local file path and pulls in any dependencies from the
-Fedora repos, so this stays cleaner than dropping a binary in `/usr/local/bin`
-when the tool actually has RPM dependencies.
+## Upstream RPM (sops)
+
+Some tools publish a `.rpm` asset (for example
+[`sops`](https://github.com/getsops/sops)). Verify it, then hand the local file
+to `dnf5` so its dependencies resolve normally:
+
+```dockerfile
+ARG SOPS_VERSION=3.13.1
+ARG SOPS_SHA256=bc2d83b897102a4640cf1cac708c96c39cbf232360c188124394c48f47120fba
+RUN url="https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-${SOPS_VERSION}-1.aarch64.rpm" \
+ && curl --proto '=https' --tlsv1.2 -fsSL \
+      --retry 5 --retry-delay 1 --retry-all-errors --connect-timeout 20 \
+      "$url" -o /tmp/sops.rpm \
+ && printf '%s  %s\n' "$SOPS_SHA256" /tmp/sops.rpm | sha256sum -c - \
+ && dnf5 install -y /tmp/sops.rpm \
+ && dnf5 clean all \
+ && rm -f /tmp/sops.rpm
+```
+
+`dnf5 install` accepts a local path and pulls in dependencies from the Fedora
+repos, cleaner than a bare binary when the tool actually has RPM dependencies.

@@ -12,6 +12,7 @@ dvm ls [--only-config] [<vm>]      list dvm-* Lima instances
 dvm stop <vm> | --all [--only-config]   stop instances
 dvm rm <vm> --yes [--config]       stop and delete the instance
 dvm new <vm>                       write starter config and setup script
+dvm base <subcommand>              build/manage the base image VMs boot from
 dvm version
 ```
 
@@ -59,7 +60,20 @@ dvm cp app:notes.txt ./file
 
 `dvm ls` and `dvm stop --all` operate on `dvm-*` Lima instances. Add
 `--only-config` to limit them to instances that have
-`~/.config/dvm/vms/*/config.sh`.
+`~/.config/dvm/vms/*/config.sh`. The base-image builder instance
+(`dvm-builder`) is hidden from both; manage it with `dvm base`.
 
 `dvm rm <vm> --yes` deletes the Lima instance. Add `--config` to also remove
 `~/.config/dvm/vms/<vm>`.
+
+## base
+
+Builds and manages the base image every VM boots from. See the
+[base image reference](/docs/reference/base/) for the full workflow.
+
+```bash
+dvm base init                      # scaffold ~/.config/dvm/base/Containerfile
+dvm base build [--clean] [--no-cache]   # build the qcow2 in the builder VM
+dvm base status                    # show the cached image and builder state
+dvm base rm [--builder] [--image]  # remove the builder VM and/or cached image
+```

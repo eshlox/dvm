@@ -56,4 +56,21 @@ dvm stop app
 dvm rm app --yes             # add --config to also delete ~/.config/dvm/vms/app
 ```
 
+## 5. Bake a base image (recommended for many VMs)
+
+If every VM installs the same tooling, the per-sync setup gets slow and the
+setup script gets long. Bake that shared tooling once into a base image and
+every VM boots from it:
+
+```bash
+dvm base init                # writes ~/.config/dvm/base/Containerfile
+# edit it: FROM dvm-base, then your packages and binaries
+dvm base build               # builds the image in a throwaway builder VM
+dvm sync app                 # now boots from the base image, ready in seconds
+```
+
+Per-VM `setup.sh` still runs for unique, stateful steps (SSH keys, dotfiles,
+tunnels). See the [base image reference](/docs/reference/base/) for the full
+workflow.
+
 See the [Commands reference](/docs/reference/commands/) for the full CLI.
