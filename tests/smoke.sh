@@ -94,6 +94,32 @@ case "$cmd" in
                 cat
             } >>"$guest/$vm.sh"
         fi
+        # Minimal stateful podman: guest_podman passes a standalone "podman" arg,
+        # so track container existence to make create/exists/rm behave across
+        # calls (image exists always misses, so the dev-base build path runs).
+        pcmd=(); seen=0
+        for arg in "$@"; do
+            if [ "$seen" = 1 ]; then pcmd+=("$arg"); fi
+            if [ "$arg" = podman ]; then seen=1; fi
+        done
+        if [ "${#pcmd[@]}" -gt 0 ]; then
+            cstate="$state.containers"; touch "$cstate"
+            case "${pcmd[0]} ${pcmd[1]:-}" in
+                "container exists") grep -Fxq "${pcmd[2]:-}" "$cstate" || exit 1 ;;
+                "image exists") exit 1 ;;
+            esac
+            if [ "${pcmd[0]}" = create ]; then
+                prev=
+                for a in "${pcmd[@]}"; do
+                    if [ "$prev" = --name ]; then printf '%s\n' "$a" >>"$cstate"; fi
+                    prev="$a"
+                done
+            elif [ "${pcmd[0]}" = rm ]; then
+                last="${pcmd[$((${#pcmd[@]} - 1))]}"
+                grep -Fxv "$last" "$cstate" >"$cstate.t" 2>/dev/null || true
+                mv "$cstate.t" "$cstate"
+            fi
+        fi
         ;;
     copy)
         log_argv copy "$@"
@@ -420,6 +446,94 @@ printf 'img\n' >"$CUSTOM_IMG"
 DVM_BASE_IMAGE="$CUSTOM_IMG" run_dvm base rm --image >/dev/null
 [ ! -e "$CUSTOM_IMG" ] || fail "base rm --image ignored a custom DVM_BASE_IMAGE"
 ok "base rm --image honors a custom DVM_BASE_IMAGE"
+
+# --- project containers ---
+run_dvm new pool >/dev/null
+out="$(run_dvm add pool/api)"
+[ -f "$DVM_CONFIG_DIR/vms/pool/projects/api/project.sh" ] || fail "add did not write project.sh"
+[ -f "$DVM_CONFIG_DIR/vms/pool/projects/api/setup.sh" ] || fail "add did not write project setup.sh"
+case "$out" in *"wrote"*"projects/api/{project.sh,setup.sh}"*) ;; *) fail "add did not report written paths" ;; esac
+ok "add scaffolds a project under a VM"
+
+if run_dvm add pool >/dev/null 2>&1; then fail "add accepted a non-project spec"; fi
+if run_dvm add nope/api >/dev/null 2>&1; then fail "add accepted a project under a missing VM"; fi
+if run_dvm reset pool/api >/dev/null 2>&1; then fail "reset without --yes succeeded"; fi
+if run_dvm ssh pool/api >/dev/null 2>&1; then fail "ssh into project without a command succeeded"; fi
+if run_dvm logs >/dev/null 2>&1; then fail "logs without a spec succeeded"; fi
+ok "project command guards reject bad invocations"
+
+cat >"$DVM_CONFIG_DIR/vms/pool/projects/api/project.sh" <<'EOF'
+IMAGE=node:22
+NESTED=1
+PROJ_PORTS=(3000:3000)
+EOF
+
+: >"$DVM_TEST_LOG"
+run_dvm sync pool >/dev/null
+grep -Fxq -- "dvm-pool" "$DVM_TEST_STATE" || fail "sync did not create the pool VM"
+grep -Fq -- 'loginctl enable-linger' "$DVM_TEST_GUEST/dvm-pool.sh" || fail "sync did not enable linger for rootless podman"
+grep -Fq -- 'podman-restart.service' "$DVM_TEST_GUEST/dvm-pool.sh" || fail "sync did not enable podman-restart"
+grep -Fxq -- "--restart=always" "$DVM_TEST_LOG" || fail "project container missing restart policy"
+grep -Fxq -- "node:22" "$DVM_TEST_LOG" || fail "project container did not use IMAGE override"
+grep -Fxq -- "/dev/fuse" "$DVM_TEST_LOG" || fail "NESTED project missing /dev/fuse"
+grep -Fxq -- "127.0.0.1:3000:3000" "$DVM_TEST_LOG" || fail "project container missing published port"
+grep -Fxq -- "dvm-pool-api:/work" "$DVM_TEST_LOG" || fail "project container missing workspace volume"
+ok "sync creates project containers with image, ports, nesting, and a workspace volume"
+
+out="$(run_dvm ls pool)"
+case "$out" in *"api"*) ok "ls <vm> lists project containers" ;; *) fail "ls <vm> did not list projects" ;; esac
+
+: >"$DVM_TEST_LOG"
+run_dvm sh pool/api >/dev/null
+grep -Fq -- 'podman exec -it' "$DVM_TEST_LOG" || fail "sh did not exec into the project container"
+ok "sh opens a shell inside the project container"
+
+: >"$DVM_TEST_LOG"
+run_dvm ssh pool/api -- echo hello >/dev/null
+grep -Fq -- 'podman exec -w' "$DVM_TEST_LOG" || fail "ssh did not exec into the project container"
+grep -Fxq -- "hello" "$DVM_TEST_LOG" || fail "ssh did not pass the command"
+ok "ssh runs a command inside the project container"
+
+: >"$DVM_TEST_LOG"
+run_dvm logs pool/api >/dev/null
+grep -Fxq -- "logs" "$DVM_TEST_LOG" || fail "logs did not call podman logs"
+ok "logs shows a project container's logs"
+
+: >"$DVM_TEST_LOG"
+run_dvm stop pool/api >/dev/null
+grep -Fxq -- "stop" "$DVM_TEST_LOG" || fail "stop did not stop the project container"
+ok "stop stops a single project container"
+
+: >"$DVM_TEST_LOG"
+printf 'hi\n' >"$TMP/cpfile"
+run_dvm cp "$TMP/cpfile" pool/api:/work/x >/dev/null
+grep -Fxq -- "cp" "$DVM_TEST_LOG" || fail "cp did not invoke podman cp"
+grep -Fq -- 'api:/work/x' "$DVM_TEST_LOG" || fail "cp did not target the container path"
+ok "cp copies a file into a project container"
+
+: >"$DVM_TEST_LOG"
+run_dvm reset pool/api --yes >/dev/null
+grep -Fxq -- "rm" "$DVM_TEST_LOG" || fail "reset did not remove the old container"
+grep -Fxq -- "--restart=always" "$DVM_TEST_LOG" || fail "reset did not recreate the container"
+ok "reset recreates a project container"
+
+: >"$DVM_TEST_LOG"
+run_dvm rm pool/api --yes >/dev/null
+grep -Fxq -- "rm" "$DVM_TEST_LOG" || fail "rm did not remove the project container"
+[ -f "$DVM_CONFIG_DIR/vms/pool/projects/api/project.sh" ] || fail "rm removed the project config without --config"
+ok "rm removes a project container and keeps config"
+
+# dev-base: tools defined once in packages.txt, built into the VM and shared.
+run_dvm base dev-init >/dev/null
+[ -f "$DVM_CONFIG_DIR/base/dev/Containerfile" ] || fail "base dev-init did not write the dev Containerfile"
+[ -f "$DVM_CONFIG_DIR/base/packages.txt" ] || fail "base dev-init did not ensure packages.txt"
+grep -Fq 'dvm-packages.txt' "$DVM_CONFIG_DIR/base/dev/Containerfile" || fail "dev Containerfile does not install from packages.txt"
+grep -Fq 'dvm-packages.txt' "$DVM_CONFIG_DIR/base/Containerfile" || fail "VM Containerfile does not install from packages.txt"
+: >"$DVM_TEST_LOG"
+DVM_REBUILD_DEV_BASE=1 run_dvm sync pool >/dev/null
+grep -Fq 'podman build' "$DVM_TEST_LOG" || fail "sync did not build the dev-base image"
+grep -Fq 'localhost/dvm-dev-base' "$DVM_TEST_LOG" || fail "sync did not tag the dev-base image"
+ok "dev-base image is built into the VM from the shared packages.txt"
 
 run_dvm base rm --image >/dev/null
 [ ! -e "$DVM_CACHE_DIR/base/disk.qcow2" ] || fail "base rm --image left the cached image"
