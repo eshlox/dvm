@@ -291,7 +291,6 @@ load_project() {
     IMAGE=
     NESTED=0
     PROJ_WORKDIR=/work
-    # shellcheck disable=SC2034  # consumed when container port forwarding lands
     PROJ_PORTS=()
     # shellcheck source=/dev/null
     . "$d/project.sh"
@@ -488,10 +487,19 @@ project_exec_setup() {
 # relaxes SELinux confinement, so it is opt-in per project.
 project_up() {
     ensure_guest_podman
-    local nest=()
+    local nest=() ports=() p host guest extra
     [ "${NESTED:-0}" = "1" ] && nest=(--device /dev/fuse --security-opt label=disable)
+    # Publish to the VM's loopback; Lima forwards guest 127.0.0.1 ports to the
+    # host, so the project's dev server is reachable at localhost on the Mac.
+    # Ports are fixed at create time; change them with `dvm reset`.
+    for p in "${PROJ_PORTS[@]:-}"; do
+        [ -n "$p" ] || continue
+        IFS=: read -r host guest extra <<<"$p"
+        { [ -z "$extra" ] && [ -n "$host" ] && [ -n "$guest" ]; } || die "bad PROJ_PORTS entry: $p"
+        ports+=(-p "127.0.0.1:$host:$guest")
+    done
     guest_podman container exists "$DVM_PROJ_CONTAINER" \
-        || guest_podman create --name "$DVM_PROJ_CONTAINER" "${nest[@]}" \
+        || guest_podman create --name "$DVM_PROJ_CONTAINER" "${nest[@]}" "${ports[@]}" \
             -v "$DVM_PROJ_VOLUME:$PROJ_WORKDIR" -w "$PROJ_WORKDIR" \
             "$DVM_PROJ_IMAGE" sleep infinity >/dev/null
     guest_podman start "$DVM_PROJ_CONTAINER" >/dev/null
@@ -638,6 +646,78 @@ cmd_sync_project() {
     [ -f "$DVM_BASE_DIR/dev/Containerfile" ] && run_step "ensuring dev-base image" "$(vm_log setup)" ensure_dev_base
     run_step "project $DVM_PROJECT ($DVM_PROJ_IMAGE)" "$(vm_log setup)" project_up
     step_ok "$DVM_NAME/$DVM_PROJECT ready"
+}
+
+# Recreate a project's container from its image, re-running its setup. The
+# workspace volume is wiped too unless --keep-data is given (keep code + deps,
+# drop a crufty or possibly-compromised runtime). Siblings are untouched.
+project_reset() {
+    local keep_data="$1"
+    ensure_guest_podman
+    guest_podman rm -f "$DVM_PROJ_CONTAINER" >/dev/null 2>&1 || true
+    [ "$keep_data" = "1" ] || guest_podman volume rm "$DVM_PROJ_VOLUME" >/dev/null 2>&1 || true
+    project_up
+}
+
+cmd_reset() {
+    [ "$#" -ge 1 ] || die "usage: dvm reset <vm>/<project> --yes [--keep-data]"
+    local spec="$1"; shift
+    local yes=0 keep_data=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --yes) yes=1 ;;
+            --keep-data) keep_data=1 ;;
+            *) die "unknown flag: $1" ;;
+        esac
+        shift
+    done
+    case "$spec" in
+        */*) ;;
+        *) die "dvm reset takes <vm>/<project>; reset a whole VM with dvm rm + dvm sync" ;;
+    esac
+    [ "$yes" = "1" ] || die "dvm reset requires --yes"
+    load_project "$spec"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    lock_vm "$DVM_NAME"
+    ensure_running_quiet
+    local log; log="$(vm_log setup)"
+    ensure_logfile "$log" truncate
+    run_step "resetting $DVM_NAME/$DVM_PROJECT" "$log" project_reset "$keep_data"
+    step_ok "$DVM_NAME/$DVM_PROJECT reset"
+}
+
+# Remove a project's container (+ workspace volume unless --keep-data), and
+# optionally its config dir (--config). The pool VM and siblings are untouched.
+cmd_rm_project() {
+    local spec="$1"; shift
+    local yes=0 keep_data=0 remove_config=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --yes) yes=1 ;;
+            --keep-data) keep_data=1 ;;
+            --config) remove_config=1 ;;
+            *) die "unknown flag: $1" ;;
+        esac
+        shift
+    done
+    [ "$yes" = "1" ] || die "dvm rm requires --yes"
+    load_project "$spec"
+    require_lima
+    lock_vm "$DVM_NAME"
+    if lima_has "$DVM_LIMA_NAME"; then
+        ensure_running_quiet
+        ensure_guest_podman
+        guest_podman rm -f "$DVM_PROJ_CONTAINER" >/dev/null 2>&1 || true
+        [ "$keep_data" = "1" ] || guest_podman volume rm "$DVM_PROJ_VOLUME" >/dev/null 2>&1 || true
+        step_ok "$DVM_NAME/$DVM_PROJECT removed"
+    else
+        printf 'no Lima instance: %s\n' "$DVM_NAME"
+    fi
+    if [ "$remove_config" = "1" ]; then
+        rm -rf "$DVM_CONFIG_DIR/vms/$DVM_NAME/projects/$DVM_PROJECT"
+        printf 'removed config %s\n' "$(disp_path "$DVM_CONFIG_DIR/vms/$DVM_NAME/projects/$DVM_PROJECT")"
+    fi
 }
 
 cmd_sh() {
@@ -817,7 +897,8 @@ cmd_stop() {
 }
 
 cmd_rm() {
-    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes"
+    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes | <vm>/<project> --yes"
+    case "$1" in */*) cmd_rm_project "$@"; return ;; esac
     local name="$1"; shift
     local yes=0 remove_config=0 config_file
     while [ "$#" -gt 0 ]; do
@@ -1335,7 +1416,8 @@ dvm <command> [args]
   cp src dst              copy; one side may be vm:path
   ls [--only-config] [<vm>] list running Lima instances
   stop <vm> | --all [--only-config] stop running VMs
-  rm <vm> --yes [--config] stop and delete the Lima instance
+  rm <vm> --yes [--config] | <vm>/<proj> --yes  delete a VM or project container
+  reset <vm>/<proj> --yes [--keep-data]  recreate a project container
   new <vm>                write starter VM config and setup script
   add <vm>/<proj>         define a project (container) inside a VM
   base <subcommand>       build/manage the base image VMs boot from
@@ -1352,6 +1434,7 @@ case "$cmd" in
     ls) cmd_ls "$@" ;;
     stop) cmd_stop "$@" ;;
     rm) cmd_rm "$@" ;;
+    reset) cmd_reset "$@" ;;
     new) cmd_new "$@" ;;
     add) cmd_add "$@" ;;
     base) cmd_base "$@" ;;
