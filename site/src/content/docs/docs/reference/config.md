@@ -13,6 +13,8 @@ first `dvm new` scaffolds the global config for you.
 ~/.config/dvm/base/Containerfile   # base image definition (optional)
 ~/.config/dvm/vms/<vm>/config.sh   # per-VM config
 ~/.config/dvm/vms/<vm>/setup.sh    # per-VM setup script
+~/.config/dvm/vms/<vm>/projects/<proj>/project.sh   # project container spec (optional)
+~/.config/dvm/vms/<vm>/projects/<proj>/setup.sh     # project setup, runs in the container
 ```
 
 Shared tooling is baked once into the [base image](/docs/reference/base/)
@@ -49,6 +51,7 @@ DVM_PORTS=(3000:3000 5173:5173)
 | `DVM_SUBGID_COUNT` | `65536` | subordinate gid range size for `DVM_USER` |
 | `DVM_PORTS` | `()` | extra `host:guest` port forwards |
 | `DVM_VM_TYPE` | `vz` on Apple Silicon, else unset | Lima VM type; `vz` is lighter than QEMU and reclaims idle VM memory better |
+| `DVM_DEV_BASE` | dev-base image, else bare Fedora | default image for [project containers](/docs/reference/projects/) that set no `IMAGE` |
 
 The defaults aim at a minimal but workable disposable VM: enough to run editor,
 shell, AI CLIs, and a dev server at once. Bump `DVM_MEMORY` per VM for heavy
@@ -162,3 +165,20 @@ DVM prepends `set -Eeuo pipefail` and exports these variables to the script:
 The setup script is trusted provisioning code. DVM checks it is owned by you
 and not group/world writable (see [troubleshooting.md](/docs/guides/troubleshooting/) to
 repair). For snippets, see [examples](/docs/examples/).
+
+## Project containers
+
+A project under a VM has its own `project.sh` (a container spec, sourced like
+`config.sh`) and `setup.sh` (which runs **inside the container** on sync).
+Scaffold them with `dvm add <vm>/<proj>`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `IMAGE` | `$DVM_DEV_BASE` | container image the project runs |
+| `NESTED` | `0` | `1` exposes `/dev/fuse` and relaxes SELinux so the project can run its own podman/compose |
+| `PROJ_WORKDIR` | `/work` | working dir and mount point of the persistent workspace volume |
+| `PROJ_PORTS` | `()` | `host:guest` ports to publish (on the VM loopback, forwarded to localhost) |
+
+The same owner/mode checks that guard `config.sh` apply to `project.sh` and the
+project `setup.sh`. See
+[Trust tiers & project containers](/docs/reference/projects/) for the full model.

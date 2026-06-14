@@ -27,6 +27,7 @@ makes the boundary explicit and avoids mounting the host.
 | Lima VM | guest compromise should not directly read host home |
 | guest root | root inside the VM can read all guest users and projects |
 | `DVM_USER` | normal dev user for commands and project work |
+| project container | one project isolated from siblings in the same VM (shared kernel) |
 | setup script | trusted host-owned provisioning code |
 | project code | untrusted unless you reviewed it |
 
@@ -47,6 +48,22 @@ makes the boundary explicit and avoids mounting the host.
 Residual risk: packages, npm lifecycle scripts, downloaded binaries, service
 auth, and project code can still run malicious code inside the guest. Treat VMs
 as disposable and keep credentials scoped.
+
+## Trust tiers and project containers
+
+The boundary that protects your **host** is the VM (`--mount-none`, separate
+kernel). [Project containers](/docs/reference/projects/) add a second, weaker
+boundary that protects **projects from each other** inside one VM: separate user
+namespaces and filesystems, but a shared guest kernel.
+
+- Group VMs by **trust tier** and never mix tiers in one VM. A container is for
+  several of your own semi-trusted projects, not for genuinely hostile code.
+- A kernel-level escape from one container could reach a sibling in the same VM.
+  Untrusted code still belongs in its own VM (one project, or no container).
+- `NESTED=1` exposes `/dev/fuse` and relaxes SELinux confinement so a project can
+  run its own podman/compose. Leave it off for projects that do not need it.
+- Reset is part of the model: `dvm reset <vm>/<proj> --yes` recreates a clean
+  container in seconds, dropping anything that hooked the runtime.
 
 ## Setup script review
 

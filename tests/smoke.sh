@@ -193,7 +193,10 @@ fi
 ok "unknown commands fail"
 
 out="$(run_dvm version)"
-case "$out" in "dvm "*-dev) ok "version prints development version" ;; *) fail "version output is wrong" ;; esac
+case "$out" in
+    "dvm "[0-9]*.[0-9]*.[0-9]*) ok "version prints a semver" ;;
+    *) fail "version output is wrong" ;;
+esac
 
 out="$(DVM_DRY_RUN=1 run_dvm sync app)"
 case "$out" in

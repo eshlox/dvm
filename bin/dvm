@@ -4,7 +4,7 @@ set -Eeuo pipefail
 DVM_CONFIG_DIR="${DVM_CONFIG_DIR:-$HOME/.config/dvm}"
 DVM_CACHE_DIR="${DVM_CACHE_DIR:-$HOME/.cache/dvm}"
 LIMACTL="${DVM_LIMACTL:-limactl}"
-DVM_VERSION="3.0.0-dev"
+DVM_VERSION="3.0.0"
 
 # Base image. `dvm base build` bakes a bootc image (your tools, baked once) into
 # a qcow2 under the cache; every `dvm sync` then boots from it instead of
@@ -25,8 +25,8 @@ DVM_BUILDER_DISK="${DVM_BUILDER_DISK:-50}"
 # by the update-pins workflow) refreshes the digests and opens a pull request.
 # These (and the DVM_BASE_*/DVM_BUILDER_* paths above) are environment-only, not
 # read from config.sh; override via the environment for a custom base.
-DVM_BOOTC_BASE="${DVM_BOOTC_BASE:-quay.io/fedora/fedora-bootc@sha256:REPLACE_WITH_DIGEST}"  # track: quay.io/fedora/fedora-bootc:42
-DVM_BISC_IMAGE="${DVM_BISC_IMAGE:-quay.io/centos-bootc/bootc-image-builder@sha256:REPLACE_WITH_DIGEST}"  # track: quay.io/centos-bootc/bootc-image-builder:latest
+DVM_BOOTC_BASE="${DVM_BOOTC_BASE:-quay.io/fedora/fedora-bootc@sha256:077182b6ba853b3348d0bede602ac30b9e6568c6422bcf0654de5af96f19b9c3}"  # track: quay.io/fedora/fedora-bootc:42
+DVM_BISC_IMAGE="${DVM_BISC_IMAGE:-quay.io/centos-bootc/bootc-image-builder@sha256:7ae88b8d6f2cabfa971d7836b96d6cac19cd1384e658031bd154f9687e929905}"  # track: quay.io/centos-bootc/bootc-image-builder:latest
 
 die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -1217,7 +1217,9 @@ cmd_add() {
 # persistent workspace volume dvm-$vm-$proj (survives container recreation).
 # PROJ_WORKDIR=/work
 
-# Ports to publish from the container (host wiring lands in a later release).
+# Ports to publish from the container. Published on the VM's loopback; Lima
+# forwards guest 127.0.0.1 ports to the host, so the dev server is reachable at
+# localhost on the Mac. Ports are fixed at create time; change them with dvm reset.
 # PROJ_PORTS=(3000:3000)
 EOF
         cat > "$d/setup.sh" <<'EOF'

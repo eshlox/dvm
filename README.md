@@ -73,19 +73,39 @@ dvm sh app
 ## Commands
 
 ```text
-dvm sync <vm> | --all
-dvm sh <vm>
-dvm ssh <vm> -- cmd...
+dvm sync <vm> | <vm>/<proj> | --all
+dvm sh <vm> | <vm>/<proj>
+dvm ssh <vm> -- cmd... | <vm>/<proj> -- cmd...
 dvm cp <src> <dst>
 dvm ls [--only-config] [<vm>]
-dvm stop <vm> | --all [--only-config]
-dvm rm <vm> --yes [--config]
+dvm stop <vm> | <vm>/<proj> | --all [--only-config]
+dvm logs <vm>/<proj> [-f]
+dvm rm <vm> --yes [--config] | <vm>/<proj> --yes [--keep-data]
+dvm reset <vm> --yes | <vm>/<proj> --yes [--keep-data]
 dvm new <vm>
+dvm add <vm>/<proj>
 dvm base <subcommand>
 dvm version
 ```
 
 See the [command reference](https://dvm.eshlox.net/docs/reference/commands/) for details.
+
+## Trust tiers and project containers
+
+Instead of one VM per project, group projects by trust tier in a pool VM and run
+each as a disposable rootless-podman container inside it. The VM is the durable
+boundary that protects the host; containers isolate projects from each other and
+reset in seconds.
+
+```bash
+dvm new trusted              # a pool VM for one trust tier
+dvm add trusted/api          # define a project (container) in it
+dvm sync trusted             # build the dev-base, bring up every container
+dvm sh trusted/api           # shell into the api container
+dvm reset trusted/api --yes  # recreate just that container, clean
+```
+
+See [Trust tiers & project containers](https://dvm.eshlox.net/docs/reference/projects/).
 
 ## Base image
 
@@ -107,6 +127,7 @@ Full documentation lives at **[dvm.eshlox.net](https://dvm.eshlox.net)**:
 
 - [Commands](https://dvm.eshlox.net/docs/reference/commands/) — command reference
 - [Config & setup scripts](https://dvm.eshlox.net/docs/reference/config/) — config variables and setup scripts
+- [Trust tiers & project containers](https://dvm.eshlox.net/docs/reference/projects/) — many projects in one pool VM
 - [Security model](https://dvm.eshlox.net/docs/guides/security/) — threats and trade-offs
 - [Lima behavior](https://dvm.eshlox.net/docs/reference/lima/) — Lima behavior and limits
 - [Troubleshooting](https://dvm.eshlox.net/docs/guides/troubleshooting/) — errors and recovery

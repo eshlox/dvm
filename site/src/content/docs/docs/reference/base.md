@@ -52,6 +52,7 @@ unique, stateful work stays where it belongs.
 
 ```bash
 dvm base init                      # scaffold ~/.config/dvm/base/Containerfile
+dvm base dev-init                  # scaffold the dev-base Containerfile for project containers
 dvm base build                     # build the qcow2 in the builder VM
 dvm base build --clean             # rebuild from a fresh builder (no podman cache)
 dvm base build --no-cache          # rebuild without the podman layer cache
@@ -112,6 +113,35 @@ base.
 
 The privileged container runs only in the throwaway builder VM, never on the
 host or in project VMs.
+
+## dev-base for project containers
+
+There are two images, for two layers:
+
+- the **base image** (above): the qcow2 a whole **VM** boots from, built with
+  bootc-image-builder;
+- the **dev-base**: an OCI image that [project
+  containers](/docs/reference/projects/) run `FROM`, so their tools are baked
+  once and shared across containers instead of installed per container on every
+  sync.
+
+`dvm base dev-init` scaffolds `~/.config/dvm/base/dev/Containerfile` (a normal
+`FROM fedora` image with podman + fuse-overlayfs nesting plumbing) and a shared
+`packages.txt`. Tools listed in `packages.txt` are installed into **both** the VM
+base image and the dev-base, so a VM and its containers converge on one tool
+list.
+
+```bash
+dvm base dev-init     # writes ~/.config/dvm/base/dev/Containerfile + packages.txt
+# edit packages.txt (and the dev Containerfile for non-repo binaries)
+dvm sync trusted      # builds localhost/dvm-dev-base into the VM, then its projects
+```
+
+DVM builds `localhost/dvm-dev-base:latest` into each pool VM on `dvm sync` and
+rebuilds it when the dev directory or `packages.txt` changes (tracked by a hash
+label on the image) or when `DVM_REBUILD_DEV_BASE=1`. A project with no `IMAGE`
+in its `project.sh` runs from the dev-base; without a dev-base configured it
+falls back to bare Fedora.
 
 ## Reserved names
 

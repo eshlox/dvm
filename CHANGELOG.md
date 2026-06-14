@@ -1,6 +1,46 @@
 # Changelog
 
-## Unreleased
+## 3.0.0 - 2026-06-14
+
+- Added **trust tiers and project containers**: a pool VM can host one
+  rootless-podman container per project, addressed `<vm>/<project>`. The VM is
+  the durable boundary that protects the host (separate kernel, `--mount-none`);
+  containers isolate projects from each other (own user namespace, filesystem,
+  and workspace volume) and reset in seconds. Group VMs by trust tier instead of
+  running one VM per project. See the new project-containers reference.
+- Added `dvm add <vm>/<proj>` to scaffold a project (a `project.sh` container
+  spec plus a container-side `setup.sh`) under an existing VM. `project.sh`
+  supports `IMAGE`, `NESTED`, `PROJ_WORKDIR`, and `PROJ_PORTS`, and is
+  owner/mode checked like `config.sh`.
+- `dvm sync`, `sh`, `ssh`, `cp`, `ls`, `stop`, and `rm` now accept a
+  `<vm>/<project>` target that operates on a project container: `sync` builds
+  the dev-base and brings up every container (or one), `sh`/`ssh` run inside the
+  container, `cp` copies into its workspace, `ls <vm>` shows container state and
+  image, `stop`/`rm` act on a single container. `rm <vm>/<proj>` removes the
+  container and its workspace volume (`--keep-data` keeps it, `--config` also
+  drops the project config).
+- Added `dvm logs <vm>/<proj> [-f]` to show (and follow) a project container's
+  logs.
+- Added `dvm reset`. `dvm reset <vm>/<proj> --yes` recreates a project container
+  from a clean image and re-runs its setup in seconds (`--keep-data` keeps the
+  workspace volume); `dvm reset <vm> --yes` rebuilds the whole VM from the base
+  image. Reset recreates the disposable layer instead of reverting a snapshot,
+  so it works on the `vz` driver where Lima snapshots are unavailable.
+- Added `dvm base dev-init`, which scaffolds the dev-base Containerfile and a
+  shared `packages.txt`. Tools listed once in `packages.txt` are baked into both
+  the VM base image and the `localhost/dvm-dev-base` container image that project
+  containers run `FROM`. dvm builds the dev-base into each VM on sync and
+  rebuilds it when the dev directory or `packages.txt` changes (hash-tracked) or
+  when `DVM_REBUILD_DEV_BASE=1`.
+- Project containers run on rootless **podman** inside the VM (daemonless, no
+  rootless-daemon bring-up) and are created `--restart=always` with
+  `podman-restart` enabled, so they return after a VM reboot. `PROJ_PORTS`
+  publishes to the VM's loopback, which Lima forwards to localhost. Opt-in
+  `NESTED=1` adds `/dev/fuse` and relaxes SELinux so a project can run its own
+  `podman compose` (postgres, redis, ...).
+- Released `3.0.0`.
+
+### Earlier in this cycle
 
 - Added `dvm base`, a base-image workflow that bakes your tooling once so every
   `dvm sync` boots a ready VM instead of re-provisioning Fedora from scratch.
