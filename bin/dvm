@@ -4,12 +4,53 @@ set -Eeuo pipefail
 DVM_CONFIG_DIR="${DVM_CONFIG_DIR:-$HOME/.config/dvm}"
 DVM_CACHE_DIR="${DVM_CACHE_DIR:-$HOME/.cache/dvm}"
 LIMACTL="${DVM_LIMACTL:-limactl}"
-DVM_VERSION="0.1.0-dev"
+DVM_VERSION="3.0.0"
+
+# Base image. `dvm base build` bakes a bootc image (your tools, baked once) into
+# a qcow2 under the cache; every `dvm sync` then boots from it instead of
+# downloading and provisioning Fedora from scratch. The Containerfile that
+# defines it lives in the config dir; the build runs in a throwaway Lima VM.
+DVM_BASE_DIR="${DVM_BASE_DIR:-$DVM_CONFIG_DIR/base}"
+DVM_BASE_CACHE="${DVM_BASE_CACHE:-$DVM_CACHE_DIR/base}"
+DVM_BASE_IMAGE="${DVM_BASE_IMAGE:-$DVM_BASE_CACHE/disk.qcow2}"
+DVM_BUILDER_LIMA="${DVM_BUILDER_LIMA:-dvm-builder}"
+DVM_BUILDER_MEMORY="${DVM_BUILDER_MEMORY:-4}"
+DVM_BUILDER_DISK="${DVM_BUILDER_DISK:-50}"
+# Upstream images dvm builds on, pinned by digest the same way upstream binaries
+# are pinned by SHA256: these are dvm-owned defaults, not set per user. `dvm base
+# build` builds dvm-base FROM DVM_BOOTC_BASE and runs DVM_BISC_IMAGE as a
+# privileged container whose output becomes every VM's base image, so a digest
+# pin keeps a moved tag from silently changing what is baked. The `# track:`
+# comment names the tag each digest follows; `scripts/update-pins` (run weekly
+# by the update-pins workflow) refreshes the digests and opens a pull request.
+# These (and the DVM_BASE_*/DVM_BUILDER_* paths above) are environment-only, not
+# read from config.sh; override via the environment for a custom base.
+DVM_BOOTC_BASE="${DVM_BOOTC_BASE:-quay.io/fedora/fedora-bootc@sha256:077182b6ba853b3348d0bede602ac30b9e6568c6422bcf0654de5af96f19b9c3}"  # track: quay.io/fedora/fedora-bootc:42
+DVM_BISC_IMAGE="${DVM_BISC_IMAGE:-quay.io/centos-bootc/bootc-image-builder@sha256:7ae88b8d6f2cabfa971d7836b96d6cac19cd1384e658031bd154f9687e929905}"  # track: quay.io/centos-bootc/bootc-image-builder:latest
 
 die() { printf 'dvm: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 lima_name() { printf 'dvm-%s\n' "$1"; }
 valid_name() { case "$1" in *[!a-z0-9-]*|''|[!a-z]*) return 1 ;; esac; }
+
+# Lima image arch values are canonical (aarch64/x86_64). The host's `uname -m`
+# is not: Apple Silicon reports arm64, some Linux hosts amd64. Map to Lima's.
+host_arch() {
+    case "$(uname -m)" in
+        arm64|aarch64) printf 'aarch64\n' ;;
+        amd64|x86_64) printf 'x86_64\n' ;;
+        *) uname -m ;;
+    esac
+}
+
+# Reject VM names that collide with the base-image workflow: "base" shares the
+# lock/state namespace used by `dvm base`, and any name mapping to the builder
+# Lima instance would let VM commands operate on the build infrastructure.
+assert_vm_name_free() {
+    [ "$1" != base ] || die "\"base\" is reserved by dvm base"
+    [ "$(lima_name "$1")" != "$DVM_BUILDER_LIMA" ] \
+        || die "\"$1\" is reserved for the base-image builder ($DVM_BUILDER_LIMA)"
+}
 # Shorten $HOME to ~ for paths printed to the user.
 disp_path() { case "$1" in "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;; *) printf '%s' "$1" ;; esac; }
 
@@ -165,6 +206,16 @@ default_cpus() {
     printf '%s\n' "$n"
 }
 
+# Default Lima VM type. On Apple Silicon macOS, "vz" (Apple's Virtualization
+# framework) is lighter than QEMU and returns freed guest memory to the host far
+# better when many VMs run at once, so default to it there. Everywhere else,
+# empty lets Lima choose its platform default. Override via DVM_VM_TYPE in config.
+default_vm_type() {
+    if [ "$(uname -s)" = Darwin ] && [ "$(host_arch)" = aarch64 ]; then
+        printf 'vz\n'
+    fi
+}
+
 load_global() {
     [ -d "$DVM_CONFIG_DIR" ] && assert_safe_path "$DVM_CONFIG_DIR" "config directory"
     DVM_CPUS="$(default_cpus)"
@@ -174,28 +225,32 @@ load_global() {
     DVM_SUBUID_COUNT=65536
     DVM_SUBGID_COUNT=65536
     DVM_PORTS=()
+    # Default container image for project containers when a project.sh sets no
+    # IMAGE. When a dev-base is configured (dvm base dev-init), default to the
+    # image dvm bakes from it inside the VM (your tools + podman/fuse for nesting,
+    # baked once, shared across containers). Otherwise fall back to bare Fedora.
+    # Override per project with IMAGE=, or set DVM_DEV_BASE in config.sh.
+    if [ -f "$DVM_BASE_DIR/dev/Containerfile" ]; then
+        DVM_DEV_BASE="${DVM_DEV_BASE:-localhost/dvm-dev-base:latest}"
+    else
+        DVM_DEV_BASE="${DVM_DEV_BASE:-registry.fedoraproject.org/fedora:latest}"
+    fi
+    # Lima VM type. Defaults to "vz" on Apple Silicon (lighter than QEMU, far
+    # better host memory reclaim across many VMs); empty elsewhere lets Lima
+    # choose its platform default. Set DVM_VM_TYPE in config to override.
+    DVM_VM_TYPE="${DVM_VM_TYPE:-$(default_vm_type)}"
     # shellcheck source=/dev/null
     if [ -f "$DVM_CONFIG_DIR/config.sh" ]; then
         assert_safe_path "$DVM_CONFIG_DIR/config.sh" "global config"
         . "$DVM_CONFIG_DIR/config.sh"
     fi
-    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
-    assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
-}
-
-# The global setup script is convention-based: ~/.config/dvm/setup.sh when
-# present. It is not a config variable, so per-VM config cannot redirect it.
-resolve_global_setup() {
-    DVM_GLOBAL_SETUP=
-    if [ -f "$DVM_CONFIG_DIR/setup.sh" ]; then
-        DVM_GLOBAL_SETUP="$DVM_CONFIG_DIR/setup.sh"
-    fi
 }
 
 load_vm() {
     valid_name "$1" || die "invalid VM name: $1"
+    assert_vm_name_free "$1"
     local f="$DVM_CONFIG_DIR/vms/$1/config.sh" setup="$DVM_CONFIG_DIR/vms/$1/setup.sh"
     [ -f "$f" ] || die "no config for VM \"$1\" at $f"
     load_global
@@ -206,15 +261,45 @@ load_vm() {
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     # shellcheck source=/dev/null
     . "$f"
-    resolve_global_setup
     valid_name "$DVM_USER" || die "invalid DVM_USER: $DVM_USER"
     validate_subid_counts
     DVM_CODE_DIR="/home/$DVM_USER/code/$DVM_NAME"
     VM_SETUP=
     [ -f "$setup" ] && VM_SETUP="$setup"
     validate_ports
-    assert_setup_script "$DVM_GLOBAL_SETUP" "global setup script"
     assert_setup_script "$VM_SETUP" "VM setup script"
+}
+
+# Load a project (a container inside a pool VM) addressed as <vm>/<project>.
+# Loads the VM first (so all VM config/safety checks apply), then sources the
+# per-project config. A project is a container running on the VM's rootless
+# Docker; its workspace lives in a named volume so it survives container
+# recreation. IMAGE defaults to DVM_DEV_BASE; project.sh may override it.
+load_project() {
+    local spec="$1" vm proj d
+    case "$spec" in */*) ;; *) die "expected <vm>/<project>: $spec" ;; esac
+    vm="${spec%%/*}"; proj="${spec#*/}"
+    case "$proj" in */*) die "invalid project (one '/' only): $spec" ;; esac
+    valid_name "$proj" || die "invalid project name: $proj"
+    load_vm "$vm"
+    d="$DVM_CONFIG_DIR/vms/$vm/projects/$proj"
+    [ -f "$d/project.sh" ] || die "no project \"$proj\" in VM \"$vm\" (run: dvm add $vm/$proj)"
+    [ -d "$DVM_CONFIG_DIR/vms/$vm/projects" ] && assert_safe_path "$DVM_CONFIG_DIR/vms/$vm/projects" "projects directory"
+    assert_safe_path "$d" "project directory"
+    assert_safe_path "$d/project.sh" "project config"
+    DVM_PROJECT="$proj"
+    IMAGE=
+    NESTED=0
+    PROJ_WORKDIR=/work
+    PROJ_PORTS=()
+    # shellcheck source=/dev/null
+    . "$d/project.sh"
+    DVM_PROJ_IMAGE="${IMAGE:-$DVM_DEV_BASE}"
+    DVM_PROJ_CONTAINER="$proj"
+    DVM_PROJ_VOLUME="dvm-${vm}-${proj}"
+    PROJ_SETUP="$d/setup.sh"
+    [ -f "$PROJ_SETUP" ] || PROJ_SETUP=
+    [ -n "$PROJ_SETUP" ] && assert_setup_script "$PROJ_SETUP" "project setup script"
 }
 
 validate_subid_counts() {
@@ -263,12 +348,33 @@ port_forward_args() {
     done
 }
 
+base_template_path() { printf '%s/template.yaml\n' "$DVM_BASE_CACHE"; }
+
+# Lima accepts a YAML template path as its positional source. When a base image
+# exists, point Lima at a one-line template referencing the qcow2 instead of
+# downloading template:fedora.
+write_base_template() {
+    local f arch
+    f="$(base_template_path)"
+    arch="$(host_arch)"
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_CACHE"
+        printf 'images:\n- location: "%s"\n  arch: "%s"\n' "$DVM_BASE_IMAGE" "$arch" >"$f"
+    )
+}
+
 build_lima_start() {
     DVM_ARGV=("$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start --yes --name "$DVM_LIMA_NAME"
         --cpus "$DVM_CPUS" --memory "$DVM_MEMORY" --disk "$DVM_DISK"
         --mount-none)
+    [ -n "${DVM_VM_TYPE:-}" ] && DVM_ARGV+=(--vm-type "$DVM_VM_TYPE")
     port_forward_args
-    DVM_ARGV+=(template:fedora)
+    if [ -f "$DVM_BASE_IMAGE" ]; then
+        DVM_ARGV+=("$(base_template_path)")
+    else
+        DVM_ARGV+=(template:fedora)
+    fi
 }
 
 print_argv() {
@@ -348,6 +454,137 @@ exec_setup_script() {
     } | "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s
 }
 
+# Run a podman command on the VM's rootless podman as DVM_USER. podman is
+# daemonless, so there is no socket or service to manage; just set
+# XDG_RUNTIME_DIR (a non-interactive `sudo -u` session has none). stdin is
+# forwarded, so callers can pipe a script into e.g. `podman exec -i`.
+guest_podman() {
+    "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc '
+        uid="$(id -u)"
+        export XDG_RUNTIME_DIR="/run/user/$uid"
+        exec "$@"' bash podman "$@"
+}
+
+# Keep DVM_USER's rootless containers alive across logins and VM reboots. podman
+# needs no daemon; enable-linger keeps the user's runtime dir up after the dvm
+# shell exits, and enabling podman-restart.service restarts containers that have
+# a restart policy when the VM boots. Best-effort and idempotent.
+ensure_guest_podman() {
+    "$LIMACTL" shell --workdir / "$DVM_LIMA_NAME" bash -s >/dev/null 2>&1 <<EOF || true
+set -Eeuo pipefail
+sudo loginctl enable-linger "$DVM_USER"
+sudo -u "$DVM_USER" -H bash -lc '
+    export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
+    systemctl --user enable podman-restart.service
+'
+EOF
+}
+
+# Pipe a project's setup.sh into the project container as DVM_USER.
+project_exec_setup() {
+    { printf 'set -Eeuo pipefail\n'; cat "$PROJ_SETUP"; } \
+        | guest_podman exec -i "$DVM_PROJ_CONTAINER" bash -s
+}
+
+# Create (if absent) and start the project container, then run its setup. The
+# workspace volume persists across recreation; the container itself is
+# disposable. `podman create` pulls the image if the VM does not have it. A
+# NESTED project also gets /dev/fuse and label=disable so it can run its own
+# rootless containers (podman compose for postgres, redis, ...) inside it; this
+# relaxes SELinux confinement, so it is opt-in per project.
+project_up() {
+    ensure_guest_podman
+    local nest=() ports=() p host guest extra
+    [ "${NESTED:-0}" = "1" ] && nest=(--device /dev/fuse --security-opt label=disable)
+    # Publish to the VM's loopback; Lima forwards guest 127.0.0.1 ports to the
+    # host, so the project's dev server is reachable at localhost on the Mac.
+    # Ports are fixed at create time; change them with `dvm reset`.
+    for p in "${PROJ_PORTS[@]:-}"; do
+        [ -n "$p" ] || continue
+        IFS=: read -r host guest extra <<<"$p"
+        { [ -z "$extra" ] && [ -n "$host" ] && [ -n "$guest" ]; } || die "bad PROJ_PORTS entry: $p"
+        ports+=(-p "127.0.0.1:$host:$guest")
+    done
+    guest_podman container exists "$DVM_PROJ_CONTAINER" \
+        || guest_podman create --name "$DVM_PROJ_CONTAINER" --restart=always "${nest[@]}" "${ports[@]}" \
+            -v "$DVM_PROJ_VOLUME:$PROJ_WORKDIR" -w "$PROJ_WORKDIR" \
+            "$DVM_PROJ_IMAGE" sleep infinity >/dev/null
+    guest_podman start "$DVM_PROJ_CONTAINER" >/dev/null
+    [ -n "$PROJ_SETUP" ] && project_exec_setup
+}
+
+# Ensure a project's container exists and is started (it may be stopped after a
+# VM reboot). Dies with a hint if it was never synced.
+project_start() {
+    ensure_guest_podman
+    guest_podman container exists "$DVM_PROJ_CONTAINER" \
+        || die "no container for $DVM_NAME/$DVM_PROJECT (run: dvm sync $DVM_NAME/$DVM_PROJECT)"
+    guest_podman start "$DVM_PROJ_CONTAINER" >/dev/null
+}
+
+# Bring up every project container defined under the current pool VM. Runs each
+# in a subshell so per-project config (IMAGE, PROJ_*) does not leak between them.
+sync_vm_projects() {
+    local base pdir pname
+    base="$DVM_CONFIG_DIR/vms/$DVM_NAME/projects"
+    [ -d "$base" ] || return 0
+    for pdir in "$base"/*/; do
+        [ -f "$pdir/project.sh" ] || continue
+        pname="$(basename "$pdir")"
+        (
+            load_project "$DVM_NAME/$pname"
+            run_step "project $pname ($DVM_PROJ_IMAGE)" "$(vm_log setup)" project_up
+        )
+    done
+}
+
+# Hash of a directory's file names + contents, for change detection.
+sha256_stdin() {
+    if have sha256sum; then sha256sum | cut -d' ' -f1
+    elif have shasum; then shasum -a 256 | cut -d' ' -f1
+    else die "need sha256sum or shasum"
+    fi
+}
+dir_hash() {
+    ( cd "$1" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+        printf '%s\0' "$f"; cat "$f"
+    done ) | sha256_stdin
+}
+
+# Build the dev-base container image (localhost/dvm-dev-base) inside the current
+# VM from ~/.config/dvm/base/dev/Containerfile plus the shared packages.txt, so
+# project containers run FROM it with your tools baked in. No-op without a dev
+# Containerfile. Rebuilds when the dev dir or packages.txt changes (tracked by a
+# hash label on the image) or when DVM_REBUILD_DEV_BASE=1.
+ensure_dev_base() {
+    local cf="$DVM_BASE_DIR/dev/Containerfile" ctx tar hash cur
+    [ -f "$cf" ] || return 0
+    assert_safe_path "$DVM_BASE_DIR/dev" "dev-base directory"
+    assert_safe_path "$cf" "dev-base Containerfile"
+    ctx="$(mktemp -d)"
+    tar="$(mktemp)"
+    cp -R "$DVM_BASE_DIR/dev/." "$ctx/"
+    [ -f "$DVM_BASE_DIR/packages.txt" ] && cp "$DVM_BASE_DIR/packages.txt" "$ctx/"
+    hash="$(dir_hash "$ctx")"
+    if [ "${DVM_REBUILD_DEV_BASE:-0}" != "1" ]; then
+        cur="$(guest_podman image inspect localhost/dvm-dev-base:latest \
+            --format '{{ index .Labels "dvm.devbase.hash" }}' 2>/dev/null || true)"
+        if [ "$cur" = "$hash" ]; then rm -rf "$ctx" "$tar"; return 0; fi
+    fi
+    tar -C "$ctx" -czf "$tar" .
+    "$LIMACTL" copy "$tar" "$DVM_LIMA_NAME:/tmp/dvm-devbase.tgz"
+    rm -rf "$ctx" "$tar"
+    "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc '
+        set -Eeuo pipefail
+        uid="$(id -u)"
+        export XDG_RUNTIME_DIR="/run/user/$uid"
+        rm -rf ~/.cache/dvm-devbase
+        mkdir -p ~/.cache/dvm-devbase
+        tar -C ~/.cache/dvm-devbase -xzf /tmp/dvm-devbase.tgz
+        cd ~/.cache/dvm-devbase
+        podman build --label dvm.devbase.hash='"$hash"' -t localhost/dvm-dev-base:latest -f Containerfile .'
+}
+
 # Start an existing instance and re-run bootstrap quietly for sh/ssh/cp. Output
 # goes to the lima log; only failures surface (with the log path).
 ensure_running_quiet() {
@@ -360,12 +597,24 @@ ensure_running_quiet() {
 }
 
 print_setup_plan() {
-    printf 'setup scripts:\n'
-    printf '  global: %s\n' "${DVM_GLOBAL_SETUP:-<none>}"
-    printf '  vm:     %s\n' "${VM_SETUP:-<none>}"
+    printf 'setup script: %s\n' "${VM_SETUP:-<none>}"
+}
+
+# The global setup script was removed. Warn once if a stale ~/.config/dvm/setup.sh
+# is still present, so its silent no-op does not read as "my tools stopped
+# installing". DVM_SETUP_WARNED is exported so a single sync --all warns once.
+warn_legacy_global_setup() {
+    [ -z "${DVM_SETUP_WARNED:-}" ] || return 0
+    export DVM_SETUP_WARNED=1
+    [ -f "$DVM_CONFIG_DIR/setup.sh" ] || return 0
+    printf 'dvm: warning: %s is no longer used.\n' "$(disp_path "$DVM_CONFIG_DIR/setup.sh")" >&2
+    printf '     The global setup script was removed; move shared tooling into the\n' >&2
+    printf '     base image (dvm base init) and VM-specific steps into the per-VM setup.sh.\n' >&2
 }
 
 cmd_sync() {
+    warn_legacy_global_setup
+    case "${1:-}" in */*) cmd_sync_project "$1"; return ;; esac
     if [ "${1:-}" = "--all" ]; then
         local rc=0 f n
         for f in "$DVM_CONFIG_DIR"/vms/*/config.sh; do
@@ -382,6 +631,11 @@ cmd_sync() {
 
     if [ "${DVM_DRY_RUN:-0}" = "1" ]; then
         printf 'VM: %s (lima: %s)\n' "$DVM_NAME" "$DVM_LIMA_NAME"
+        if [ -f "$DVM_BASE_IMAGE" ]; then
+            printf 'base image: %s\n' "$(disp_path "$DVM_BASE_IMAGE")"
+        else
+            printf 'base image: <none> (boots template:fedora; run dvm base build)\n'
+        fi
         build_lima_start
         printf 'limactl start argv:\n'
         print_argv
@@ -399,6 +653,7 @@ cmd_sync() {
     ensure_logfile "$setup_log" truncate
 
     if ! lima_has "$DVM_LIMA_NAME"; then
+        [ -f "$DVM_BASE_IMAGE" ] && write_base_template
         build_lima_start
         run_step "creating instance $DVM_LIMA_NAME" "$lima_log" "${DVM_ARGV[@]}"
     else
@@ -406,13 +661,114 @@ cmd_sync() {
             "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_LIMA_NAME"
     fi
     run_step "ensuring user \"$DVM_USER\" and $DVM_CODE_DIR" "$lima_log" run_guest_bootstrap
-    [ -n "$DVM_GLOBAL_SETUP" ] && run_step "running global setup" "$setup_log" exec_setup_script "$DVM_GLOBAL_SETUP"
     [ -n "$VM_SETUP" ] && run_step "running VM setup" "$setup_log" exec_setup_script "$VM_SETUP"
+    [ -f "$DVM_BASE_DIR/dev/Containerfile" ] && run_step "ensuring dev-base image" "$setup_log" ensure_dev_base
+    sync_vm_projects
     step_ok "$DVM_NAME ready"
 }
 
+# Sync a single project container: ensure its pool VM is running, then bring the
+# container up. Does not (re)provision the VM itself; use `dvm sync <vm>` for that.
+cmd_sync_project() {
+    [ "$#" -eq 1 ] || die "usage: dvm sync <vm>/<project>"
+    load_project "$1"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    lock_vm "$DVM_NAME"
+    ensure_running_quiet
+    [ -f "$DVM_BASE_DIR/dev/Containerfile" ] && run_step "ensuring dev-base image" "$(vm_log setup)" ensure_dev_base
+    run_step "project $DVM_PROJECT ($DVM_PROJ_IMAGE)" "$(vm_log setup)" project_up
+    step_ok "$DVM_NAME/$DVM_PROJECT ready"
+}
+
+# Recreate a project's container from its image, re-running its setup. The
+# workspace volume is wiped too unless --keep-data is given (keep code + deps,
+# drop a crufty or possibly-compromised runtime). Siblings are untouched.
+project_reset() {
+    local keep_data="$1"
+    ensure_guest_podman
+    guest_podman rm -f "$DVM_PROJ_CONTAINER" >/dev/null 2>&1 || true
+    [ "$keep_data" = "1" ] || guest_podman volume rm "$DVM_PROJ_VOLUME" >/dev/null 2>&1 || true
+    project_up
+}
+
+cmd_reset() {
+    [ "$#" -ge 1 ] || die "usage: dvm reset <vm> --yes | <vm>/<project> --yes [--keep-data]"
+    local spec="$1"; shift
+    local yes=0 keep_data=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --yes) yes=1 ;;
+            --keep-data) keep_data=1 ;;
+            *) die "unknown flag: $1" ;;
+        esac
+        shift
+    done
+    [ "$yes" = "1" ] || die "dvm reset requires --yes"
+    require_lima
+    case "$spec" in
+        */*)
+            load_project "$spec"
+            lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+            lock_vm "$DVM_NAME"
+            ensure_running_quiet
+            local log; log="$(vm_log setup)"
+            ensure_logfile "$log" truncate
+            run_step "resetting $DVM_NAME/$DVM_PROJECT" "$log" project_reset "$keep_data"
+            step_ok "$DVM_NAME/$DVM_PROJECT reset"
+            ;;
+        *)
+            # Whole-VM reset = remove the Lima instance (keep config) + re-sync.
+            # Works on vz because it rebuilds from the base image, not a snapshot.
+            valid_name "$spec" || die "invalid VM name: $spec"
+            assert_vm_name_free "$spec"
+            DVM_NAME="$spec"; DVM_LIMA_NAME="$(lima_name "$spec")"
+            if lima_has "$DVM_LIMA_NAME"; then
+                local lima_log; lima_log="$(vm_log lima)"
+                ensure_logfile "$lima_log" truncate
+                run_step "removing instance $DVM_LIMA_NAME" "$lima_log" remove_lima_instance
+            fi
+            cmd_sync "$spec"
+            ;;
+    esac
+}
+
+# Remove a project's container (+ workspace volume unless --keep-data), and
+# optionally its config dir (--config). The pool VM and siblings are untouched.
+cmd_rm_project() {
+    local spec="$1"; shift
+    local yes=0 keep_data=0 remove_config=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --yes) yes=1 ;;
+            --keep-data) keep_data=1 ;;
+            --config) remove_config=1 ;;
+            *) die "unknown flag: $1" ;;
+        esac
+        shift
+    done
+    [ "$yes" = "1" ] || die "dvm rm requires --yes"
+    load_project "$spec"
+    require_lima
+    lock_vm "$DVM_NAME"
+    if lima_has "$DVM_LIMA_NAME"; then
+        ensure_running_quiet
+        ensure_guest_podman
+        guest_podman rm -f "$DVM_PROJ_CONTAINER" >/dev/null 2>&1 || true
+        [ "$keep_data" = "1" ] || guest_podman volume rm "$DVM_PROJ_VOLUME" >/dev/null 2>&1 || true
+        step_ok "$DVM_NAME/$DVM_PROJECT removed"
+    else
+        printf 'no Lima instance: %s\n' "$DVM_NAME"
+    fi
+    if [ "$remove_config" = "1" ]; then
+        rm -rf "$DVM_CONFIG_DIR/vms/$DVM_NAME/projects/$DVM_PROJECT"
+        printf 'removed config %s\n' "$(disp_path "$DVM_CONFIG_DIR/vms/$DVM_NAME/projects/$DVM_PROJECT")"
+    fi
+}
+
 cmd_sh() {
-    [ "$#" -eq 1 ] || die "usage: dvm sh <vm>"
+    [ "$#" -eq 1 ] || die "usage: dvm sh <vm> | <vm>/<project>"
+    case "$1" in */*) cmd_sh_project "$1"; return ;; esac
     load_vm "$1"
     require_lima
     lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
@@ -424,8 +780,22 @@ cmd_sh() {
         "$sh_script" bash "$DVM_CODE_DIR"
 }
 
+# Interactive shell inside a project container (podman exec), at its workdir.
+cmd_sh_project() {
+    load_project "$1"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    ensure_running_quiet
+    project_start
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc '
+        uid="$(id -u)"
+        export XDG_RUNTIME_DIR="/run/user/$uid"
+        exec podman exec -it -w "$2" "$1" bash -l' bash "$DVM_PROJ_CONTAINER" "$PROJ_WORKDIR"
+}
+
 cmd_ssh() {
-    [ "$#" -ge 1 ] || die "usage: dvm ssh <vm> -- cmd..."
+    [ "$#" -ge 1 ] || die "usage: dvm ssh <vm> -- cmd... | <vm>/<project> -- cmd..."
+    case "$1" in */*) cmd_ssh_project "$@"; return ;; esac
     local name="$1"; shift
     load_vm "$name"
     require_lima
@@ -440,8 +810,28 @@ cmd_ssh() {
         "$sh_script" bash "$DVM_CODE_DIR" "$@"
 }
 
+# Non-interactive command inside a project container, at its workdir.
+cmd_ssh_project() {
+    local spec="$1"; shift
+    [ "${1:-}" = "--" ] && shift
+    [ "$#" -gt 0 ] || die "usage: dvm ssh <vm>/<project> -- cmd..."
+    load_project "$spec"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    ensure_running_quiet
+    project_start
+    exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc '
+        uid="$(id -u)"
+        export XDG_RUNTIME_DIR="/run/user/$uid"
+        c="$1"; wd="$2"; shift 2
+        exec podman exec -w "$wd" "$c" "$@"' bash "$DVM_PROJ_CONTAINER" "$PROJ_WORKDIR" "$@"
+}
+
 cmd_cp() {
     [ "$#" -eq 2 ] || die "usage: dvm cp <src> <dst>"
+    if [[ "$1" =~ ^[a-z][a-z0-9-]*/[a-z0-9-]+: ]] || [[ "$2" =~ ^[a-z][a-z0-9-]*/[a-z0-9-]+: ]]; then
+        cmd_cp_project "$1" "$2"; return
+    fi
     local src_arg="$1" dst_arg="$2" src="$1" dst="$2"
     local src_is_vm=0 dst_is_vm=0 vm rest
     if [[ "$src_arg" =~ ^([a-z][a-z0-9-]*):(.*)$ ]]; then
@@ -497,6 +887,64 @@ cmd_cp() {
     fi
 }
 
+# Copy a single file between the host and a project container, addressed as
+# <vm>/<project>:path (a relative path resolves against the container workdir).
+# Hops host <-> VM (limactl) <-> container (podman cp). Files only.
+cmd_cp_project() {
+    local a="$1" b="$2" spec remote vmtmp
+    local src_is_proj=0 dst_is_proj=0
+    if [[ "$a" =~ ^([a-z][a-z0-9-]*/[a-z0-9-]+):(.*)$ ]]; then
+        spec="${BASH_REMATCH[1]}"; remote="${BASH_REMATCH[2]}"; src_is_proj=1
+    fi
+    if [[ "$b" =~ ^([a-z][a-z0-9-]*/[a-z0-9-]+):(.*)$ ]]; then
+        spec="${BASH_REMATCH[1]}"; remote="${BASH_REMATCH[2]}"; dst_is_proj=1
+    fi
+    [ $((src_is_proj + dst_is_proj)) -eq 1 ] || die "exactly one side must be <vm>/<project>:path"
+    load_project "$spec"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    ensure_running_quiet
+    project_start
+    case "$remote" in
+        /*) ;;
+        "") remote="$PROJ_WORKDIR" ;;
+        *) remote="$PROJ_WORKDIR/$remote" ;;
+    esac
+    vmtmp="/tmp/dvm-cp.$$"
+    if [ "$src_is_proj" = "1" ]; then
+        guest_podman cp "$DVM_PROJ_CONTAINER:$remote" "$vmtmp" >/dev/null
+        "$LIMACTL" copy "$DVM_LIMA_NAME:$vmtmp" "$b"
+    else
+        [ -f "$a" ] || die "no such file: $a"
+        "$LIMACTL" copy "$a" "$DVM_LIMA_NAME:$vmtmp"
+        guest_podman cp "$vmtmp" "$DVM_PROJ_CONTAINER:$remote" >/dev/null
+    fi
+    "$LIMACTL" shell "$DVM_LIMA_NAME" sudo rm -f "$vmtmp" >/dev/null 2>&1 || true
+}
+
+# List a pool VM's project containers: name, container state, image.
+ls_projects() {
+    local vm="$1" base pdir name img states state
+    load_vm "$vm"
+    base="$DVM_CONFIG_DIR/vms/$vm/projects"
+    states=""
+    if lima_has "$DVM_LIMA_NAME"; then
+        states="$("$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc '
+            uid="$(id -u)"; export XDG_RUNTIME_DIR="/run/user/$uid"
+            podman ps -a --format "{{.Names}} {{.State}}"' 2>/dev/null || true)"
+    fi
+    printf '%-20s %-10s %s\n' PROJECT STATE IMAGE
+    for pdir in "$base"/*/; do
+        [ -f "$pdir/project.sh" ] || continue
+        name="$(basename "$pdir")"
+        img="$(awk -F= '/^IMAGE=/{print $2; exit}' "$pdir/project.sh")"
+        [ -n "$img" ] || img="$DVM_DEV_BASE"
+        state="$(printf '%s\n' "$states" | awk -v n="$name" '$1==n{print $2; exit}')"
+        [ -n "$state" ] || state="absent"
+        printf '%-20s %-10s %s\n' "$name" "$state" "$img"
+    done
+}
+
 cmd_ls() {
     require_lima
     local only_config=0 filter=
@@ -510,12 +958,16 @@ cmd_ls() {
         esac
         shift
     done
+    if [ -n "$filter" ] && [ -d "$DVM_CONFIG_DIR/vms/$filter/projects" ]; then
+        ls_projects "$filter"; return
+    fi
     local fmt='{{.Name}}	{{.Status}}	{{.CPUs}}	{{.Memory}}'
     local name status cpus mem short rows
     rows="$("$LIMACTL" list --format "$fmt")" || die "failed to list Lima instances"
     printf '%-20s %-10s %-5s %-10s\n' VM STATE CPU MEMORY
     while IFS=$'\t' read -r name status cpus mem; do
         [ -n "$name" ] || continue
+        [ "$name" = "$DVM_BUILDER_LIMA" ] && continue
         case "$name" in dvm-*) short="${name#dvm-}" ;; *) continue ;; esac
         if [ -n "$filter" ] && [ "$short" != "$filter" ]; then continue; fi
         if [ "$only_config" = "1" ] && ! vm_config_exists "$short"; then continue; fi
@@ -524,6 +976,7 @@ cmd_ls() {
 }
 
 cmd_stop() {
+    case "${1:-}" in */*) cmd_stop_project "$1"; return ;; esac
     if [ "${1:-}" = "--all" ]; then
         shift
         local only_config=0
@@ -538,6 +991,7 @@ cmd_stop() {
         local rc=0 n rows
         rows="$("$LIMACTL" list -q)" || die "failed to list Lima instances"
         while IFS= read -r n; do
+            [ "$n" = "$DVM_BUILDER_LIMA" ] && continue
             case "$n" in
                 dvm-*)
                     if [ "$only_config" = "1" ] && ! vm_config_exists "${n#dvm-}"; then
@@ -558,6 +1012,8 @@ cmd_stop() {
         return $rc
     fi
     [ "$#" -eq 1 ] || die "usage: dvm stop <vm> | --all"
+    valid_name "$1" || die "invalid VM name: $1"
+    assert_vm_name_free "$1"
     require_lima
     DVM_NAME="$1"
     local name; name="$(lima_name "$DVM_NAME")"
@@ -569,8 +1025,48 @@ cmd_stop() {
     step_ok "$DVM_NAME stopped"
 }
 
+# Stop a single project container (the pool VM and siblings keep running).
+cmd_stop_project() {
+    [ "$#" -eq 1 ] || die "usage: dvm stop <vm>/<project>"
+    load_project "$1"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || { printf 'no Lima instance: %s\n' "$DVM_NAME"; return 0; }
+    if "$LIMACTL" shell "$DVM_LIMA_NAME" true >/dev/null 2>&1; then
+        guest_podman stop "$DVM_PROJ_CONTAINER" >/dev/null 2>&1 || true
+    fi
+    step_ok "$DVM_NAME/$DVM_PROJECT stopped"
+}
+
+# Show a project container's logs (its main process). -f/--follow streams.
+cmd_logs() {
+    [ "$#" -ge 1 ] || die "usage: dvm logs <vm>/<project> [-f]"
+    local spec="$1"; shift
+    local follow=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -f|--follow) follow=1 ;;
+            *) die "unknown flag: $1" ;;
+        esac
+        shift
+    done
+    case "$spec" in */*) ;; *) die "usage: dvm logs <vm>/<project> [-f]" ;; esac
+    load_project "$spec"
+    require_lima
+    lima_has "$DVM_LIMA_NAME" || die "no Lima instance: $DVM_LIMA_NAME (run: dvm sync $DVM_NAME)"
+    ensure_running_quiet
+    ensure_guest_podman
+    if [ "$follow" = "1" ]; then
+        exec "$LIMACTL" shell "$DVM_LIMA_NAME" sudo -u "$DVM_USER" -H bash -lc '
+            uid="$(id -u)"; export XDG_RUNTIME_DIR="/run/user/$uid"
+            exec podman logs -f "$1"' bash "$DVM_PROJ_CONTAINER"
+    else
+        guest_podman logs "$DVM_PROJ_CONTAINER"
+    fi
+}
+
 cmd_rm() {
-    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes"
+    [ "$#" -ge 1 ] || die "usage: dvm rm <vm> --yes | <vm>/<project> --yes"
+    case "$1" in */*) cmd_rm_project "$@"; return ;; esac
     local name="$1"; shift
     local yes=0 remove_config=0 config_file
     while [ "$#" -gt 0 ]; do
@@ -583,6 +1079,7 @@ cmd_rm() {
     done
     [ "$yes" = "1" ] || die "dvm rm requires --yes"
     valid_name "$name" || die "invalid VM name: $name"
+    assert_vm_name_free "$name"
     DVM_NAME="$name"
     DVM_LIMA_NAME="$(lima_name "$DVM_NAME")"
     config_file="$DVM_CONFIG_DIR/vms/$DVM_NAME/config.sh"
@@ -625,7 +1122,8 @@ ensure_global_config() {
         cat > "$g" <<EOF
 # shellcheck shell=bash
 # Global config. Loaded for every VM; per-VM config overrides it.
-# A sibling setup.sh here, when present, runs for every VM before each VM's own.
+# Shared tooling goes in the base image (dvm base init); per-VM setup.sh
+# handles VM-specific steps.
 
 DVM_USER=$user
 
@@ -635,6 +1133,10 @@ DVM_USER=$user
 # DVM_CPUS=2
 # DVM_MEMORY=2
 # DVM_DISK=30
+
+# VM type. Defaults to "vz" (Apple Virtualization) on Apple Silicon and to
+# Lima's platform default elsewhere. Set to "qemu" to force software emulation.
+# DVM_VM_TYPE=vz
 EOF
     )
     printf 'wrote %s (global)\n' "$(disp_path "$g")"
@@ -643,6 +1145,7 @@ EOF
 cmd_new() {
     [ "$#" -eq 1 ] || die "usage: dvm new <vm>"
     valid_name "$1" || die "invalid VM name: $1"
+    assert_vm_name_free "$1"
     local d="$DVM_CONFIG_DIR/vms/$1" f setup
     f="$d/config.sh"
     setup="$d/setup.sh"
@@ -680,17 +1183,447 @@ EOF
     printf 'wrote %s/{config.sh,setup.sh}\n' "$(disp_path "$d")"
 }
 
+# Scaffold a project (a container) under an existing pool VM, addressed as
+# <vm>/<project>. The VM must already exist (dvm new <vm>). Writes a project.sh
+# (container spec) and a setup.sh that runs inside the container on sync.
+cmd_add() {
+    [ "$#" -eq 1 ] || die "usage: dvm add <vm>/<project>"
+    case "$1" in */*) ;; *) die "usage: dvm add <vm>/<project>" ;; esac
+    local vm="${1%%/*}" proj="${1#*/}" d
+    case "$proj" in */*) die "invalid project (one '/' only): $1" ;; esac
+    valid_name "$vm" || die "invalid VM name: $vm"
+    assert_vm_name_free "$vm"
+    valid_name "$proj" || die "invalid project name: $proj"
+    [ -f "$DVM_CONFIG_DIR/vms/$vm/config.sh" ] || die "no VM \"$vm\" (run: dvm new $vm)"
+    d="$DVM_CONFIG_DIR/vms/$vm/projects/$proj"
+    [ ! -e "$d" ] || die "project already exists: $d"
+    (
+        umask 077
+        mkdir -p "$d"
+        cat > "$d/project.sh" <<EOF
+# shellcheck shell=bash
+# Container spec for project $vm/$proj. Sourced like config.sh on every sync.
+
+# Container image. Defaults to DVM_DEV_BASE when unset; override per project:
+# IMAGE=node:22
+
+# Set NESTED=1 if this project runs its own containers (e.g. podman/docker
+# compose for postgres, redis). It exposes /dev/fuse and relaxes SELinux so
+# rootless podman can nest. The image must then have podman + fuse-overlayfs
+# (install it in setup.sh below, or use a podman-capable image).
+# NESTED=1
+
+# Working directory inside the container; also the mount point for the
+# persistent workspace volume dvm-$vm-$proj (survives container recreation).
+# PROJ_WORKDIR=/work
+
+# Ports to publish from the container. Published on the VM's loopback; Lima
+# forwards guest 127.0.0.1 ports to the host, so the dev server is reachable at
+# localhost on the Mac. Ports are fixed at create time; change them with dvm reset.
+# PROJ_PORTS=(3000:3000)
+EOF
+        cat > "$d/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Runs inside the project container on `dvm sync`. Example:
+# git clone git@github.com:me/app .
+# npm ci
+#
+# For a NESTED=1 project, bring up your services here, e.g.:
+# sudo dnf install -y podman      # if the image lacks it
+# podman compose up -d            # postgres, redis, ... from your compose file
+EOF
+    )
+    printf 'wrote %s/{project.sh,setup.sh}\n' "$(disp_path "$d")"
+}
+
+# ---------------------------------------------------------------------------
+# Base image (`dvm base`)
+#
+# A base image bakes your tooling once so every VM boots ready instead of
+# re-running a large setup on each create. dvm owns a small "plumbing" layer
+# (the dvm-base image: zram, the rootless-docker unit, binfmt mask); your
+# Containerfile starts FROM dvm-base and adds packages/binaries on top. The
+# build runs in a throwaway Lima VM with podman + bootc-image-builder, and the
+# resulting qcow2 is copied to the host cache. The developer user, SSH keys, and
+# dotfiles are still created per VM at sync time, not baked into the image.
+# ---------------------------------------------------------------------------
+
+# The dvm-owned plumbing layer. Generated, never edited by the user. Only /usr
+# and /etc are touched so it is safe to bake into a bootc image (the developer
+# user and home live in per-machine state, created at sync time).
+base_plumbing_containerfile() {
+    printf 'FROM %s\n' "$DVM_BOOTC_BASE"
+    cat <<'EOF'
+# dvm-base: plumbing every dvm VM image inherits. Do not edit; regenerated by
+# `dvm base build` from the installed dvm, so updates land on the next build.
+RUN dnf5 install -y --setopt=install_weak_deps=False \
+        cloud-init zram-generator zsh shadow-utils slirp4netns fuse-overlayfs \
+    && dnf5 clean all
+
+# Compressed swap so a low DVM_MEMORY survives build spikes instead of OOMing.
+RUN printf '[zram0]\nzram-size = ram\ncompression-algorithm = zstd\n' \
+        > /etc/systemd/zram-generator.conf
+RUN printf 'vm.swappiness = 180\nvm.page-cluster = 0\n' \
+        > /etc/sysctl.d/90-dvm.conf
+
+# Rootless Docker, enabled for every user session; rootful + binfmt masked.
+RUN mkdir -p /etc/systemd/user && cat > /etc/systemd/user/docker.service <<'UNIT'
+[Unit]
+Description=Rootless Docker
+After=network.target
+[Service]
+Environment=PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart=/usr/bin/dockerd-rootless.sh
+Restart=always
+RestartSec=2
+TimeoutStartSec=0
+[Install]
+WantedBy=default.target
+UNIT
+RUN systemctl --global enable docker.service 2>/dev/null || true \
+ && systemctl mask systemd-binfmt.service 2>/dev/null || true
+EOF
+}
+
+# Shared package list, installed into both the VM base image and the dev-base
+# container image so the toolchain is defined once. Created if absent.
+ensure_packages_file() {
+    local pkgs="$DVM_BASE_DIR/packages.txt"
+    [ -e "$pkgs" ] && return 0
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_DIR"
+        cat >"$pkgs" <<'EOF'
+# Shared dev tools, one per line, installed into BOTH the VM base image and the
+# dev-base container image. Lines starting with # are ignored.
+git
+git-delta
+helix
+bat
+fzf
+ripgrep
+just
+chezmoi
+jq
+nodejs
+npm
+EOF
+    )
+    printf 'wrote %s\n' "$(disp_path "$pkgs")"
+}
+
+base_init() {
+    [ "$#" -eq 0 ] || die "usage: dvm base init"
+    local f="$DVM_BASE_DIR/Containerfile"
+    [ ! -e "$f" ] || die "base Containerfile already exists: $f"
+    ensure_packages_file
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_DIR"
+        cat >"$f" <<'EOF'
+# Your dvm base image, built by `dvm base build` into a qcow2 every VM boots
+# from. Start FROM dvm-base (dvm's plumbing: zram, the rootless-docker unit,
+# binfmt mask) and add your tools on top. The developer user, SSH keys, and
+# dotfiles are created per VM at `dvm sync`, not baked here.
+FROM dvm-base
+
+# Shared dev tools from packages.txt (the dev-base container image installs the
+# same list, so your toolchain is defined once).
+COPY packages.txt /tmp/dvm-packages.txt
+RUN dnf5 install -y --setopt=install_weak_deps=False \
+        $(grep -vE '^[[:space:]]*(#|$)' /tmp/dvm-packages.txt) \
+    && dnf5 clean all && rm -f /tmp/dvm-packages.txt
+
+# Container runtimes the VM provides: podman hosts dvm project containers; the
+# dvm-base plumbing also wires a rootless docker (moby) service.
+RUN dnf5 install -y --setopt=install_weak_deps=False \
+        podman podman-compose \
+        moby-engine moby-engine-rootless-extras docker-compose \
+    && dnf5 clean all
+
+# Upstream binaries: pin a version + SHA256, one RUN each so a bump rebuilds
+# only that layer.
+# ARG ZELLIJ_VERSION=0.44.3
+# RUN url="https://github.com/zellij-org/zellij/releases/download/v${ZELLIJ_VERSION}/zellij-aarch64-unknown-linux-musl.tar.gz" \
+#  && curl -fsSL "$url" -o /tmp/z.tgz \
+#  && echo "${ZELLIJ_SHA256}  /tmp/z.tgz" | sha256sum -c - \
+#  && tar -xzf /tmp/z.tgz -C /usr/local/bin zellij && rm /tmp/z.tgz
+
+# AI coding CLIs.
+# RUN npm install -g @anthropic-ai/claude-code @openai/codex
+EOF
+    )
+    printf 'wrote %s\n' "$(disp_path "$f")"
+    printf 'edit it (and packages.txt), then run: dvm base build\n'
+}
+
+# Scaffold the dev-base Containerfile: the OCI image project containers run FROM.
+# Separate from the VM bootc Containerfile (a container needs FROM fedora + podman
+# nesting plumbing, not bootc plumbing). Tools listed here are baked once and
+# shared by every project container; dvm builds it into each VM on sync.
+base_dev_init() {
+    [ "$#" -eq 0 ] || die "usage: dvm base dev-init"
+    local f="$DVM_BASE_DIR/dev/Containerfile"
+    [ ! -e "$f" ] || die "dev-base Containerfile already exists: $f"
+    ensure_packages_file
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_DIR/dev"
+        cat >"$f" <<'EOF'
+# dvm dev-base: the container image your project containers run FROM. Tools come
+# from the shared packages.txt (baked once, shared across containers via image
+# layers), so per-project setup.sh stays project-specific. dvm builds this into
+# each pool VM on `dvm sync` and rebuilds when it or packages.txt changes.
+FROM registry.fedoraproject.org/fedora:latest
+
+# Nesting plumbing so NESTED=1 projects can run podman/compose inside them.
+RUN dnf install -y --setopt=install_weak_deps=False \
+        podman fuse-overlayfs crun shadow-utils \
+ && dnf clean all
+RUN printf '[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' \
+        > /etc/containers/storage.conf
+RUN printf 'root:100000:65536\n' > /etc/subuid \
+ && printf 'root:100000:65536\n' > /etc/subgid
+
+# Shared dev tools from packages.txt (the same list the VM base installs).
+COPY packages.txt /tmp/dvm-packages.txt
+RUN dnf install -y --setopt=install_weak_deps=False \
+        $(grep -vE '^[[:space:]]*(#|$)' /tmp/dvm-packages.txt) \
+ && dnf clean all && rm -f /tmp/dvm-packages.txt
+
+# Binaries not in Fedora repos (lazygit, ...): pin a version + sha256 and verify,
+# the same way the VM base Containerfile does.
+# ARG LAZYGIT_VERSION=0.44.1
+# RUN curl -fsSL "https://github.com/jesseduffield/lazygit/releases/download/v${LAZYGIT_VERSION}/lazygit_${LAZYGIT_VERSION}_Linux_arm64.tar.gz" -o /tmp/lg.tgz \
+#  && tar -xzf /tmp/lg.tgz -C /usr/local/bin lazygit && rm /tmp/lg.tgz
+EOF
+    )
+    printf 'wrote %s\n' "$(disp_path "$f")"
+    printf 'edit it, then: dvm sync <vm> (builds it into the VM)\n'
+}
+
+builder_create() {
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start --yes --name "$DVM_BUILDER_LIMA" \
+        --cpus "$(default_cpus)" --memory "$DVM_BUILDER_MEMORY" --disk "$DVM_BUILDER_DISK" \
+        --mount-none template:fedora
+}
+
+builder_remove() {
+    "$LIMACTL" stop --force "$DVM_BUILDER_LIMA" >/dev/null 2>&1 || true
+    "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" delete --force "$DVM_BUILDER_LIMA"
+}
+
+# Install podman and pre-pull bootc-image-builder in the builder. Idempotent, so
+# a persistent builder keeps its podman layer cache warm between builds.
+builder_provision() {
+    {
+        printf 'set -Eeuo pipefail\n'
+        printf 'BISC=%q\n' "$DVM_BISC_IMAGE"
+        cat <<'EOS'
+command -v podman >/dev/null 2>&1 \
+    || sudo dnf5 install -y --setopt=install_weak_deps=False podman
+sudo podman pull "$BISC"
+EOS
+    } | "$LIMACTL" shell --workdir / "$DVM_BUILDER_LIMA" bash -s
+}
+
+# Ship the build context (your base dir + dvm's generated plumbing Containerfile)
+# into the builder as a tarball and unpack it.
+builder_upload_context() {
+    local ctx tar
+    ctx="$(mktemp -d)"
+    tar="$(mktemp)"
+    cp -R "$DVM_BASE_DIR/." "$ctx/"
+    base_plumbing_containerfile >"$ctx/Containerfile.dvm-base"
+    tar -C "$ctx" -czf "$tar" .
+    "$LIMACTL" copy "$tar" "$DVM_BUILDER_LIMA:/tmp/dvm-ctx.tgz"
+    "$LIMACTL" shell --workdir / "$DVM_BUILDER_LIMA" bash -s <<'EOS'
+set -Eeuo pipefail
+rm -rf /tmp/dvm-build
+mkdir -p /tmp/dvm-build
+tar -C /tmp/dvm-build -xzf /tmp/dvm-ctx.tgz
+EOS
+    rm -rf "$ctx" "$tar"
+}
+
+# Build dvm-base (plumbing), then your image FROM it, then assemble a qcow2.
+builder_build() {
+    local no_cache="$1" cache_arg=""
+    [ "$no_cache" = "1" ] && cache_arg="--no-cache"
+    {
+        printf 'set -Eeuo pipefail\n'
+        printf 'CACHE=%q\nBISC=%q\n' "$cache_arg" "$DVM_BISC_IMAGE"
+        cat <<'EOS'
+cd /tmp/dvm-build
+sudo podman build $CACHE -t dvm-base -f Containerfile.dvm-base .
+sudo podman build $CACHE -t dvm-target -f Containerfile .
+rm -rf out && mkdir -p out
+sudo podman run --rm --privileged \
+    -v /var/lib/containers/storage:/var/lib/containers/storage \
+    -v "$PWD/out":/output \
+    "$BISC" --type qcow2 --local dvm-target
+EOS
+    } | "$LIMACTL" shell --workdir / "$DVM_BUILDER_LIMA" bash -s
+}
+
+# Pull the qcow2 out of the builder and swap it into place atomically so a failed
+# build never leaves a half-written base image.
+builder_extract() {
+    (umask 077; mkdir -p "$(dirname "$DVM_BASE_IMAGE")")
+    local tmp="$DVM_BASE_IMAGE.tmp"
+    rm -f "$tmp"
+    "$LIMACTL" copy "$DVM_BUILDER_LIMA:/tmp/dvm-build/out/qcow2/disk.qcow2" "$tmp"
+    mv "$tmp" "$DVM_BASE_IMAGE"
+}
+
+write_base_metadata() {
+    (
+        umask 077
+        mkdir -p "$DVM_BASE_CACHE"
+        printf '{"built":"%s","arch":"%s","bootc_base":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(host_arch)" "$DVM_BOOTC_BASE" \
+            >"$DVM_BASE_CACHE/metadata.json"
+    )
+}
+
+base_build() {
+    local clean=0 no_cache=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --clean) clean=1 ;;
+            --no-cache) no_cache=1 ;;
+            *) die "usage: dvm base build [--clean] [--no-cache]" ;;
+        esac
+        shift
+    done
+    [ -f "$DVM_BASE_DIR/Containerfile" ] \
+        || die "no base Containerfile: run 'dvm base init' first ($(disp_path "$DVM_BASE_DIR/Containerfile"))"
+    assert_safe_path "$DVM_BASE_DIR" "base directory"
+    assert_safe_path "$DVM_BASE_DIR/Containerfile" "base Containerfile"
+    require_lima
+    lock_vm "base"
+
+    DVM_NAME=base
+    local log; log="$(vm_log build)"
+    ensure_logfile "$log" truncate
+
+    if [ "$clean" = "1" ] && lima_has "$DVM_BUILDER_LIMA"; then
+        run_step "removing builder $DVM_BUILDER_LIMA" "$log" builder_remove
+    fi
+    if ! lima_has "$DVM_BUILDER_LIMA"; then
+        run_step "creating builder $DVM_BUILDER_LIMA" "$log" builder_create
+    else
+        run_step "starting builder $DVM_BUILDER_LIMA" "$log" \
+            "$LIMACTL" --log-level "$DVM_LIMA_LOG_LEVEL" start "$DVM_BUILDER_LIMA"
+    fi
+    run_step "provisioning builder (podman, bootc-image-builder)" "$log" builder_provision
+    run_step "uploading build context" "$log" builder_upload_context
+    run_step "building base image" "$log" builder_build "$no_cache"
+    run_step "extracting qcow2 to $(disp_path "$DVM_BASE_IMAGE")" "$log" builder_extract
+    write_base_metadata
+    step_ok "base image ready ($(disp_path "$DVM_BASE_IMAGE"))"
+}
+
+base_status() {
+    [ "$#" -eq 0 ] || die "usage: dvm base status"
+    require_lima
+    if [ -f "$DVM_BASE_IMAGE" ]; then
+        printf 'base image: %s\n' "$(disp_path "$DVM_BASE_IMAGE")"
+        [ -f "$DVM_BASE_CACHE/metadata.json" ] \
+            && printf 'built:      %s\n' "$(cat "$DVM_BASE_CACHE/metadata.json")"
+    else
+        printf 'base image: <none> (run: dvm base build)\n'
+    fi
+    if [ -f "$DVM_BASE_DIR/Containerfile" ]; then
+        printf 'definition: %s\n' "$(disp_path "$DVM_BASE_DIR/Containerfile")"
+    else
+        printf 'definition: <none> (run: dvm base init)\n'
+    fi
+    if lima_has "$DVM_BUILDER_LIMA"; then
+        printf 'builder:    %s present\n' "$DVM_BUILDER_LIMA"
+    else
+        printf 'builder:    <none>\n'
+    fi
+}
+
+base_rm() {
+    local rm_builder=0 rm_image=0
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --builder) rm_builder=1 ;;
+            --image) rm_image=1 ;;
+            *) die "usage: dvm base rm [--builder] [--image]" ;;
+        esac
+        shift
+    done
+    if [ "$rm_builder" = "0" ] && [ "$rm_image" = "0" ]; then
+        rm_builder=1; rm_image=1
+    fi
+    require_lima
+    if [ "$rm_image" = "1" ]; then
+        # Remove the configured image and its sibling cache artifacts by exact
+        # path (not a blanket rm -rf), so a custom DVM_BASE_IMAGE is honored and
+        # a misconfigured cache dir can never delete something unexpected.
+        rm -f "$DVM_BASE_IMAGE" "$DVM_BASE_IMAGE.tmp" \
+            "$(base_template_path)" "$DVM_BASE_CACHE/metadata.json"
+        printf 'removed base image %s\n' "$(disp_path "$DVM_BASE_IMAGE")"
+    fi
+    if [ "$rm_builder" = "1" ]; then
+        if lima_has "$DVM_BUILDER_LIMA"; then
+            DVM_NAME=base
+            local log; log="$(vm_log lima)"
+            ensure_logfile "$log" truncate
+            run_step "removing builder $DVM_BUILDER_LIMA" "$log" builder_remove
+            step_ok "builder removed"
+        else
+            printf 'no builder instance\n'
+        fi
+    fi
+}
+
+base_usage() {
+    cat <<'EOF'
+dvm base <subcommand>
+  init                           scaffold ~/.config/dvm/base/Containerfile
+  dev-init                       scaffold the dev-base Containerfile for project containers
+  build [--clean] [--no-cache]   build the base image (qcow2) every VM boots from
+  status                         show the cached base image and builder state
+  rm [--builder] [--image]       remove the builder VM and/or cached image
+EOF
+}
+
+cmd_base() {
+    local sub="${1:-}"
+    [ "$#" -gt 0 ] && shift
+    case "$sub" in
+        init) base_init "$@" ;;
+        dev-init) base_dev_init "$@" ;;
+        build) base_build "$@" ;;
+        status) base_status "$@" ;;
+        rm) base_rm "$@" ;;
+        ""|help|-h|--help) base_usage ;;
+        *) base_usage >&2; die "unknown base subcommand: $sub" ;;
+    esac
+}
+
 usage() {
     cat <<'EOF'
 dvm <command> [args]
-  sync <vm> | --all       create/start VM and run setup scripts
-  sh <vm>                 interactive shell as DVM_USER
+  sync <vm> | <vm>/<proj> | --all  create/start VM (+ project containers)
+  sh <vm> | <vm>/<proj>   interactive shell in the VM or a project container
   ssh <vm> -- cmd...      non-interactive command as DVM_USER
-  cp src dst              copy; one side may be vm:path
-  ls [--only-config] [<vm>] list running Lima instances
-  stop <vm> | --all [--only-config] stop running VMs
-  rm <vm> --yes [--config] stop and delete the Lima instance
+  cp src dst              copy a file; a side may be vm:path or vm/proj:path
+  ls [--only-config] [<vm>]  list VMs, or a VM's project containers
+  stop <vm> | <vm>/<proj> | --all [--only-config] stop a VM or project container
+  logs <vm>/<proj> [-f]   show a project container's logs
+  rm <vm> --yes [--config] | <vm>/<proj> --yes  delete a VM or project container
+  reset <vm>/<proj> --yes [--keep-data]  recreate a project container
   new <vm>                write starter VM config and setup script
+  add <vm>/<proj>         define a project (container) inside a VM
+  base <subcommand>       build/manage the base image VMs boot from
   version                 print DVM version
 EOF
 }
@@ -703,8 +1636,12 @@ case "$cmd" in
     cp) cmd_cp "$@" ;;
     ls) cmd_ls "$@" ;;
     stop) cmd_stop "$@" ;;
+    logs) cmd_logs "$@" ;;
     rm) cmd_rm "$@" ;;
+    reset) cmd_reset "$@" ;;
     new) cmd_new "$@" ;;
+    add) cmd_add "$@" ;;
+    base) cmd_base "$@" ;;
     version) [ "$#" -eq 0 ] || die "usage: dvm version"; printf 'dvm %s\n' "$DVM_VERSION" ;;
     help|-h|--help) usage ;;
     *) usage >&2; die "unknown command: $cmd" ;;

@@ -1,6 +1,6 @@
 ---
 title: "Config & setup scripts"
-description: "Config variables, environment, and how per-VM and global setup scripts run."
+description: "Config variables, environment, and how the per-VM setup script runs."
 ---
 
 Config is Bash. Built-in defaults load first, then global config, then per-VM
@@ -10,10 +10,16 @@ first `dvm new` scaffolds the global config for you.
 
 ```text
 ~/.config/dvm/config.sh            # global config
-~/.config/dvm/setup.sh             # global setup script (optional)
+~/.config/dvm/base/Containerfile   # base image definition (optional)
 ~/.config/dvm/vms/<vm>/config.sh   # per-VM config
 ~/.config/dvm/vms/<vm>/setup.sh    # per-VM setup script
+~/.config/dvm/vms/<vm>/projects/<proj>/project.sh   # project container spec (optional)
+~/.config/dvm/vms/<vm>/projects/<proj>/setup.sh     # project setup, runs in the container
 ```
+
+Shared tooling is baked once into the [base image](/docs/reference/base/)
+Containerfile. The per-VM `setup.sh` runs for VM-specific, stateful steps (SSH
+keys, dotfiles, tunnels).
 
 ```bash
 # ~/.config/dvm/config.sh
@@ -44,6 +50,8 @@ DVM_PORTS=(3000:3000 5173:5173)
 | `DVM_SUBUID_COUNT` | `65536` | subordinate uid range size for `DVM_USER` |
 | `DVM_SUBGID_COUNT` | `65536` | subordinate gid range size for `DVM_USER` |
 | `DVM_PORTS` | `()` | extra `host:guest` port forwards |
+| `DVM_VM_TYPE` | `vz` on Apple Silicon, else unset | Lima VM type; `vz` is lighter than QEMU and reclaims idle VM memory better |
+| `DVM_DEV_BASE` | dev-base image, else bare Fedora | default image for [project containers](/docs/reference/projects/) that set no `IMAGE` |
 
 The defaults aim at a minimal but workable disposable VM: enough to run editor,
 shell, AI CLIs, and a dev server at once. Bump `DVM_MEMORY` per VM for heavy
@@ -80,6 +88,13 @@ The default subordinate id ranges support rootless Docker and Podman. Set both
 counts to `0` only when the user should get no ranges. If the user already
 exists, DVM adds missing ranges on the next sync.
 
+`DVM_VM_TYPE` defaults to `vz` on Apple Silicon macOS, using Apple's
+Virtualization framework: lighter overhead than QEMU, and it lets the host
+reclaim idle VM memory far more readily, which matters when running many VMs at
+once. Elsewhere it is empty and Lima picks its own backend. Set it explicitly to
+override, including `DVM_VM_TYPE=qemu` to force software emulation. See
+[Why Lima, not Tart or Apple `container`](/docs/reference/lima/#why-lima-not-tart-or-apple-container).
+
 ## Environment
 
 These are read from the environment at invocation, not from `config.sh`:
@@ -95,6 +110,18 @@ These are read from the environment at invocation, not from `config.sh`:
 | `DVM_STATE_DIR` | `~/.local/state/dvm` | per-VM log location |
 | `DVM_LIMACTL` | `limactl` | path to the `limactl` binary |
 
+These configure the [base image](/docs/reference/base/) build:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `DVM_BASE_DIR` | `~/.config/dvm/base` | Containerfile and build context |
+| `DVM_BASE_IMAGE` | `~/.cache/dvm/base/disk.qcow2` | built image VMs boot from |
+| `DVM_BUILDER_LIMA` | `dvm-builder` | builder Lima instance name |
+| `DVM_BUILDER_MEMORY` | `4` | builder memory (GiB) |
+| `DVM_BUILDER_DISK` | `50` | builder disk (GiB) |
+| `DVM_BOOTC_BASE` | `fedora-bootc`, digest-pinned in `bin/dvm` | image `dvm-base` is built from |
+| `DVM_BISC_IMAGE` | `bootc-image-builder`, digest-pinned in `bin/dvm` | disk-image builder |
+
 ## Logs
 
 `dvm sync` shows a one-line spinner per step (`✓` on success, `✗` on failure)
@@ -105,7 +132,7 @@ and your setup script's output to the terminal. Logs are per VM, under
 | File | Contents |
 | --- | --- |
 | `lima.log` | `limactl` instance create/start and guest provisioning |
-| `setup.log` | global and per-VM setup-script output |
+| `setup.log` | per-VM setup-script output |
 
 `dvm sync` truncates both at the start of each run, so they always reflect the
 latest attempt. On failure DVM prints which step failed, the log path, and the
@@ -114,17 +141,15 @@ written to the logs) when debugging a VM that will not come up.
 
 ## Setup scripts
 
-Run during `dvm sync` after the VM is created, started, and the user/project
-directory exist. Both are convention-based paths, run in order when present:
+The per-VM setup script, `~/.config/dvm/vms/<vm>/setup.sh`, runs during
+`dvm sync` after the VM is created, started, and the user/project directory
+exist. It is convention-based and runs when present.
 
-1. `~/.config/dvm/setup.sh` (global, runs for every VM)
-2. `~/.config/dvm/vms/<vm>/setup.sh` (per-VM)
+Put VM-specific, stateful steps here (SSH keys, dotfiles, tunnels). Shared
+tooling that every VM installs belongs in the [base image](/docs/reference/base/)
+Containerfile, baked once, rather than re-run on every sync.
 
-Put shared provisioning in the global script and VM-specific steps in the per-VM
-script. Neither is a config variable, so per-VM config cannot redirect the
-global one.
-
-DVM prepends `set -Eeuo pipefail` and exports these variables to each script:
+DVM prepends `set -Eeuo pipefail` and exports these variables to the script:
 
 | Variable | Meaning |
 | --- | --- |
@@ -137,6 +162,23 @@ DVM prepends `set -Eeuo pipefail` and exports these variables to each script:
 | `DVM_SUBUID_COUNT` | configured subordinate uid range size |
 | `DVM_SUBGID_COUNT` | configured subordinate gid range size |
 
-Setup scripts are trusted provisioning code. DVM checks they are owned by you
+The setup script is trusted provisioning code. DVM checks it is owned by you
 and not group/world writable (see [troubleshooting.md](/docs/guides/troubleshooting/) to
 repair). For snippets, see [examples](/docs/examples/).
+
+## Project containers
+
+A project under a VM has its own `project.sh` (a container spec, sourced like
+`config.sh`) and `setup.sh` (which runs **inside the container** on sync).
+Scaffold them with `dvm add <vm>/<proj>`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `IMAGE` | `$DVM_DEV_BASE` | container image the project runs |
+| `NESTED` | `0` | `1` exposes `/dev/fuse` and relaxes SELinux so the project can run its own podman/compose |
+| `PROJ_WORKDIR` | `/work` | working dir and mount point of the persistent workspace volume |
+| `PROJ_PORTS` | `()` | `host:guest` ports to publish (on the VM loopback, forwarded to localhost) |
+
+The same owner/mode checks that guard `config.sh` apply to `project.sh` and the
+project `setup.sh`. See
+[Trust tiers & project containers](/docs/reference/projects/) for the full model.

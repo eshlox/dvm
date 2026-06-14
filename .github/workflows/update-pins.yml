@@ -1,0 +1,64 @@
+name: Update pins
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-pins
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: update
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Refresh the base image digest pins in bin/dvm to the current digest of
+      # each tracked tag. crane runs in a container (Docker is preinstalled).
+      - name: Refresh digest pins
+        run: bash scripts/update-pins
+
+      - name: Detect changes
+        id: diff
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- bin/dvm; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Validate the rewritten bin/dvm before proposing it. PRs opened by
+      # GITHUB_TOKEN do not trigger the Check workflow, so run it here.
+      - name: Check
+        if: steps.diff.outputs.changed == 'true'
+        run: bash scripts/check
+
+      - name: Open or update pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          branch=automation/update-base-pins
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$branch"
+          git add bin/dvm
+          git commit -m "ci: refresh base image digest pins"
+          git push --force origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --head "$branch" --base main \
+              --title "Refresh base image digest pins" \
+              --body "Automated refresh of the \`DVM_BOOTC_BASE\` and \`DVM_BISC_IMAGE\` digest pins in \`bin/dvm\` to the current digest of each \`# track:\` tag. Review the diff before merging."
+          fi

@@ -56,4 +56,36 @@ dvm stop app
 dvm rm app --yes             # add --config to also delete ~/.config/dvm/vms/app
 ```
 
+## 5. Bake a base image (recommended for many VMs)
+
+If every VM installs the same tooling, the per-sync setup gets slow and the
+setup script gets long. Bake that shared tooling once into a base image and
+every VM boots from it:
+
+```bash
+dvm base init                # writes ~/.config/dvm/base/Containerfile
+# edit it: FROM dvm-base, then your packages and binaries
+dvm base build               # builds the image in a throwaway builder VM
+dvm sync app                 # now boots from the base image, ready in seconds
+```
+
+Per-VM `setup.sh` still runs for unique, stateful steps (SSH keys, dotfiles,
+tunnels). See the [base image reference](/docs/reference/base/) for the full
+workflow.
+
+## 6. Run many projects in one VM (optional)
+
+Instead of a VM per project, group projects by trust tier in one pool VM, each
+running as a disposable container you can reset in seconds:
+
+```bash
+dvm new trusted              # a pool VM for this trust tier
+dvm add trusted/api          # define a project (container) under the VM
+dvm sync trusted             # bring up the VM and every project container
+dvm sh trusted/api           # shell into the api container
+dvm reset trusted/api --yes  # recreate just that container, clean
+```
+
+See [Trust tiers & project containers](/docs/reference/projects/) for the model.
+
 See the [Commands reference](/docs/reference/commands/) for the full CLI.

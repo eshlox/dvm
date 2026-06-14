@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# Refresh the upstream image digest pins in bin/dvm to the current digest of
+# each tracked tag. Each pinned line carries a `# track: <registry/ref:tag>`
+# comment, which is the single source of truth for what the digest follows. Run
+# by the update-pins workflow on a schedule; the result is reviewed as a PR.
+#
+# Resolves the index (multi-arch) digest with crane, falling back to crane in a
+# container when it is not installed (e.g. on a CI runner with only Docker).
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+file="$ROOT/bin/dvm"
+
+# Helper image used only when crane is not installed locally. Pin it by digest
+# (CRANE_IMAGE=gcr.io/go-containerregistry/crane@sha256:...) for a fully locked
+# supply chain; the default tag is mutable.
+CRANE_IMAGE="${CRANE_IMAGE:-gcr.io/go-containerregistry/crane:latest}"
+
+crane_digest() {
+    if command -v crane >/dev/null 2>&1; then
+        crane digest "$1"
+    else
+        docker run --rm "$CRANE_IMAGE" digest "$1"
+    fi
+}
+
+# Collect the tracked refs (portable: no mapfile, which needs bash 4+).
+refs=()
+while IFS= read -r ref; do
+    [ -n "$ref" ] && refs+=("$ref")
+done < <(grep -oE '# track: [^ ]+' "$file" | awk '{print $3}')
+
+[ "${#refs[@]}" -gt 0 ] || { printf 'update-pins: no "# track:" pins in %s\n' "$file" >&2; exit 1; }
+
+# Resolve every tracked ref to its current digest up front, so a network failure
+# aborts before any edit. digests[] stays aligned with the file's track order.
+digests=()
+for ref in "${refs[@]}"; do
+    digest="$(crane_digest "$ref")"
+    if ! printf '%s' "$digest" | grep -qE '^sha256:[0-9a-f]{64}$'; then
+        printf 'update-pins: bad digest for %s: %s\n' "$ref" "$digest" >&2
+        exit 1
+    fi
+    digests+=("$digest")
+    printf 'update-pins: %s -> %s\n' "$ref" "$digest"
+done
+
+# Rewrite the pinned lines in place. Pure bash string ops keep this portable
+# across GNU and BSD sed; each pin line looks like:
+#   VAR="${VAR:-<image>@sha256:<digest-or-placeholder>}"  # track: <ref>
+# Replace only the digest token after @sha256:, preserving everything else.
+tmp="$file.tmp.$$"
+i=0
+while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+        *"@sha256:"*"# track: "*)
+            prefix="${line%%@sha256:*}"               # ...VAR="${VAR:-<image>
+            after="${line#*@sha256:}"                 # <token>}"  # track: <ref>
+            token="${after%%[!A-Za-z0-9_]*}"          # the old digest (hex or placeholder)
+            tail="${after#"$token"}"                  # }"  # track: <ref>
+            printf '%s@%s%s\n' "$prefix" "${digests[$i]}" "$tail"
+            i=$((i + 1))
+            ;;
+        *)
+            printf '%s\n' "$line"
+            ;;
+    esac
+done <"$file" >"$tmp"
+mv "$tmp" "$file"

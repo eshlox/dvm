@@ -82,6 +82,8 @@ export default defineConfig({
           items: [
             { label: 'Commands', link: '/docs/reference/commands/' },
             { label: 'Config & setup scripts', link: '/docs/reference/config/' },
+            { label: 'Trust tiers & project containers', link: '/docs/reference/projects/' },
+            { label: 'Base image', link: '/docs/reference/base/' },
             { label: 'Lima behavior', link: '/docs/reference/lima/' },
           ],
         },

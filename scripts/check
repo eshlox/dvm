@@ -8,7 +8,17 @@ bash tests/smoke.sh
 
 if command -v shellcheck >/dev/null 2>&1; then
     shellcheck -s bash --severity=warning -e SC1090,SC1091,SC2034,SC2154 \
-        bin/dvm install.sh tests/smoke.sh
+        bin/dvm install.sh tests/smoke.sh scripts/update-pins
 else
     printf 'check: shellcheck not found; skipping\n' >&2
 fi
+
+# Base image upstreams must be pinned to real sha256 digests, not the
+# REPLACE_WITH_DIGEST placeholders, before release. Run scripts/update-pins (or
+# the update-pins workflow) to fill them.
+for var in DVM_BOOTC_BASE DVM_BISC_IMAGE; do
+    if ! grep -E "^${var}=" bin/dvm | grep -qE "@sha256:[0-9a-f]{64}\}"; then
+        printf 'check: %s in bin/dvm is not pinned to a sha256 digest (run scripts/update-pins)\n' "$var" >&2
+        exit 1
+    fi
+done
