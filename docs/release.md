@@ -1,34 +1,40 @@
 # Release process
 
-DVM has no stable tagged release yet. Before v1.0, use `main` as the maintained
-line and run:
+Releases are cut from `main` and tagged `vX.Y.Z`. `main` is the maintained line;
+development happens on feature branches that merge into it via pull request.
+
+Before tagging a release:
 
 ```bash
 bash scripts/check
 ```
 
-## v1.0 gate
+## Release gate
 
-A security-focused v1.0 release should include:
+A release should include:
 
 - a clean `bash scripts/check` run with ShellCheck installed
+- the base-image upstreams pinned to real sha256 digests (`scripts/update-pins`),
+  which `scripts/check` enforces
+- an updated `CHANGELOG.md` with the version and date
+- the version bumped in `bin/dvm` (`DVM_VERSION`)
 - at least one real Lima lifecycle validation outside the fake smoke test
-- an updated changelog
 - a signed Git tag
-- published checksums for release archives or installer artifacts
-- release notes that describe notable command/config behavior
+- published SHA-256 checksums for the source archive
+- release notes describing notable command/config behavior
 
 ## Tagging
 
 ```bash
-git tag -s v1.0.0 -m "DVM v1.0.0"
-git push origin v1.0.0
+git tag -s v3.0.0 -m "DVM v3.0.0"
+git push origin v3.0.0
 ```
 
-Publish source archives from that tag and generate SHA-256 checksums:
+Publish a source archive from that tag and its SHA-256 checksum:
 
 ```bash
-sha256sum dvm-v1.0.0.tar.gz > dvm-v1.0.0.tar.gz.sha256
+git archive --format=tar.gz --prefix=dvm-3.0.0/ -o dvm-v3.0.0.tar.gz v3.0.0
+sha256sum dvm-v3.0.0.tar.gz > dvm-v3.0.0.tar.gz.sha256
 ```
 
 Do not call a release security-hardened unless the threat model, security
